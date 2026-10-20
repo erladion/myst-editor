@@ -1,0 +1,26 @@
+{
+  "name": "mysteditor",
+  "version": "1.0.0",
+  "description": "WYSIWYG editor for Sphinx + MyST Markdown",
+  "scripts": {
+    "test": "vitest run",
+    "roundtrip": "tsx scripts/roundtrip-report.ts",
+    "typecheck": "tsc -p ."
+  },
+  "license": "UNLICENSED",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "myst-parser": "^1.7.4",
+    "prosemirror-markdown": "^1.13.8",
+    "prosemirror-model": "^1.25.12",
+    "prosemirror-state": "^1.4.4"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "diff": "^9.0.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}
