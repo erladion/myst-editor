@@ -17,10 +17,10 @@
     "typecheck": "tsc -p .",
     "roundtrip": "tsx scripts/roundtrip-report.ts",
     "icon": "electron scripts/make-icon.cjs",
-    "dist": "node scripts/fetch-uv.mjs && electron-vite build && electron-builder --linux AppImage rpm",
+    "dist": "node scripts/fetch-uv.mjs && electron-vite build && electron-builder --linux AppImage rpm --publish never",
     "test:sphinx": "vitest run --config vitest.integration.config.ts",
     "fetch-uv": "node scripts/fetch-uv.mjs",
-    "dist:appimage": "node scripts/fetch-uv.mjs && electron-vite build && electron-builder --linux AppImage"
+    "dist:appimage": "node scripts/fetch-uv.mjs && electron-vite build && electron-builder --linux AppImage --publish never"
   },
   "devDependencies": {
     "@codemirror/commands": "6.11.1",
