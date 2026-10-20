@@ -9,6 +9,7 @@ import { mystParse, createTokenizer } from 'myst-parser';
 import type { Node as PMNode, Mark } from 'prosemirror-model';
 import { schema } from './schema.js';
 import { splitDirective, headerKey } from './directive.js';
+import { readMarker } from './conditions.js';
 import { SourceMap } from './sourcemap.js';
 
 type MdNode = { type: string; position?: { start: { line: number }; end: { line: number } }; [k: string]: any };
@@ -31,6 +32,10 @@ const SPHINX_DIALECT = { smartquotes: false, citations: false, strikethrough: tr
 
 export interface ParseOptions {
   extensions?: Record<string, boolean>;
+  // Project-specific directives (from .mysteditor.toml), overriding the built-in lists.
+  directives?: Record<string, 'markdown' | 'text' | 'none'>;
+  // Keywords of block condition markers, e.g. ["if", "endif"].
+  conditionKeywords?: [string, string];
 }
 
 export interface ParseResult {
@@ -248,8 +253,11 @@ class Context {
       case 'mystDirective':
         return this.directive(md, src);
 
-      case 'html':
-        return this.raw('html', src);
+      case 'html': {
+        // Conditional-content markers keep their source as-is but get their own kind.
+        const marker = this.opts.conditionKeywords && readMarker(src, this.opts.conditionKeywords);
+        return this.raw(marker ? `condition-${marker.kind}` : 'html', src);
+      }
       case 'comment':
         return this.raw('comment', src);
       case 'table':
@@ -288,14 +296,17 @@ class Context {
       header: d.header,
       headerKey: headerKey(d.name, d.args, d.options, d.fence),
     };
-    if (MARKDOWN_DIRECTIVES.has(d.name) && d.closing) {
+    const declared = this.opts.directives?.[d.name];
+    const markdown = declared ? declared === 'markdown' : MARKDOWN_DIRECTIVES.has(d.name);
+    const text = declared ? declared === 'text' : CODE_DIRECTIVES.has(d.name);
+    if (markdown && d.closing) {
       return this.containerNode('md_directive', { ...common, fence: d.fence }, d.body ?? '', src, d.header.split('\n').length);
     }
-    if (d.name === 'math' && d.closing) {
+    if (d.name === 'math' && d.closing && !declared) {
       const label = d.options.find(([k]) => k === 'label')?.[1] ?? '';
       return this.withSid('math_block', { ...common, label, directive: true, fence: d.fence }, textContent(d.body ?? ''), src);
     }
-    if (CODE_DIRECTIVES.has(d.name) && d.closing) {
+    if (text && d.closing) {
       return this.withSid(
         'code_block',
         { ...common, lang: d.args, fence: d.fence, directive: true },

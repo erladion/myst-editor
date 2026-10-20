@@ -16,6 +16,7 @@ export interface ProjectInfo {
   root: string; // the folder the writer opened
   name: string;
   projects: SphinxProject[]; // may be empty: a plain Markdown folder
+  defaultConfig: MystConfig; // for pages outside every project
   files: string[]; // Markdown files, POSIX paths relative to root
   titles: Record<string, string>; // first heading of each file, where found
 }
@@ -24,6 +25,11 @@ export interface FilesChanged {
   files: string[]; // the current file list
   titles: Record<string, string>;
   changed: string[]; // files whose content changed on disk (not by us)
+}
+
+// The folder's projects or their settings changed (conf.py, .mysteditor.toml, ...).
+export interface ProjectChanged {
+  project: ProjectInfo;
 }
 
 export type MenuCommand = 'open-folder' | 'save' | 'toggle-source';
@@ -42,6 +48,7 @@ export interface MystApi {
   // Close after the renderer has finished saving.
   closeWindow(): void;
   onFilesChanged(cb: (e: FilesChanged) => void): () => void;
+  onProjectChanged(cb: (e: ProjectChanged) => void): () => void;
   onMenu(cb: (cmd: MenuCommand) => void): () => void;
   onCloseRequested(cb: () => void): () => void;
 

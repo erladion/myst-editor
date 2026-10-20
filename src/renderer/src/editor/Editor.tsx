@@ -6,6 +6,7 @@ import type { SphinxWarning } from '../../../shared/sphinx';
 import type { EditorContext } from './context';
 import { nodeViews } from './nodeviews';
 import { locateProblems, setProblems } from './problems';
+import { setConditionView } from './conditions';
 
 interface Props {
   state: EditorState;
@@ -19,10 +20,12 @@ interface Props {
   // A source line to move the cursor to (e.g. from the problems list).
   reveal: number | null;
   onRevealed: () => void;
+  // Capabilities to preview the page with ("View as"); null shows everything.
+  viewAs: string[] | null;
 }
 
 // Remount (via `key`) when switching pages, so node views never carry state across files.
-export function Editor({ state, ctx, onChange, viewRef, onView, problems, savedText, reveal, onRevealed }: Props) {
+export function Editor({ state, ctx, onChange, viewRef, onView, problems, savedText, reveal, onRevealed, viewAs }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
@@ -57,6 +60,12 @@ export function Editor({ state, ctx, onChange, viewRef, onView, problems, savedT
     const view = viewRef.current;
     if (view && view.state !== state) view.updateState(state);
   }, [state, viewRef]);
+
+  const conditions = ctx.config.editor.conditions;
+  useEffect(() => {
+    const view = viewRef.current;
+    if (view) view.dispatch(setConditionView(view.state.tr, conditions, viewAs));
+  }, [conditions, viewAs, viewRef]);
 
   useEffect(() => {
     const view = viewRef.current;

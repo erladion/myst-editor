@@ -3,7 +3,7 @@
 A WYSIWYG editor for Sphinx + MyST Markdown, aimed at writers who shouldn't have to
 see Markdown syntax. An Electron app shipped as an AppImage.
 
-## Status: phase 3 — Sphinx integration
+## Status: phase 4 — custom extensions (settings file and conditional content done)
 
 Open a documentation folder and edit its pages as formatted documents:
 
@@ -71,6 +71,59 @@ build per project:
   listed separately. A Files view is still available.
 - **Preview:** the page as Sphinx actually builds it, theme included, beside the
   editor and refreshed after each build.
+
+## Project settings
+
+A `.mysteditor.toml` next to a `conf.py` (or at the opened folder's root, for all its
+projects) tells the editor about a project's own extensions. Files are merged from
+the root down, are reloaded when they change, and mistakes show up as "Settings: N
+problems" in the status bar.
+
+```toml
+# A directive with a Markdown body: edited like a callout, with an options form.
+[directives.company-callout]
+label = "Internal note"
+tone = "warning"            # note | info | tip | warning | danger | neutral
+body = "markdown"           # markdown | text (edited as code) | none (a card)
+argument = "Title"          # leave out if the directive takes no argument
+insert = true               # offer it in the Insert menu (default)
+[directives.company-callout.options.audience]
+label = "Audience"
+choices = ["internal", "partners", "public"]
+default = "internal"        # used when inserting
+[directives.company-callout.options.draft]
+flag = true                 # a checkbox: present or absent
+
+# A role: a labelled chip, and Ctrl+click opens the link.
+[roles.jira]
+label = "Jira"
+url = "https://jira.example.com/browse/{value}"
+
+# Conditional content: <!-- if: X or Y --> … <!-- endif -->, and
+# <!-- if-inline: X --> … <!-- endif-inline --> inside a paragraph.
+[conditions]
+capabilities = "capabilities.json"   # relative to this file
+key = "product.capabilities"         # where the names are in the JSON (optional)
+block = ["if", "endif"]              # the defaults
+inline = ["if-inline", "endif-inline"]
+case_sensitive = true
+```
+
+The capabilities file can be a list of names, an object keyed by name, or a list of
+objects with a `name`/`id`, optionally under `key`.
+
+With `[conditions]` set:
+
+- Each condition shows as a "Shown only when …" line, with a stripe beside its
+  content. Nested conditions stack stripes.
+- **Condition…** in the toolbar wraps the current block, or the selected words, using
+  a capability checklist or an expression (`and`, `or`, `not`, parentheses;
+  precedence `not` > `and` > `or`). Unknown capabilities and malformed expressions
+  are flagged.
+- Conditions can be edited or removed, which removes both markers and keeps the
+  content.
+- **View as** dims what a build with a given set of capabilities wouldn't show.
+  Nothing in the file changes.
 
 ## How it works
 
@@ -223,6 +276,16 @@ With an internal PyPI mirror instead, the private environment works too: uv read
   pyproject docs extra) can fail for projects with compiled code. Details are in the
   build log.
 - No find/replace yet, and no image picker. Figures take a typed path.
+- Custom syntax built on MyST's own extension points (`{role}` and `{directive}`) is
+  parsed and preserved exactly. Syntax an extension finds in the raw text instead
+  (for example a source-read preprocessor matching `[[...]]`) is ordinary text to
+  the editor. It's preserved until the paragraph is edited, but then its
+  punctuation may be escaped (`\[\[`), which the extension would no longer match.
+  Planned: declaring such patterns in `.mysteditor.toml` (extensions tier 5).
+- An inline condition can't start at the beginning of a line: there, `<!--` would
+  start an HTML block. The editor refuses and suggests selecting the whole paragraph.
+- Conditions are matched as written. Markers inside code blocks are code, even if the
+  extension strips them from the raw text.
 - One e2e failure (a `toHaveText` assertion) was seen once early in phase 2 and not
   reproduced since.
 - `npm audit` reports DoS-class advisories in markdown-it 13 / linkify-it 4, which
@@ -241,54 +304,19 @@ With an internal PyPI mirror instead, the private environment works too: uv read
    real preview, cross-reference autocomplete and validation, toctree navigation,
    warnings shown inline~~ ✅
 4. Custom extensions, in tiers:
-   1. Never break what the editor doesn't understand: unknown syntax is kept
-      byte-for-byte, shown as a card and editable as source. *(Done.)*
-   2. A per-project editor config file committed in the repo (e.g. `.mysteditor.toml`)
-      that declares a project's extensions without code:
-      - custom directives with Markdown bodies (editable like callouts), with a
-        label, icon and colour
-      - option schemas, shown as forms with dropdowns
-      - labels for custom roles
-      - custom block markers
+   1. ~~Never break what the editor doesn't understand~~ ✅ Unknown syntax is kept
+      byte-for-byte, shown as a card and editable as source.
+   2. ~~A per-project editor config file (`.mysteditor.toml`)~~ ✅ Declared
+      directives and roles, option forms, and conditional content (see [Project
+      settings](#project-settings)).
    3. Sphinx-rendered previews for directives that can't be described
-      declaratively, using the HTML from the project's real build.
+      declaratively, using the HTML from the project's real build. *(Next.)*
    4. JavaScript plugins, only if tiers 2–3 aren't enough, since they mean trusting
       code shipped in a repo.
-
-   **Conditional content** (the first tier-2 feature). The extension strips content
-   whose capabilities aren't configured:
-   - Syntax: `<!-- if: expr -->` … `<!-- endif -->` blocks, and
-     `<!-- if-inline: expr -->` … `<!-- endif-inline -->` within a paragraph.
-     Expressions use `and`, `or`, `not` and capability names. Conditions nest; there
-     is no `else` or `elif`. Available capabilities are listed in a separate `.json`
-     file.
-   - Today, block markers are generic HTML cards and the content between them edits
-     normally. The round-trip is safe, but the meaning isn't shown.
-   - Planned design:
-     - **Parsing:** markers become their own node types, kept byte-for-byte unless
-       their condition is edited. A small expression parser flags unknown
-       capabilities and malformed expressions.
-     - **Display:** a labelled band down the left of conditional blocks ("Only when
-       X or Y"). Nested conditions stack as several bands. Markers are paired by
-       nesting, so a condition can span a list item's boundary, and unmatched ones
-       get an error badge. Inline conditions highlight their words between two
-       small pills.
-     - **Editing:** "Make conditional…" wraps the selection, using the inline form
-       inside a paragraph. A condition editor offers a capability picker from the
-       JSON plus a validated expression field. "Remove condition" deletes both
-       markers together.
-     - **View as:** pick a capability set to dim or hide content it wouldn't see.
-       View only; the file isn't changed.
-     - **Config:** the JSON path and marker keywords go in the editor config, so
-       similar extensions can reuse it.
-   - Still to confirm:
-     - the JSON file's shape and location
-     - whether parentheses are allowed
-     - operator precedence
-     - case sensitivity
-     - whether stripping runs on the raw text before parsing, in which case markers
-       inside code blocks or directives still apply
-     - ideally, by reading the extension's source
+   5. Custom raw-text syntax (patterns an extension recognises in the source, not
+      MyST roles or directives): declare its patterns so the editor keeps those spans
+      verbatim. Today they're ordinary text, and editing such a paragraph may escape
+      their punctuation (see Known limitations).
 5. Tables: create and edit tables visually, including row and column spans.
    - Open question: GFM tables and `list-table` can't express spans. Options are reST
      grid tables in `{eval-rst}`, an extension directive such as `flat-table`, or raw

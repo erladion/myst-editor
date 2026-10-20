@@ -1,13 +1,23 @@
 // Modal dialogs, opened imperatively through the EditorUi interface.
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type FormEvent } from 'react';
 import type { EditorUi, Field } from '../editor/context';
+import type { ConditionsDef, OptionDef } from '../../../core/editor-config';
+import { describe, parseCondition, unknownNames } from '../../../core/conditions';
 
 type Request =
   | { kind: 'source'; title: string; source: string; help?: string; resolve: (v: string | null) => void }
   | { kind: 'fields'; title: string; fields: Field[]; submit?: string; resolve: (v: Record<string, string> | null) => void }
-  | { kind: 'options'; title: string; options: [string, string][]; resolve: (v: [string, string][] | null) => void }
+  | { kind: 'options'; title: string; options: [string, string][]; schema?: Record<string, OptionDef>; resolve: (v: [string, string][] | null) => void }
   | { kind: 'confirm'; title: string; message: string; confirm: string; resolve: (v: boolean) => void }
-  | { kind: 'text'; title: string; text: string; resolve: (v: null) => void };
+  | { kind: 'text'; title: string; text: string; resolve: (v: null) => void }
+  | {
+      kind: 'condition';
+      title: string;
+      expr: string;
+      settings: ConditionsDef;
+      allowRemove: boolean;
+      resolve: (v: { expr: string } | { remove: true } | null) => void;
+    };
 
 export interface DialogApi extends EditorUi {
   confirm(opts: { title: string; message: string; confirm: string }): Promise<boolean>;
@@ -31,6 +41,8 @@ export const DialogHost = forwardRef<DialogApi>(function DialogHost(_props, ref)
       editOptions: (o) => ask((resolve) => ({ kind: 'options', ...o, resolve })),
       confirm: (o) => ask((resolve) => ({ kind: 'confirm', ...o, resolve })),
       showText: (o) => ask((resolve) => ({ kind: 'text', ...o, resolve })),
+      editCondition: (o) =>
+        ask((resolve) => ({ kind: 'condition', title: o.allowRemove ? 'Edit condition' : 'Make conditional', ...o, resolve })),
       notify: (message) => {
         setToast(message);
         clearTimeout(toastTimer.current);
@@ -65,6 +77,7 @@ function Modal({ request }: { request: Request }) {
         {request.kind === 'source' && <SourceForm request={request} cancel={cancel} />}
         {request.kind === 'fields' && <FieldsForm request={request} cancel={cancel} />}
         {request.kind === 'options' && <OptionsForm request={request} cancel={cancel} />}
+        {request.kind === 'condition' && <ConditionForm request={request} cancel={cancel} />}
         {request.kind === 'text' && (
           <>
             <pre className="log-text">{request.text}</pre>
@@ -189,21 +202,84 @@ function FieldsForm({ request, cancel }: { request: Extract<Request, { kind: 'fi
 }
 
 function OptionsForm({ request, cancel }: { request: Extract<Request, { kind: 'options' }>; cancel: () => void }) {
-  const [rows, setRows] = useState<[string, string][]>(() => (request.options.length ? request.options : [['', '']]));
+  const schema = request.schema ?? {};
+  const declared = Object.keys(schema);
+  // Declared options get their own fields; any others stay as free name/value rows.
+  const [known, setKnown] = useState<Record<string, string | null>>(() =>
+    Object.fromEntries(declared.map((k) => [k, request.options.find(([name]) => name === k)?.[1] ?? null])),
+  );
+  const [rows, setRows] = useState<[string, string][]>(() => {
+    const others = request.options.filter(([k]) => !(k in schema));
+    return others.length || declared.length ? others : [['', '']];
+  });
   const update = (i: number, col: 0 | 1, value: string) =>
     setRows((r) => r.map((row, j) => (j === i ? ((col === 0 ? [value, row[1]] : [row[0], value]) as [string, string]) : row)));
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    const free = rows.map(([k, v]) => [k.trim().replace(/^:|:$/g, ''), v.trim()] as [string, string]).filter(([k]) => k);
+    const value = (k: string): [string, string] | null => {
+      if (k in schema) return known[k] === null ? null : [k, known[k]!.trim()];
+      return free.find(([name]) => name === k) ?? null;
+    };
+    // Keep the original order, so editing a value doesn't reshuffle the header.
+    const original = request.options.map(([k]) => k);
+    const result: [string, string][] = [];
+    for (const k of [...original, ...declared, ...free.map(([k]) => k)]) {
+      if (result.some(([name]) => name === k)) continue;
+      const v = value(k);
+      if (v) result.push(v);
+    }
+    request.resolve(result);
+  };
+
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        request.resolve(rows.map(([k, v]) => [k.trim().replace(/^:|:$/g, ''), v.trim()] as [string, string]).filter(([k]) => k));
-      }}
-    >
-      <p className="modal-help">Options are passed to Sphinx as written, for example <code>width</code> = <code>80%</code>.</p>
+    <form onSubmit={submit}>
+      {declared.length > 0 ? (
+        <div className="known-options">
+          {declared.map((k, i) => {
+            const def = schema[k];
+            const id = `option-${k}`;
+            const current = known[k];
+            const set = (v: string | null) => setKnown((o) => ({ ...o, [k]: v }));
+            return (
+              <div className="field" key={k}>
+                {def.flag ? (
+                  <label className="check">
+                    <input type="checkbox" id={id} checked={current !== null} autoFocus={i === 0} onChange={(e) => set(e.target.checked ? '' : null)} />
+                    {def.label ?? k}
+                  </label>
+                ) : (
+                  <>
+                    <label htmlFor={id}>{def.label ?? k}</label>
+                    {def.choices ? (
+                      <select id={id} value={current ?? ''} autoFocus={i === 0} onChange={(e) => set(e.target.value === '' ? null : e.target.value)}>
+                        <option value="">(not set)</option>
+                        {def.choices.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                        {current !== null && current !== '' && !def.choices.includes(current) && <option value={current}>{current}</option>}
+                      </select>
+                    ) : (
+                      <input id={id} value={current ?? ''} placeholder="(not set)" autoFocus={i === 0} onChange={(e) => set(e.target.value === '' ? null : e.target.value)} />
+                    )}
+                  </>
+                )}
+                {def.help && <small>{def.help}</small>}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="modal-help">Options are passed to Sphinx as written, for example <code>width</code> = <code>80%</code>.</p>
+      )}
+      {(rows.length > 0 || !declared.length) && declared.length > 0 && <div className="modal-help">Other options</div>}
       <div className="options-grid">
         {rows.map(([k, v], i) => (
           <div className="option-row" key={i}>
-            <input value={k} placeholder="name" aria-label="Option name" autoFocus={i === 0} onChange={(e) => update(i, 0, e.target.value)} />
+            <input value={k} placeholder="name" aria-label="Option name" autoFocus={i === 0 && !declared.length} onChange={(e) => update(i, 0, e.target.value)} />
             <input value={v} placeholder="value (optional)" aria-label="Option value" onChange={(e) => update(i, 1, e.target.value)} />
             <button type="button" title="Remove option" onClick={() => setRows((r) => r.filter((_, j) => j !== i))}>
               ✕
@@ -212,9 +288,87 @@ function OptionsForm({ request, cancel }: { request: Extract<Request, { kind: 'o
         ))}
       </div>
       <button type="button" className="link-button" onClick={() => setRows((r) => [...r, ['', '']])}>
-        + Add option
+        + Add {declared.length ? 'another' : ''} option
       </button>
       <Actions cancel={cancel} />
+    </form>
+  );
+}
+
+// Capabilities combined with "or", the common case the checklist can edit.
+function orList(expr: string): string[] | null {
+  const parsed = parseCondition(expr);
+  if (!expr.trim()) return [];
+  if (!parsed.ok) return null;
+  const names: string[] = [];
+  const walk = (e: typeof parsed.expr): boolean => (e.kind === 'name' ? (names.push(e.name), true) : e.kind === 'or' && walk(e.left) && walk(e.right));
+  return walk(parsed.expr) ? names : null;
+}
+
+function ConditionForm({ request, cancel }: { request: Extract<Request, { kind: 'condition' }>; cancel: () => void }) {
+  const [expr, setExpr] = useState(request.expr);
+  const { settings } = request;
+  const parsed = parseCondition(expr);
+  const unknown = parsed.ok ? unknownNames(parsed.names, settings) : [];
+  const selected = orList(expr);
+  const toggle = (name: string) => {
+    const names = selected ?? [];
+    const next = names.includes(name) ? names.filter((n) => n !== name) : [...names, name];
+    setExpr(next.join(' or '));
+  };
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (parsed.ok) request.resolve({ expr: expr.trim() });
+      }}
+    >
+      {settings.capabilities.length > 0 && (
+        <fieldset className="capabilities" disabled={selected === null}>
+          <legend>Show when any of these is available</legend>
+          {settings.capabilities.map((c) => (
+            <label key={c} className="check">
+              <input type="checkbox" checked={!!selected?.includes(c)} onChange={() => toggle(c)} />
+              {c}
+            </label>
+          ))}
+          {selected === null && <small>This condition uses and/not; edit it below.</small>}
+        </fieldset>
+      )}
+      <div className="field">
+        <label htmlFor="condition-expr">Condition</label>
+        <input
+          id="condition-expr"
+          value={expr}
+          autoFocus={!settings.capabilities.length}
+          spellCheck={false}
+          placeholder="CapabilityX or (CapabilityY and not CapabilityZ)"
+          aria-invalid={!parsed.ok}
+          aria-describedby="condition-help"
+          onChange={(e) => setExpr(e.target.value)}
+        />
+        <small id="condition-help" className={parsed.ok && !unknown.length ? '' : 'invalid'}>
+          {!parsed.ok
+            ? parsed.error
+            : unknown.length
+              ? `Not in ${settings.capabilitiesFile}: ${unknown.join(', ')}`
+              : `Shown when ${describe(parsed.expr)}. Combine capabilities with and, or, not and parentheses.`}
+        </small>
+      </div>
+      <div className="modal-actions">
+        {request.allowRemove && (
+          <button type="button" className="danger-text" onClick={() => request.resolve({ remove: true })}>
+            Remove condition
+          </button>
+        )}
+        <span className="spacer" />
+        <button type="button" onClick={cancel}>
+          Cancel
+        </button>
+        <button type="submit" className="primary" disabled={!parsed.ok}>
+          {request.allowRemove ? 'Save' : 'Make conditional'}
+        </button>
+      </div>
     </form>
   );
 }

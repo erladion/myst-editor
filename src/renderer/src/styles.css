@@ -317,7 +317,7 @@ button:focus-visible {
 .tb-select {
   height: 30px;
   padding: 0 6px;
-  min-width: 140px;
+  min-width: 128px;
 }
 
 .tb-sep {
@@ -1348,4 +1348,199 @@ button:focus-visible {
   font-weight: 700;
   color: var(--fg);
   padding: 6px 14px 2px;
+}
+
+.field .check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.known-options {
+  margin-bottom: 8px;
+}
+
+/* ---- conditional content ---- */
+
+:root {
+  --cond: #8a5cd1;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --cond: #b48cf2;
+  }
+}
+
+.cond-start,
+.cond-end-line {
+  font: 12px/1.4 var(--font-ui);
+  white-space: normal;
+  user-select: none;
+}
+
+.cond-start {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--cond) 10%, var(--bg));
+  color: var(--cond);
+}
+
+.cond-start:hover .nv-button {
+  opacity: 1;
+}
+
+.cond-label {
+  font-weight: 600;
+}
+
+.cond-expr {
+  color: var(--fg);
+}
+
+.cond-name {
+  font-weight: 600;
+  color: var(--cond);
+}
+
+.cond-error {
+  color: var(--tone-danger);
+}
+
+.cond-end-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: color-mix(in srgb, var(--cond) 70%, var(--fg-muted));
+}
+
+.cond-end-line::before,
+.cond-end-line::after {
+  content: '';
+  height: 1px;
+  background: color-mix(in srgb, var(--cond) 35%, transparent);
+}
+
+.cond-end-line::before {
+  width: 16px;
+}
+
+.cond-end-line::after {
+  flex: 1;
+}
+
+/* Blocks inside conditions: one stripe per nesting level, left of the text. */
+.cond-in {
+  position: relative;
+}
+
+.cond-in::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: calc(-14px - var(--cond-depth) * 5px);
+  width: calc(var(--cond-depth) * 5px);
+  background: repeating-linear-gradient(to right, var(--cond) 0 3px, transparent 3px 5px);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.cond-d1 {
+  --cond-depth: 1;
+}
+.cond-d2 {
+  --cond-depth: 2;
+}
+.cond-d3 {
+  --cond-depth: 3;
+}
+.cond-d4 {
+  --cond-depth: 4;
+}
+
+.cond-inline {
+  background: color-mix(in srgb, var(--cond) 10%, transparent);
+  border-bottom: 1px dotted var(--cond);
+}
+
+.cond-pill {
+  font: 600 11px var(--font-ui);
+  color: var(--cond);
+  background: color-mix(in srgb, var(--cond) 14%, var(--bg));
+  border-radius: 999px;
+  padding: 0 6px;
+  margin: 0 2px;
+  vertical-align: 1px;
+  white-space: nowrap;
+}
+
+/* "View as": what the chosen capabilities wouldn't see. */
+.cond-off,
+.cond-off.cond-inline {
+  opacity: 0.32;
+}
+
+.cond-problem .cond-start,
+.cond-start.cond-problem,
+.cond-unmatched,
+.cond-unmatched.cond-pill {
+  color: var(--tone-danger);
+  background: color-mix(in srgb, var(--tone-danger) 10%, var(--bg));
+  outline: 1px solid color-mix(in srgb, var(--tone-danger) 45%, transparent);
+}
+
+.view-as {
+  min-width: 240px;
+  gap: 2px;
+}
+
+.view-as .check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+}
+
+fieldset.capabilities {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin: 0 0 12px;
+  padding: 6px 12px 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 4px 12px;
+}
+
+fieldset.capabilities legend {
+  padding: 0 4px;
+  color: var(--fg-muted);
+}
+
+fieldset.capabilities small {
+  grid-column: 1 / -1;
+  color: var(--fg-muted);
+}
+
+small.invalid {
+  color: var(--tone-danger) !important;
+}
+
+button.danger-text {
+  border-color: transparent;
+  color: var(--tone-danger);
+}
+
+.role-custom {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 0.3em;
+  background: var(--bg-soft);
+}
+
+.role-custom .role-name {
+  font-weight: 600;
 }

@@ -9,6 +9,7 @@ import { ASSET_SCHEME, BUILD_SCHEME, type MenuCommand, type ProjectInfo } from '
 import type { EnvironmentChoice, SphinxState } from '../shared/sphinx.js';
 import { probePython } from './sphinx/pythons.js';
 import { projectFor } from '../shared/projects.js';
+import { SETTINGS_FILE } from '../core/editor-config.js';
 
 // Not watched: changes in build output, dependencies and virtualenvs aren't edits.
 const IGNORED_DIRS = new Set(['_build', 'build', 'node_modules', 'venv', 'env', '__pycache__', 'site-packages', 'dist']);
@@ -89,6 +90,19 @@ async function startSphinx(p: ProjectInfo) {
   }
 }
 
+// Re-read the folder's projects and settings, and tell the renderer if they changed.
+// The same projects keep their build managers; new or removed ones restart them all.
+async function refreshProject(p: ProjectInfo) {
+  const next = await openProject(p.root);
+  if (project !== p) return;
+  const same = (a: ProjectInfo, b: ProjectInfo) => JSON.stringify([a.projects, a.defaultConfig]) === JSON.stringify([b.projects, b.defaultConfig]);
+  if (same(next, p)) return;
+  const restart = JSON.stringify(next.projects.map((x) => x.id)) !== JSON.stringify(p.projects.map((x) => x.id));
+  Object.assign(p, { projects: next.projects, defaultConfig: next.defaultConfig });
+  win?.webContents.send('project-changed', { project: p });
+  if (restart) await startSphinx(p);
+}
+
 // Build the project a changed file belongs to; files outside every project (say a
 // shared extension module or requirements file) may affect them all.
 function buildFor(p: ProjectInfo, rel: string, fresh: boolean) {
@@ -121,12 +135,17 @@ function startWatching(p: ProjectInfo) {
     // Configuration, extensions and templates can affect every page of a project.
     for (const rel of changed) buildFor(p, rel, false);
     for (const rel of others) buildFor(p, rel, /\.(py|html|jinja2?|toml|ya?ml|txt|json)$/.test(rel));
+    // conf.py, editor settings and capabilities files change how pages are read.
+    if (others.some((rel) => /(^|\/)(conf\.py|\.mysteditor\.toml)$|\.json$/.test(rel))) await refreshProject(p);
   };
   try {
     watcher = watch(p.root, { recursive: true }, (_event, filename) => {
       if (!filename) return;
       const rel = filename.toString().split(sep).join('/');
-      if (rel.split('/').some((part) => part.startsWith('.') || IGNORED_DIRS.has(part))) return;
+      const parts = rel.split('/');
+      // Hidden files are ignored, except the editor's own settings.
+      const hidden = parts.some((part, i) => (part.startsWith('.') && !(i === parts.length - 1 && part === SETTINGS_FILE)) || IGNORED_DIRS.has(part));
+      if (hidden) return;
       pending.add(rel);
       clearTimeout(timer);
       timer = setTimeout(flush, 300);

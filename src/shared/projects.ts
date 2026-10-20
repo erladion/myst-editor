@@ -15,7 +15,7 @@ export function projectFor(projects: SphinxProject[], path: string): SphinxProje
 
 // The MyST dialect to read a page with.
 export function configFor(info: ProjectInfo, path: string): MystConfig {
-  return projectFor(info.projects, path)?.config ?? DEFAULT_CONFIG;
+  return projectFor(info.projects, path)?.config ?? info.defaultConfig ?? DEFAULT_CONFIG;
 }
 
 // A path relative to a project's source directory, from one relative to the opened folder.

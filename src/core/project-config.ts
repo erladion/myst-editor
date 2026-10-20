@@ -5,11 +5,15 @@
 // possibly followed by `.append(...)`/`+=` additions). Real values will come from
 // Sphinx itself once it runs in the background (phase 3).
 
+import { EMPTY_EDITOR_CONFIG, type EditorConfig } from './editor-config.js';
+
 export interface MystConfig {
   // Raw MyST-Parser extension names, e.g. "colon_fence", "dollarmath".
   extensions: string[];
   // Whether conf.py was found and read; false means "assume everything is enabled".
   fromConfPy: boolean;
+  // The project's own directives, roles and conditions, from .mysteditor.toml.
+  editor: EditorConfig;
 }
 
 // myst-parser (JS) extension flags for each MyST-Parser (Sphinx) extension name.
@@ -22,7 +26,7 @@ const OPTIONAL: Record<string, string> = {
   strikethrough: 'strikethrough',
 };
 
-export const DEFAULT_CONFIG: MystConfig = { extensions: Object.keys(OPTIONAL), fromConfPy: false };
+export const DEFAULT_CONFIG: MystConfig = { extensions: Object.keys(OPTIONAL), fromConfPy: false, editor: EMPTY_EDITOR_CONFIG };
 
 export function readConfPy(source: string): MystConfig {
   const extensions = new Set<string>();
@@ -37,7 +41,7 @@ export function readConfPy(source: string): MystConfig {
   for (const m of source.matchAll(/myst_enable_extensions\s*\.\s*extend\(\s*[[({]([^\])}]*)[\])}]\s*\)/g)) {
     strings(m[1]).forEach((e) => extensions.add(e));
   }
-  return { extensions: [...extensions], fromConfPy: true };
+  return { extensions: [...extensions], fromConfPy: true, editor: EMPTY_EDITOR_CONFIG };
 }
 
 // Flags for myst-parser matching the project's enabled extensions.

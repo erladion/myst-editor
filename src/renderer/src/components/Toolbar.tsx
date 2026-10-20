@@ -6,10 +6,69 @@ import { undo, redo } from 'prosemirror-history';
 import { schema } from '../../../core/schema';
 import {
   blockKind, editLink, heading, inList, insertCodeBlock, insertDirective, insertDivider, insertFigure, insertMath,
-  insertReference, markActive, paragraph, toggleCode, toggleEm, toggleList, toggleQuote, toggleStrike, toggleStrong,
+  insertProjectDirective, insertReference, markActive, paragraph, toggleCode, toggleEm, toggleList, toggleQuote, toggleStrike, toggleStrong,
 } from '../editor/commands';
 import type { EditorContext } from '../editor/context';
 import { ADMONITIONS } from '../editor/directives';
+import { conditionKind, makeConditional } from '../editor/conditions';
+
+// Ask for the condition, then wrap the selection (inline) or the blocks (block).
+async function makeConditionalInteractive(ctx: EditorContext, view: EditorView) {
+  const settings = ctx.config.editor.conditions;
+  if (!settings) return;
+  const kind = conditionKind(view.state);
+  if (kind.inline && !kind.ok) return ctx.ui.notify(kind.reason!);
+  const result = await ctx.ui.editCondition({ expr: '', settings, allowRemove: false });
+  if (!result || 'remove' in result) return;
+  makeConditional(settings, result.expr)(view.state, view.dispatch);
+  view.focus();
+}
+
+function ViewAsMenu({ capabilities, viewAs, onViewAs }: { capabilities: string[]; viewAs: string[] | null; onViewAs: (v: string[] | null) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    window.addEventListener('mousedown', close);
+    return () => window.removeEventListener('mousedown', close);
+  }, [open]);
+  const toggle = (c: string) => {
+    const set = viewAs ?? [];
+    onViewAs(set.includes(c) ? set.filter((x) => x !== c) : [...set, c]);
+  };
+  return (
+    <div className="menu" ref={ref}>
+      <button
+        type="button"
+        className={`tb wide${viewAs ? ' active' : ''}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title={viewAs ? `Viewing as ${viewAs.length ? viewAs.join(', ') : 'no capabilities'}` : 'Dim what a build with only some capabilities wouldn’t show'}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => setOpen(!open)}
+      >
+        {viewAs ? `View as (${viewAs.length})` : 'View as ▾'}
+      </button>
+      {open && (
+        <div className="menu-items view-as" role="menu">
+          <label className="check">
+            <input type="radio" checked={viewAs === null} onChange={() => onViewAs(null)} />
+            Everything
+          </label>
+          <div className="menu-heading">Only with these capabilities</div>
+          {capabilities.map((c) => (
+            <label key={c} className="check">
+              <input type="checkbox" checked={!!viewAs?.includes(c)} onChange={() => toggle(c)} />
+              {c}
+            </label>
+          ))}
+          {!capabilities.length && <small className="muted pad">No capabilities file is set in .mysteditor.toml.</small>}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface Props {
   view: EditorView | null;
@@ -19,9 +78,12 @@ interface Props {
   previewAvailable: boolean;
   previewOpen: boolean;
   onTogglePreview: () => void;
+  viewAs: string[] | null;
+  onViewAs: (capabilities: string[] | null) => void;
 }
 
-export function Toolbar({ view, ctx, sourceMode, onToggleSource, previewAvailable, previewOpen, onTogglePreview }: Props) {
+export function Toolbar({ view, ctx, sourceMode, onToggleSource, previewAvailable, previewOpen, onTogglePreview, viewAs, onViewAs }: Props) {
+  const conditions = ctx.config.editor.conditions;
   const state = view?.state;
   const run = (cmd: Command) => {
     if (!view) return;
@@ -97,6 +159,22 @@ export function Toolbar({ view, ctx, sourceMode, onToggleSource, previewAvailabl
       <Btn label="❝" title="Quote" cmd={toggleQuote} />
       <span className="tb-sep" />
       <InsertMenu disabled={disabled} ctx={ctx} run={run} />
+      {conditions && (
+        <>
+          <span className="tb-sep" />
+          <button
+            type="button"
+            className="tb wide"
+            title="Show the selection, or the current block, only for some capabilities"
+            disabled={disabled}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => view && void makeConditionalInteractive(ctx, view)}
+          >
+            Condition…
+          </button>
+          <ViewAsMenu capabilities={conditions.capabilities} viewAs={viewAs} onViewAs={onViewAs} />
+        </>
+      )}
       <span className="spacer" />
       <button
         type="button"
@@ -117,6 +195,7 @@ export function Toolbar({ view, ctx, sourceMode, onToggleSource, previewAvailabl
 
 function InsertMenu({ disabled, ctx, run }: { disabled: boolean; ctx: EditorContext; run: (cmd: Command) => void }) {
   const [open, setOpen] = useState(false);
+  const projectDirectives = Object.entries(ctx.config.editor.directives).filter(([, d]) => d.insert);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -152,6 +231,8 @@ function InsertMenu({ disabled, ctx, run }: { disabled: boolean; ctx: EditorCont
           {item('Equation', () => run(insertMath(ctx)))}
           {item('Dropdown', () => run(insertDirective(ctx, 'dropdown', 'Click to expand')))}
           {item('Divider', () => run(insertDivider))}
+          {projectDirectives.length > 0 && <div className="menu-heading">This project</div>}
+          {projectDirectives.map(([name, def]) => item(def.label ?? name, () => run(insertProjectDirective(ctx, name, def))))}
           <div className="menu-heading">Inline</div>
           {item('Cross-reference…', () => insertReference(ctx, run))}
         </div>

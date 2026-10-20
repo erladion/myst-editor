@@ -1,4 +1,5 @@
 // How directives and roles are presented to writers.
+import type { EditorConfig } from '../../../core/editor-config';
 
 export type Tone = 'note' | 'info' | 'tip' | 'warning' | 'danger' | 'neutral';
 
@@ -46,7 +47,10 @@ const OTHER: Record<string, DirectiveInfo> = {
   container: { label: 'Container', tone: 'neutral', argLabel: 'Classes' },
 };
 
-export function directiveInfo(name: string): DirectiveInfo {
+// How to present a directive: the project's own settings first, then the built-ins.
+export function directiveInfo(name: string, editor?: EditorConfig): DirectiveInfo {
+  const declared = editor?.directives[name];
+  if (declared) return { label: declared.label ?? name, tone: declared.tone ?? 'neutral', argLabel: declared.argument };
   return ADMONITIONS[name] ?? OTHER[name] ?? { label: name, tone: 'neutral', argLabel: 'Argument' };
 }
 

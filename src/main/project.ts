@@ -1,9 +1,10 @@
 // Sphinx project discovery and sandboxed file access for the main process.
 import { createHash } from 'node:crypto';
-import { promises as fs, realpathSync } from 'node:fs';
+import { promises as fs, readFileSync, realpathSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { Buffer } from 'node:buffer';
-import { readConfPy } from '../core/project-config.js';
+import { DEFAULT_CONFIG, readConfPy } from '../core/project-config.js';
+import { loadEditorConfig, SETTINGS_FILE, type SettingsSource } from '../core/editor-config.js';
 import type { ProjectInfo, SphinxProject } from '../shared/api.js';
 
 const SKIP_DIRS = new Set([
@@ -23,7 +24,32 @@ export async function openProject(folder: string): Promise<ProjectInfo> {
   const root = realpathSync(resolve(folder));
   const projects = await findSphinxProjects(root);
   const files = await listDocuments(root);
-  return { root, name: basename(root), projects, files, titles: await readTitles(root, files) };
+  // Pages outside every project still get the folder's own editor settings.
+  const defaultConfig = { ...DEFAULT_CONFIG, editor: loadEditorConfig(settingsSources(root, root)) };
+  return { root, name: basename(root), projects, defaultConfig, files, titles: await readTitles(root, files) };
+}
+
+// The .mysteditor.toml files that apply to `dir`, from the opened folder down.
+export function settingsSources(root: string, dir: string): SettingsSource[] {
+  const dirs = [dir];
+  for (let d = dir; d !== root && d.startsWith(root + sep); ) dirs.unshift((d = dirname(d)));
+  const sources: SettingsSource[] = [];
+  for (const d of dirs) {
+    const path = join(d, SETTINGS_FILE);
+    let text: string;
+    try {
+      text = readFileSync(path, 'utf8');
+    } catch {
+      continue;
+    }
+    sources.push({
+      file: relative(root, path).split(sep).join('/'),
+      text,
+      // Relative to the settings file, and like every path, inside the opened folder.
+      readCapabilities: (p) => readFileSync(resolveInside(root, relative(root, resolve(d, p))), 'utf8'),
+    });
+  }
+  return sources;
 }
 
 // Every Sphinx project under `root`. A conf.py counts if it looks like Sphinx
@@ -55,7 +81,7 @@ export async function findSphinxProjects(root: string): Promise<SphinxProject[]>
       dir,
       sourceDir,
       confPy: dir ? `${dir}/conf.py` : 'conf.py',
-      config: readConfPy(confText),
+      config: { ...readConfPy(confText), editor: loadEditorConfig(settingsSources(root, sourceDir)) },
     });
   }
   return projects;

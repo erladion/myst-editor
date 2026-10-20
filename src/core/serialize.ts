@@ -57,6 +57,10 @@ class Writer {
     // Inside a tight list item only a paragraph followed by a nested list may be
     // joined; anything after a nested list would become a lazy continuation.
     if (tight && a.type.name === 'paragraph' && b.type.name.endsWith('_list')) return '\n';
+    // HTML comments (e.g. condition markers) may interrupt a paragraph, and one ends at
+    // its own line, so they can sit next to text without making a tight list loose.
+    const comment = (n: PMNode) => n.type.name === 'raw_block' && /^(condition-|html$)/.test(n.attrs.kind) && /^<!--[\s\S]*-->$/.test(n.attrs.source.trim());
+    if (tight && (comment(a) || comment(b))) return '\n';
     return '\n\n';
   }
 

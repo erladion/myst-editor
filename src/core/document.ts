@@ -19,7 +19,12 @@ export interface SaveResult {
 }
 
 export function loadDocument(text: string, config: MystConfig = DEFAULT_CONFIG): LoadedDocument {
-  return parseMyst(text, { extensions: parserExtensions(config) });
+  const { directives, conditions } = config.editor;
+  return parseMyst(text, {
+    extensions: parserExtensions(config),
+    directives: Object.fromEntries(Object.entries(directives).map(([name, d]) => [name, d.body])),
+    conditionKeywords: conditions?.block,
+  });
 }
 
 export function saveDocument(doc: PMNode, map: SourceMap, config: MystConfig = DEFAULT_CONFIG): SaveResult {

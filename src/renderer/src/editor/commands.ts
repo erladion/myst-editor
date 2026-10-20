@@ -5,6 +5,8 @@ import { setBlockType, toggleMark, wrapIn, lift } from 'prosemirror-commands';
 import { wrapInList, liftListItem } from 'prosemirror-schema-list';
 import { schema } from '../../../core/schema';
 import { newDirectiveFence } from '../../../core/project-config';
+import { renderHeader } from '../../../core/directive';
+import type { DirectiveDef } from '../../../core/editor-config';
 import type { EditorContext } from './context';
 
 const { nodes, marks } = schema;
@@ -86,6 +88,22 @@ function insertBlock(node: PMNode, cursorOffset = 1): Command {
 export function insertDirective(ctx: EditorContext, name: string, args = ''): Command {
   const node = nodes.md_directive.create({ name, args, fence: newDirectiveFence(ctx.config) }, nodes.paragraph.create());
   return insertBlock(node, 2);
+}
+
+// A directive declared in .mysteditor.toml, with its options' defaults.
+export function insertProjectDirective(ctx: EditorContext, name: string, def: DirectiveDef): Command {
+  const fence = newDirectiveFence(ctx.config);
+  const options = Object.entries(def.options)
+    .filter(([, o]) => o.default !== undefined)
+    .map(([k, o]) => [k, o.default!] as [string, string]);
+  if (def.body === 'markdown') {
+    return insertBlock(nodes.md_directive.create({ name, fence, options }, nodes.paragraph.create()), 2);
+  }
+  if (def.body === 'text') {
+    return insertBlock(nodes.code_block.create({ name, directive: true, fence, options }));
+  }
+  const header = renderHeader(fence, name, '', options).replace(/\n$/, '');
+  return insertBlock(nodes.opaque_directive.create({ name, options, source: `${header}\n${fence}` }));
 }
 
 export function insertCodeBlock(): Command {

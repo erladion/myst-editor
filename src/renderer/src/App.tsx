@@ -5,6 +5,7 @@ import type { ProjectInfo } from '../../shared/api';
 import type { EnvironmentChoice, SphinxState } from '../../shared/sphinx';
 import type { SourceMap } from '../../core/sourcemap';
 import { configFor, fromProject, projectFor } from '../../shared/projects';
+import { DEFAULT_CONFIG } from '../../core/project-config';
 import { Workspace } from './workspace';
 import { Editor } from './editor/Editor';
 import type { EditorContext } from './editor/context';
@@ -53,6 +54,7 @@ export function App() {
   const [showPreview, setShowPreview] = useState(false);
   const [reveal, setReveal] = useState<number | null>(null);
   const [sphinxDialog, setSphinxDialog] = useState<'details' | 'environment' | null>(null);
+  const [viewAs, setViewAs] = useState<string[] | null>(null);
   const dialogs = useRef<DialogApi>(null);
   const viewRef = useRef<EditorView | null>(null);
   const [view, setView] = useState<EditorView | null>(null);
@@ -99,11 +101,12 @@ export function App() {
         editSource: (o) => dialogs.current!.editSource(o),
         editFields: (o) => dialogs.current!.editFields(o),
         editOptions: (o) => dialogs.current!.editOptions(o),
+        editCondition: (o) => dialogs.current!.editCondition(o),
         notify: (m) => dialogs.current!.notify(m),
       },
       get config() {
         const w = current();
-        return configFor(w?.project ?? { root: '', name: '', projects: [], files: [], titles: {} }, w?.current ?? '');
+        return w ? configFor(w.project, w.current ?? '') : DEFAULT_CONFIG;
       },
       get filePath() {
         return current()?.current ?? null;
@@ -230,6 +233,10 @@ export function App() {
       else if (cmd === 'save' && ws?.current) void ws.save(ws.current);
     });
     const offFiles = api.onFilesChanged((e) => void ws?.externalChange(e.changed, e.files, e.titles));
+    const offProject = api.onProjectChanged(({ project }) => {
+      ws?.updateProject(project);
+      listeners.current.forEach((fn) => fn());
+    });
     const offClose = api.onCloseRequested(async () => {
       if (!ws || (await ws.saveAll())) return api.closeWindow();
       const ok = await dialogs.current!.confirm({
@@ -242,6 +249,7 @@ export function App() {
     return () => {
       offMenu();
       offFiles();
+      offProject();
       offClose();
     };
   }, [ws, chooseFolder, toggleSource]);
@@ -298,6 +306,10 @@ export function App() {
   const builds = Object.fromEntries(projects.map((p) => [p.id, sphinxStates[p.id]?.info ?? null]));
   const allWarnings = Object.values(sphinxStates).flatMap((st) => st.info?.warnings ?? []);
   const anyBuilt = projects.some((p) => builds[p.id]);
+  // Mistakes in .mysteditor.toml files, once each (a folder-level file applies to every project).
+  const settingsProblems = [ws.project.defaultConfig, ...projects.map((p) => p.config)]
+    .flatMap((c) => c.editor.problems)
+    .filter((p, i, all) => all.findIndex((q) => q.file === p.file && q.message === p.message) === i);
 
   return (
     <div className="app">
@@ -321,6 +333,8 @@ export function App() {
           previewAvailable={!!info}
           previewOpen={showPreview}
           onTogglePreview={() => setShowPreview(!showPreview)}
+          viewAs={viewAs}
+          onViewAs={setViewAs}
         />
         <TrustBanner
           state={trustState}
@@ -355,6 +369,7 @@ export function App() {
                 savedText={session.savedText}
                 reveal={reveal}
                 onRevealed={onRevealed}
+                viewAs={viewAs}
               />
             )}
             {!session && <div className="empty-state muted">Choose a page on the left.</div>}
@@ -371,6 +386,20 @@ export function App() {
           />
         )}
         <StatusBar session={session} config={configFor(ws.project, session?.path ?? '')} confPy={pageProject?.confPy ?? null}>
+          {settingsProblems.length > 0 && (
+            <button
+              type="button"
+              className="chip-button has-problems"
+              onClick={() =>
+                void dialogs.current?.showText({
+                  title: 'Editor settings',
+                  text: settingsProblems.map((p) => `${p.file}: ${p.message}`).join('\n'),
+                })
+              }
+            >
+              Settings: {settingsProblems.length} problem{settingsProblems.length === 1 ? '' : 's'}
+            </button>
+          )}
           <SphinxChip
             state={sphinx}
             project={projects.length > 1 ? activeProject?.name : undefined}

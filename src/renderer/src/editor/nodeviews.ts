@@ -8,6 +8,15 @@ import { loadDocument } from '../../../core/document';
 import type { EditorContext } from './context';
 import { ADMONITIONS, CALLOUT_CHOICES, ICONS, REFERENCE_ROLES, directiveInfo, splitRoleValue } from './directives';
 import { renderMath } from './math';
+import { describe, parseCondition, readMarker, withExpression } from '../../../core/conditions';
+import { removeCondition } from './conditions';
+
+// "A or B and not C" with the capability names as chips.
+function conditionChips(text: string): Node[] {
+  return text.split(/(\s+|[()])/).filter(Boolean).map((part) =>
+    /^(and|or|not|\(|\)|\s+)$/i.test(part) ? document.createTextNode(part) : el('span', { class: 'cond-name' }, part),
+  );
+}
 
 type GetPos = () => number | undefined;
 
@@ -99,7 +108,7 @@ class DirectiveView implements NodeView {
 
   private render() {
     const { name, args, options } = this.node.attrs;
-    const info = directiveInfo(name);
+    const info = directiveInfo(name, this.ctx.config.editor);
     this.dom.className = `directive tone-${info.tone} directive-${name}`;
     // Rebuild the header unless only the argument changed while the writer is typing it.
     const key = JSON.stringify([name, options]);
@@ -114,7 +123,8 @@ class DirectiveView implements NodeView {
 
   private buildHeader() {
     const { name, args, options } = this.node.attrs;
-    const info = directiveInfo(name);
+    const info = directiveInfo(name, this.ctx.config.editor);
+    const schema = this.ctx.config.editor.directives[name]?.options;
     const parts: Node[] = [icon(ICONS[info.tone])];
 
     if (ADMONITIONS[name]) {
@@ -153,7 +163,7 @@ class DirectiveView implements NodeView {
     if (!this.argInput) parts.push(el('span', { class: 'spacer' }));
     parts.push(
       button(optionCount(options), 'Edit the options of this block', async () => {
-        const next = await this.ctx.ui.editOptions({ title: `${info.label} options`, options });
+        const next = await this.ctx.ui.editOptions({ title: `${info.label} options`, options: this.node.attrs.options, schema });
         if (next) setAttrs(this.view, this.getPos, this.node, { options: next });
       }),
     );
@@ -294,16 +304,18 @@ class OpaqueDirectiveView extends CardView {
       return this.card('card-toc', [label('Table of contents'), ...(caption ? [el('span', { class: 'muted' }, caption)] : [])], [list]);
     }
 
-    const chips = options.map(([k, v]: [string, string]) => el('span', { class: 'chip' }, v ? `${k}: ${v}` : k));
+    const declared = this.ctx.config.editor.directives[name];
+    const optionLabel = (k: string) => declared?.options[k]?.label ?? k;
+    const chips = options.map(([k, v]: [string, string]) => el('span', { class: 'chip' }, v ? `${optionLabel(k)}: ${v}` : optionLabel(k)));
     const lines = body.split('\n');
     const preview = lines.slice(0, 8).join('\n') + (lines.length > 8 ? '\n…' : '');
     this.card(
-      'card-directive',
-      [label(name), ...(args ? [el('span', { class: 'muted' }, args)] : [])],
+      `card-directive${declared?.tone ? ` tone-${declared.tone}` : ''}`,
+      [label(declared?.label ?? name), ...(args ? [el('span', { class: 'muted' }, args)] : [])],
       [
         ...(chips.length ? [el('div', { class: 'chips' }, ...chips)] : []),
         ...(preview.trim() ? [el('pre', { class: 'card-source' }, preview)] : []),
-        el('div', { class: 'card-note' }, 'Custom block — shown as in the source. Double-click to edit.'),
+        el('div', { class: 'card-note' }, declared ? 'Double-click to edit.' : 'Custom block — shown as in the source. Double-click to edit.'),
       ],
     );
   }
@@ -324,8 +336,47 @@ class RawBlockView extends CardView {
     return `Edit ${(RAW_LABELS[this.node.attrs.kind] ?? 'Markdown').toLowerCase()}`;
   }
 
+  protected async edit() {
+    const settings = this.ctx.config.editor.conditions;
+    if (!settings || !/^condition-/.test(this.node.attrs.kind)) return super.edit();
+    const marker = readMarker(this.node.attrs.source, settings.block);
+    if (marker?.kind !== 'start') return;
+    const result = await this.ctx.ui.editCondition({ expr: marker.expr, settings, allowRemove: true });
+    if (!result) return;
+    const pos = this.getPos();
+    if (pos === undefined) return;
+    if ('remove' in result) removeCondition(settings, pos)(this.view.state, this.view.dispatch);
+    else setAttrs(this.view, this.getPos, this.node, { source: withExpression(this.node.attrs.source, result.expr) });
+    this.view.focus();
+  }
+
+  private renderCondition(kind: string, source: string) {
+    const settings = this.ctx.config.editor.conditions;
+    const marker = settings && readMarker(source, settings.block);
+    if (kind === 'condition-end' || marker?.kind !== 'start') {
+      this.dom.className = 'cond-end-line';
+      this.dom.title = 'End of the condition';
+      return this.dom.replaceChildren(el('span', {}, 'end of condition'));
+    }
+    const parsed = parseCondition(marker.expr);
+    const pos = () => this.getPos();
+    this.dom.className = 'cond-start';
+    this.dom.replaceChildren(
+      el('span', { class: 'cond-label' }, 'Shown only when'),
+      el('span', { class: 'cond-expr' }, ...(parsed.ok ? conditionChips(describe(parsed.expr)) : [marker.expr])),
+      ...(parsed.ok ? [] : [el('span', { class: 'cond-error' }, parsed.error)]),
+      el('span', { class: 'spacer' }),
+      button('Edit…', 'Change the condition', () => void this.edit()),
+      button('Remove', 'Remove the condition and keep its content', () => {
+        const p = pos();
+        if (p !== undefined && settings) removeCondition(settings, p)(this.view.state, this.view.dispatch);
+      }, 'danger'),
+    );
+  }
+
   protected render() {
     const { kind, source } = this.node.attrs;
+    if (/^condition-/.test(kind)) return this.renderCondition(kind, source);
     const label = el('span', { class: 'card-label' }, RAW_LABELS[kind] ?? 'Markdown');
     if (kind === 'comment') {
       return this.card('card-comment', [label], [el('div', { class: 'comment-text' }, source.replace(/^%\s?/gm, ''))]);
@@ -366,7 +417,11 @@ class CodeBlockView implements NodeView {
       setAttrs(this.view, this.getPos, this.node, this.node.attrs.directive ? { args: v, lang: v } : { lang: v });
     });
     this.options = button('Options', 'Edit the options of this code block', async () => {
-      const next = await this.ctx.ui.editOptions({ title: 'Code block options', options: this.node.attrs.options });
+      const next = await this.ctx.ui.editOptions({
+        title: `${this.label.textContent} options`,
+        options: this.node.attrs.options,
+        schema: this.ctx.config.editor.directives[this.node.attrs.name]?.options,
+      });
       if (next) setAttrs(this.view, this.getPos, this.node, { options: next });
     });
     this.header.append(this.label, this.langInput, el('span', { class: 'spacer' }), this.options);
@@ -376,7 +431,8 @@ class CodeBlockView implements NodeView {
   private render() {
     const { directive, name, args, lang, options } = this.node.attrs;
     const isCode = !directive || ['code-block', 'code', 'sourcecode', 'code-cell'].includes(name);
-    this.label.textContent = isCode ? 'Code' : name === 'eval-rst' ? 'reStructuredText' : name;
+    const declared = this.ctx.config.editor.directives[name];
+    this.label.textContent = declared?.label ?? (isCode ? 'Code' : name === 'eval-rst' ? 'reStructuredText' : name);
     this.langInput.hidden = !isCode;
     const value = directive ? args : lang;
     if (this.langInput.value !== value && document.activeElement !== this.langInput) this.langInput.value = value;
@@ -519,6 +575,12 @@ class RoleView extends InlineView {
       d.classList.add('role-code');
       return d.replaceChildren(el('code', {}, value));
     }
+    const declared = this.ctx.config.editor.roles[name];
+    if (declared) {
+      d.classList.add('role-custom');
+      d.title = declared.url ? `${declared.label ?? name} (Ctrl+click to open)` : (declared.label ?? `{${name}} role`);
+      return d.replaceChildren(el('span', { class: 'role-name' }, declared.label ?? name), value);
+    }
     const { title, target } = splitRoleValue(value);
     if (REFERENCE_ROLES[name] || /:/.test(name)) {
       // Cross-references and domain roles such as {py:func}.
@@ -558,9 +620,15 @@ class RoleView extends InlineView {
   constructor(node: PMNode, view: EditorView, getPos: GetPos, ctx: EditorContext) {
     super(node, view, getPos, ctx);
     this.dom.addEventListener('click', (e) => {
-      if ((e.ctrlKey || e.metaKey) && this.node.attrs.name === 'doc') {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const { name, value } = this.node.attrs;
+      const url = this.ctx.config.editor.roles[name]?.url;
+      if (url) {
         e.preventDefault();
-        this.ctx.openDocument(splitRoleValue(this.node.attrs.value).target);
+        window.open(url.replaceAll('{value}', encodeURIComponent(value)), '_blank');
+      } else if (name === 'doc') {
+        e.preventDefault();
+        this.ctx.openDocument(splitRoleValue(value).target);
       }
     });
   }
@@ -613,13 +681,43 @@ class FootnoteRefView extends InlineView {
 }
 
 class HtmlInlineView extends InlineView {
+  private marker() {
+    const settings = this.ctx.config.editor.conditions;
+    return settings ? readMarker(this.node.attrs.value, settings.inline) : null;
+  }
+
   protected render() {
+    const marker = this.marker();
+    if (marker?.kind === 'start') {
+      const parsed = parseCondition(marker.expr);
+      this.dom.className = 'cond-pill cond-pill-start';
+      this.dom.title = `Shown only when ${parsed.ok ? describe(parsed.expr) : marker.expr} (double-click to change)`;
+      this.dom.textContent = `if ${parsed.ok ? describe(parsed.expr) : marker.expr}`;
+      return;
+    }
+    if (marker?.kind === 'end') {
+      this.dom.className = 'cond-pill cond-pill-end';
+      this.dom.title = 'End of the inline condition';
+      this.dom.textContent = 'end';
+      return;
+    }
     this.dom.className = 'html-inline';
     this.dom.title = 'Inline HTML';
     this.dom.textContent = this.node.attrs.value;
   }
 
   protected async edit() {
+    const settings = this.ctx.config.editor.conditions;
+    const marker = this.marker();
+    if (settings && marker?.kind === 'start') {
+      const result = await this.ctx.ui.editCondition({ expr: marker.expr, settings, allowRemove: true });
+      const pos = this.getPos();
+      if (!result || pos === undefined) return;
+      if ('remove' in result) removeCondition(settings, pos)(this.view.state, this.view.dispatch);
+      else setAttrs(this.view, this.getPos, this.node, { value: withExpression(this.node.attrs.value, result.expr) });
+      return;
+    }
+    if (marker) return;
     const next = await this.ctx.ui.editFields({ title: 'Inline HTML', fields: [{ key: 'value', label: 'HTML', value: this.node.attrs.value }] });
     if (next) setAttrs(this.view, this.getPos, this.node, { value: next.value });
   }

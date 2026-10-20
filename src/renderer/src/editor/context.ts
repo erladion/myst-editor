@@ -1,5 +1,6 @@
 // What node views and commands need from the surrounding app.
 import type { MystConfig } from '../../../core/project-config';
+import type { ConditionsDef, OptionDef } from '../../../core/editor-config';
 import type { SourceMap } from '../../../core/sourcemap';
 import type { Resolution, Suggestion } from '../sphinx';
 
@@ -17,7 +18,9 @@ export interface Field {
 export interface EditorUi {
   editSource(opts: { title: string; source: string; help?: string }): Promise<string | null>;
   editFields(opts: { title: string; fields: Field[]; submit?: string }): Promise<Record<string, string> | null>;
-  editOptions(opts: { title: string; options: [string, string][] }): Promise<[string, string][] | null>;
+  editOptions(opts: { title: string; options: [string, string][]; schema?: Record<string, OptionDef> }): Promise<[string, string][] | null>;
+  // Edit a condition's expression; `remove` when the writer removes the condition.
+  editCondition(opts: { expr: string; settings: ConditionsDef; allowRemove: boolean }): Promise<{ expr: string } | { remove: true } | null>;
   notify(message: string): void;
 }
 

@@ -1,0 +1,15 @@
+[directives.company-callout]
+label = "Internal note"
+tone = "warning"
+[directives.company-callout.options.audience]
+label = "Audience"
+choices = ["internal", "partners", "public"]
+default = "internal"
+
+[roles.jira]
+label = "Jira"
+url = "https://jira.example.com/browse/{value}"
+
+[conditions]
+capabilities = "capabilities.json"
+key = "product.capabilities"

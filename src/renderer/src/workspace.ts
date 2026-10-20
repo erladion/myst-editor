@@ -187,6 +187,16 @@ export class Workspace {
     this.changed();
   }
 
+  // The projects' settings changed: re-read open pages that have no unsaved edits, so
+  // they follow the new settings (pages with edits keep how they were read).
+  updateProject(project: ProjectInfo) {
+    this.project = { ...project, files: this.project.files, titles: this.project.titles };
+    for (const [path, s] of this.sessions) {
+      if (!s.dirty) this.sessions.set(path, this.load(path, s.savedText));
+    }
+    this.changed();
+  }
+
   // Resolve a conflict by taking the version on disk.
   async reload(path: string) {
     const text = await this.api.readFile(path);
