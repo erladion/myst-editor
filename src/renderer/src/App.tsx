@@ -19,6 +19,8 @@ import { EnvironmentDialog, Preview, ProblemsPanel, SphinxChip, SphinxDialog, Tr
 import { SourceEditor } from './components/SourceEditor';
 import { LivePreview } from './components/LivePreview';
 import { AdvancedBar } from './components/AdvancedBar';
+import { AskPassHost, CloneDialog, GitChip, GitPanel } from './components/GitUi';
+import type { GitInfo } from '../../shared/git';
 import { resolveRef } from './paths';
 import { docnameOf, problemsIn, resolveLink, resolveRole, suggestTargets } from './sphinx';
 
@@ -96,6 +98,9 @@ export function App() {
   const [reveal, setReveal] = useState<number | null>(null);
   const [sphinxDialog, setSphinxDialog] = useState<'details' | 'environment' | null>(null);
   const [viewAs, setViewAs] = useState<string[] | null>(null);
+  const [gitInfo, setGitInfo] = useState<GitInfo | null>(null);
+  const [gitPanel, setGitPanel] = useState(false);
+  const [cloning, setCloning] = useState(false);
   const dialogs = useRef<DialogApi>(null);
   const viewRef = useRef<EditorView | null>(null);
   const [view, setView] = useState<EditorView | null>(null);
@@ -207,6 +212,12 @@ export function App() {
     });
   }, []);
 
+  // The repository's state, pushed by the main process whenever it may have changed.
+  useEffect(() => api.onGitInfo(setGitInfo), []);
+  useEffect(() => {
+    if (ws) void api.gitInfo().then(setGitInfo);
+  }, [ws]);
+
   // Start with the project from the command line or the last session.
   useEffect(() => {
     api
@@ -234,6 +245,15 @@ export function App() {
     }
     await useProject(await api.chooseProject());
   }, [ws, useProject]);
+
+  const onCloned = useCallback(
+    async (folder: string) => {
+      setCloning(false);
+      if (ws && !(await ws.saveAll())) return;
+      await useProject(await api.openProject(folder));
+    },
+    [ws, useProject],
+  );
 
   const toggleMode = useCallback(() => {
     setMode((m) => (m === 'rich' ? 'markdown' : 'rich'));
@@ -271,6 +291,7 @@ export function App() {
   useEffect(() => {
     const offMenu = api.onMenu((cmd) => {
       if (cmd === 'open-folder') void chooseFolder();
+      else if (cmd === 'clone') setCloning(true);
       else if (cmd === 'toggle-source') toggleMode();
       else if (cmd === 'save' && ws?.current) void ws.save(ws.current);
     });
@@ -347,8 +368,13 @@ export function App() {
             <button type="button" className="primary large" onClick={chooseFolder}>
               Open documentation folder
             </button>
+            <button type="button" className="large secondary" onClick={() => setCloning(true)}>
+              Get from a repository…
+            </button>
           </div>
         )}
+        {cloning && <CloneDialog onClose={() => setCloning(false)} onCloned={onCloned} />}
+        <AskPassHost />
         <DialogHost ref={dialogs} />
       </div>
     );
@@ -498,6 +524,7 @@ export function App() {
               Settings: {settingsProblems.length} problem{settingsProblems.length === 1 ? '' : 's'}
             </button>
           )}
+          <GitChip info={gitInfo} onOpen={() => setGitPanel(true)} />
           <SphinxChip
             state={sphinx}
             project={projects.length > 1 ? activeProject?.name : undefined}
@@ -508,6 +535,11 @@ export function App() {
           />
         </StatusBar>
       </main>
+      {gitPanel && gitInfo?.status && (
+        <GitPanel info={gitInfo} titles={ws.project.titles} saveAll={() => ws.saveAll()} onClose={() => setGitPanel(false)} />
+      )}
+      {cloning && <CloneDialog onClose={() => setCloning(false)} onCloned={onCloned} />}
+      <AskPassHost />
       {sphinxDialog === 'details' && (
         <SphinxDialog
           state={sphinx}

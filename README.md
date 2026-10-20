@@ -3,7 +3,7 @@
 A WYSIWYG editor for Sphinx + MyST Markdown, aimed at writers who shouldn't have to
 see Markdown syntax. An Electron app shipped as an AppImage.
 
-## Status: phase 7 — RPM package
+## Status: phase 8 — git
 
 Open a documentation folder and edit its pages as formatted documents:
 
@@ -98,6 +98,28 @@ build per project:
   with spans from a custom role. Each preview is a sandboxed frame on the build's own
   origin, using the page's theme, so HTML from the build never runs in the editor.
   Cards whose block produced no output keep their source view.
+
+**Git**, through the computer's own `git`, so it works with any git server (GitLab,
+Gitea, Bitbucket, Azure DevOps, a plain SSH host, GitHub) and uses the writer's
+existing SSH keys and credential helpers:
+
+- **Get from a repository:** paste an HTTPS or SSH link (or a local path) on the
+  welcome screen or under File → Clone Repository…, pick where to save it, and the
+  cloned folder opens.
+- **Status bar:** the branch, how many files changed, and ↑/↓ for commits not yet
+  pushed or new on the server. Clicking it opens the changes panel.
+- **Changes panel:** changed files by page title, each with a checkbox, and a "What
+  did you change?" message. **Commit**, **Commit and push**, **Push**, and **Get
+  latest**. Unsaved pages are saved first. Getting the latest only fast-forwards, so
+  a writer is never left in a merge; if both sides have new commits, the panel says
+  so in plain words.
+- **Sign-in:** git's and ssh's questions (username, password or token, key
+  passphrase, "trust this server?") appear as dialogs in the app, never in a hidden
+  terminal. They travel over a private socket with a random token.
+- **Who is committing:** if git has no name and email yet, the first commit asks for
+  them, for all repositories or just this one.
+- Errors are explained plainly (wrong password, server unreachable, push rejected
+  because the server has newer commits).
 
 ## Project settings
 
@@ -262,6 +284,8 @@ Per-project environments, builds and logs live in `<userData>/sphinx/`.
   namespaces.
 - **Anything else:** the AppImage. It needs `libfuse2`, or run it with
   `--appimage-extract-and-run`.
+- **Git features** need `git` installed (`dnf install git`). Without it the rest of
+  the app works as before.
 
 Building the RPM needs `rpmbuild`: `sudo dnf install rpm-build` on Fedora/RHEL, or
 `sudo apt install rpm` on Debian/Ubuntu.
@@ -387,8 +411,6 @@ With an internal PyPI mirror instead, the private environment works too: uv read
 7. ~~Packaging: an RPM target alongside the AppImage~~ ✅ Verified by inspecting
    the package and running the e2e suite on its payload. Not yet installed on a real
    RHEL 9 machine.
-8. Git, last:
-   - open a repository from an HTTPS or SSH link, cloning it locally
-   - commit changes from the app
-   - Open questions: bundled git vs. the system's, and writer-friendly
-     authentication (SSH keys, HTTPS tokens).
+8. ~~Git: clone from an HTTPS or SSH link, commit, push and get the latest~~ ✅
+   Uses the system `git`, so any git server works and sign-in goes through the
+   writer's own keys and credential helpers, with prompts answered in the app.

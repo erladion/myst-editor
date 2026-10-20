@@ -1,6 +1,7 @@
 // The API the preload script exposes to the renderer as `window.myst`.
 import type { MystConfig } from '../core/project-config.js';
 import type { EnvironmentChoice, PythonCandidate, SphinxState } from './sphinx.js';
+import type { GitInfo } from './git.js';
 
 // One Sphinx project (a conf.py and the pages under it) inside the opened folder.
 export interface SphinxProject {
@@ -32,7 +33,7 @@ export interface ProjectChanged {
   project: ProjectInfo;
 }
 
-export type MenuCommand = 'open-folder' | 'save' | 'toggle-source';
+export type MenuCommand = 'open-folder' | 'save' | 'toggle-source' | 'clone';
 
 export interface MystApi {
   // The project from the command line or the last session, if any.
@@ -67,6 +68,22 @@ export interface MystApi {
   sphinxLog(project: string): Promise<string>;
   // URL of a page in a project's HTML output, for the preview; `uri` as in SphinxDoc.
   buildUrl(project: string, uri: string): string;
+
+  // Git, through the system's git (works with any host).
+  gitInfo(): Promise<GitInfo>;
+  onGitInfo(cb: (info: GitInfo) => void): () => void;
+  // Clone `url` into a new folder inside `parent`; returns the new folder.
+  gitClone(url: string, parent: string): Promise<string>;
+  onGitProgress(cb: (line: string) => void): () => void;
+  chooseFolder(title: string): Promise<string | null>;
+  defaultCloneFolder(): Promise<string>;
+  gitCommit(paths: string[], message: string, push: boolean): Promise<void>;
+  gitPush(): Promise<void>;
+  gitPull(): Promise<void>;
+  gitSetIdentity(name: string, email: string, global: boolean): Promise<void>;
+  // Questions from git or ssh (passwords, passphrases, host keys).
+  onAskPass(cb: (q: { id: number; question: string }) => void): () => void;
+  answerAskPass(id: number, answer: string | null): void;
 }
 
 export const ASSET_SCHEME = 'myst-asset';

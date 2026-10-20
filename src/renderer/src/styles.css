@@ -1736,3 +1736,88 @@ button.danger-text {
   font-size: 12px;
   color: var(--fg-muted);
 }
+
+/* ---- git ---- */
+
+.chip-button.has-changes {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.git-changes {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  max-height: 40vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.git-changes li + li {
+  border-top: 1px solid var(--border);
+}
+
+.git-changes .check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+}
+
+.git-kind {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  width: 64px;
+  flex: none;
+  color: var(--fg-muted);
+}
+
+.git-kind.added {
+  color: var(--tone-tip);
+}
+
+.git-kind.deleted,
+.git-kind.conflict {
+  color: var(--tone-danger);
+}
+
+.git-path {
+  overflow-wrap: anywhere;
+}
+
+.git-done {
+  color: var(--tone-tip);
+  margin: 0 0 8px;
+}
+
+.field textarea {
+  resize: vertical;
+}
+
+.field .row {
+  display: flex;
+  gap: 8px;
+}
+
+.field .row input {
+  flex: 1;
+}
+
+.askpass-question {
+  white-space: pre-wrap;
+  font: 12.5px/1.5 var(--font-mono);
+  background: var(--code-bg);
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin: 0 0 12px;
+}
+
+.modal input[aria-label='Answer'] {
+  width: 100%;
+}
+
+button.secondary {
+  margin-left: 8px;
+}

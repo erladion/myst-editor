@@ -1,7 +1,7 @@
 // Electron main process: window, menu, project file access and change watching.
 import { app, BrowserWindow, dialog, ipcMain, Menu, net, protocol, shell, type MenuItemConstructorOptions } from 'electron';
 import { watch, promises as fs, statSync, type FSWatcher } from 'node:fs';
-import { join, sep } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { openProject, listDocuments, readDocument, readTitles, resolveInside, writeDocument } from './project.js';
 import { SphinxManager } from './sphinx/manager.js';
@@ -9,6 +9,9 @@ import { ASSET_SCHEME, BUILD_SCHEME, type MenuCommand, type ProjectInfo } from '
 import type { EnvironmentChoice, SphinxState } from '../shared/sphinx.js';
 import { probePython } from './sphinx/pythons.js';
 import { fragmentPage } from './sphinx/fragments.js';
+import { Git, GitError } from './git/git.js';
+import { AskPass } from './git/askpass.js';
+import type { GitInfo } from '../shared/git.js';
 import { projectFor } from '../shared/projects.js';
 import { SETTINGS_FILE } from '../core/editor-config.js';
 
@@ -26,6 +29,57 @@ protocol.registerSchemesAsPrivileged([
 let win: BrowserWindow | null = null;
 let project: ProjectInfo | null = null;
 let watcher: FSWatcher | null = null;
+// Git and the prompts it needs answered (see git/askpass.ts).
+let askpass: AskPass | null = null;
+const git = new Git(() => askpass?.env() ?? { GIT_TERMINAL_PROMPT: '0' });
+const pendingQuestions = new Map<number, (answer: string | null) => void>();
+let questionId = 0;
+
+function askWriter(question: string): Promise<string | null> {
+  if (!win) return Promise.resolve(null);
+  const id = ++questionId;
+  win.webContents.send('askpass', { id, question });
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      pendingQuestions.delete(id);
+      resolve(null);
+    }, 5 * 60_000);
+    pendingQuestions.set(id, (answer) => {
+      clearTimeout(timer);
+      resolve(answer);
+    });
+  });
+}
+
+async function gitInfo(): Promise<GitInfo> {
+  const available = !!(await git.available());
+  const repoRoot = project && available ? await git.repoRoot(project.root) : null;
+  if (!project || !repoRoot) return { available, repoRoot: null, prefix: '', status: null, identity: null };
+  const [status, identity] = await Promise.all([git.status(repoRoot).catch(() => null), git.identity(repoRoot)]);
+  const prefix = relative(repoRoot, project.root).split(sep).join('/');
+  return { available, repoRoot, prefix, status, identity };
+}
+
+let gitTimer: NodeJS.Timeout | undefined;
+// Tell the window about the repository's state, soon (several changes → one update).
+function refreshGit() {
+  clearTimeout(gitTimer);
+  gitTimer = setTimeout(async () => win?.webContents.send('git-info', await gitInfo()), 400);
+}
+
+async function requireRepo(): Promise<string> {
+  const root = project && (await git.repoRoot(project.root));
+  if (!root) throw new Error('This folder isn’t part of a git repository.');
+  return root;
+}
+
+// Errors cross IPC as plain messages; GitError's is already written for the writer.
+function plain<T>(fn: () => Promise<T>): Promise<T> {
+  return fn().catch((e) => {
+    throw new Error(e instanceof GitError ? e.message : e instanceof Error ? e.message : String(e));
+  });
+}
+
 // One build manager per Sphinx project, by project id.
 const sphinx = new Map<string, SphinxManager>();
 let unsaved = false;
@@ -64,6 +118,7 @@ async function useProject(folder: string): Promise<ProjectInfo> {
   win?.setTitle(`${project.name} — MyST Editor`);
   await updateSettings((s) => ({ ...s, lastProject: project!.root }));
   await startSphinx(project);
+  refreshGit();
   return project;
 }
 
@@ -134,6 +189,7 @@ function startWatching(p: ProjectInfo) {
     win?.webContents.send('files-changed', { files: p.files, titles: p.titles, changed });
     // Our own saves request builds directly; here it's changes made outside the app.
     // Configuration, extensions and templates can affect every page of a project.
+    refreshGit();
     for (const rel of changed) buildFor(p, rel, false);
     for (const rel of others) buildFor(p, rel, /\.(py|html|jinja2?|toml|ya?ml|txt|json)$/.test(rel));
     // conf.py, editor settings and capabilities files change how pages are read.
@@ -196,6 +252,36 @@ function registerIpc() {
     written.set(rel, text);
     await writeDocument(requireProject(), rel, text);
     buildFor(requireProject(), rel, false);
+    refreshGit();
+  });
+  ipcMain.handle('git-info', () => gitInfo());
+  ipcMain.handle('choose-folder', async (_e, title: string) => {
+    const r = await dialog.showOpenDialog(win!, { title, properties: ['openDirectory', 'createDirectory'] });
+    return r.canceled ? null : r.filePaths[0];
+  });
+  ipcMain.handle('default-clone-folder', () => app.getPath('documents'));
+  ipcMain.handle('git-clone', (_e, url: string, parent: string) =>
+    plain(() => git.clone(url, parent, (line) => win?.webContents.send('git-progress', line))),
+  );
+  ipcMain.handle('git-commit', (_e, paths: string[], message: string, push: boolean) =>
+    plain(async () => {
+      const root = await requireRepo();
+      try {
+        await git.commit(root, paths, message);
+        if (push) await git.push(root);
+      } finally {
+        refreshGit();
+      }
+    }),
+  );
+  ipcMain.handle('git-push', () => plain(async () => git.push(await requireRepo()).finally(refreshGit)));
+  ipcMain.handle('git-pull', () => plain(async () => git.pull(await requireRepo()).finally(refreshGit)));
+  ipcMain.handle('git-set-identity', (_e, name: string, email: string, global: boolean) =>
+    plain(async () => git.setIdentity(await requireRepo(), name, email, global).finally(refreshGit)),
+  );
+  ipcMain.on('askpass-answer', (_e, id: number, answer: string | null) => {
+    pendingQuestions.get(id)?.(typeof answer === 'string' ? answer : null);
+    pendingQuestions.delete(id);
   });
   ipcMain.handle('sphinx-state', () => Object.fromEntries([...sphinx].map(([id, m]) => [id, m.getState()])));
   ipcMain.handle('sphinx-use', async (_e, choice: EnvironmentChoice) => {
@@ -270,6 +356,7 @@ function buildMenu() {
       label: 'File',
       submenu: [
         { label: 'Open Folder…', accelerator: 'CmdOrCtrl+O', click: () => send('open-folder') },
+        { label: 'Clone Repository…', click: () => send('clone') },
         { label: 'Save', accelerator: 'CmdOrCtrl+S', click: () => send('save') },
         { type: 'separator' },
         { role: 'quit' },
@@ -338,7 +425,12 @@ function createWindow() {
   else win.loadFile(join(import.meta.dirname, '../renderer/index.html'));
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  askpass = new AskPass(app.getPath('userData'), askWriter);
+  await askpass.start().catch((e) => {
+    console.warn('Git prompts unavailable:', e);
+    askpass = null;
+  });
   registerIpc();
   registerProtocols();
   buildMenu();
@@ -346,6 +438,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  askpass?.stop();
   watcher?.close();
   sphinx.forEach((m) => m.dispose());
   app.quit();

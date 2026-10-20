@@ -14,6 +14,8 @@ export interface LaunchOptions {
   env?: Record<string, string>;
   // Runs on the project copy before the app starts (e.g. to add a .venv).
   prepare?: (project: string) => void;
+  // Start on the welcome screen instead of opening the project.
+  noProject?: boolean;
 }
 
 // Launch the built app (`npm run build` first) on a fresh copy of the fixture project.
@@ -28,7 +30,7 @@ export async function launch(opts: LaunchOptions = {}): Promise<App> {
   const packaged = process.env.MYSTEDITOR_EXECUTABLE;
   const app = await electron.launch({
     ...(packaged ? { executablePath: packaged } : {}),
-    args: packaged ? [project] : [join(import.meta.dirname, '..', 'out', 'main', 'index.js'), project],
+    args: [...(packaged ? [] : [join(import.meta.dirname, '..', 'out', 'main', 'index.js')]), ...(opts.noProject ? [] : [project])],
     env: {
       ...env,
       MYSTEDITOR_USER_DATA: join(work, 'user-data'),
@@ -37,6 +39,6 @@ export async function launch(opts: LaunchOptions = {}): Promise<App> {
     } as Record<string, string>,
   });
   const page = await app.firstWindow();
-  await page.waitForSelector('.prose');
+  await page.waitForSelector(opts.noProject ? '.welcome-card' : '.prose');
   return { app, page, project };
 }
