@@ -485,19 +485,6 @@ button:focus-visible {
   gap: 6px;
 }
 
-/* ---- source view ---- */
-
-.source-view {
-  width: 100%;
-  height: 100%;
-  border: none;
-  border-radius: 0;
-  padding: 32px max(32px, calc((100% - 860px) / 2));
-  font: 13.5px/1.6 var(--font-mono);
-  resize: none;
-  outline: none;
-}
-
 /* ---- document ---- */
 
 .editor-host {
@@ -1637,4 +1624,115 @@ button.danger-text {
 .menu-items.menu-right {
   left: auto;
   right: 0;
+}
+
+/* ---- advanced view: Markdown + live preview ---- */
+
+.advanced {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.advanced > .source-editor,
+.advanced > .advanced-preview {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.source-editor {
+  border-right: 1px solid var(--border);
+}
+
+.source-editor .cm-editor {
+  height: 100%;
+}
+
+.cm-myst-name {
+  color: var(--tone-info);
+  font-weight: 600;
+}
+
+.cm-myst-option {
+  color: var(--tone-warning);
+}
+
+.cm-myst-target {
+  color: var(--tone-tip);
+}
+
+.advanced-preview {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.advanced-preview > .live-preview {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}
+
+.advanced-preview > .preview {
+  flex: 1;
+  border-left: none;
+}
+
+.live-preview .prose {
+  padding: 24px 32px 120px;
+  cursor: pointer;
+}
+
+/* Read-only: no editing controls. */
+.live-preview .nv-button,
+.live-preview .directive-kind,
+.live-preview .directive-arg,
+.live-preview .code-lang {
+  pointer-events: none;
+}
+
+.live-preview .nv-button,
+.live-preview .card-note {
+  display: none;
+}
+
+.live-preview .sync-current {
+  outline: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+.advanced-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.segmented button {
+  border: none;
+  border-radius: 0;
+  background: none;
+  padding: 3px 10px;
+  font-size: 12px;
+}
+
+.segmented button[aria-pressed='true'] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.advanced-bar .label {
+  font-size: 12px;
+  color: var(--fg-muted);
 }

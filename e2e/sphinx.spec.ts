@@ -52,6 +52,19 @@ test('builds the project: contents, resolved references, problems and preview', 
   await expect(preview.locator('h1')).toHaveText(/Widget documentation/);
 });
 
+test('the Markdown view shows warnings on their lines and the built page', async () => {
+  const { page } = ctx;
+  await allowAndBuild();
+  await page.getByRole('button', { name: 'Markdown' }).click();
+  // Clicking the problem goes to its line, which carries the warning in the gutter.
+  await page.locator('.chip-button', { hasText: '1 problem' }).click();
+  await page.locator('.problem').click();
+  await expect(page.locator('.cm-activeLine')).toHaveText(':::{company-callout}');
+  await expect(page.locator('.cm-lint-marker-warning')).toHaveCount(1);
+  await page.getByRole('button', { name: 'As built' }).click();
+  await expect(page.frameLocator('.advanced-preview iframe').locator('h1')).toHaveText(/Widget documentation/);
+});
+
 test('a broken cross-reference is flagged after the next build', async () => {
   const { page } = ctx;
   await allowAndBuild();

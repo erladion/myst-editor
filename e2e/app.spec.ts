@@ -113,17 +113,35 @@ test('table of contents entries open their page', async () => {
   await expect(page.locator('.page.current')).toHaveText('Configuring Widget');
 });
 
-test('editing the Markdown source directly', async () => {
+test('editing the Markdown source directly, with a live preview', async () => {
   const { page } = ctx;
   await openPage(page, 'Configuring Widget');
   await page.getByRole('button', { name: 'Markdown' }).click();
-  const source = page.getByLabel('Markdown source');
-  await expect(source).toHaveValue(original('guide/configure.md'));
-  await source.fill(original('guide/configure.md') + '\nRestarting takes a few seconds.\n');
-  await page.getByRole('button', { name: 'Back to editing' }).click();
-  await expect(page.locator('.prose')).toContainText('Restarting takes a few seconds.');
+  const source = page.getByRole('textbox', { name: 'Markdown source' });
+  await expect(source).toContainText('# Configuring Widget');
+  // The formatting toolbar gives way to the Markdown view's bar.
+  await expect(page.getByRole('toolbar', { name: 'Formatting' })).toHaveCount(0);
+
+  await source.click();
+  await page.keyboard.press('Control+End');
+  // Spacing the formatted editor would tidy up is saved exactly as typed. (No final
+  // Enter: in a list, the Markdown editor would start the next item.)
+  await page.keyboard.type('\n*   Restarting   takes a few seconds.');
+  await expect(page.locator('.live-preview li')).toHaveText('Restarting takes a few seconds.');
   await waitForSave(page);
-  expect(file('guide/configure.md')).toBe(original('guide/configure.md') + '\nRestarting takes a few seconds.\n');
+  expect(file('guide/configure.md')).toBe(original('guide/configure.md') + '\n*   Restarting   takes a few seconds.');
+
+  // Clicking a block in the preview goes to its source.
+  await page.locator('.live-preview h1').click();
+  await expect(page.locator('.cm-activeLine')).toHaveText('# Configuring Widget');
+
+  // Back to formatted editing (Ctrl+/), with the edit in place.
+  await page.keyboard.press('Control+/');
+  await expect(page.locator('.live-preview')).toHaveCount(0);
+  await expect(page.locator('.prose li')).toHaveText('Restarting takes a few seconds.');
+  // Ctrl+/ switched views; it didn't comment out a line.
+  expect(file('guide/configure.md')).not.toContain('<!--');
+  await expect(page.getByRole('toolbar', { name: 'Formatting' })).toBeVisible();
 });
 
 test('reloads a page changed on disk', async () => {

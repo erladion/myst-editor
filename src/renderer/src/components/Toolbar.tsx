@@ -28,7 +28,7 @@ async function makeConditionalInteractive(ctx: EditorContext, view: EditorView) 
   view.focus();
 }
 
-function ViewAsMenu({ capabilities, viewAs, onViewAs }: { capabilities: string[]; viewAs: string[] | null; onViewAs: (v: string[] | null) => void }) {
+export function ViewAsMenu({ capabilities, viewAs, onViewAs }: { capabilities: string[]; viewAs: string[] | null; onViewAs: (v: string[] | null) => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -77,8 +77,7 @@ function ViewAsMenu({ capabilities, viewAs, onViewAs }: { capabilities: string[]
 interface Props {
   view: EditorView | null;
   ctx: EditorContext;
-  sourceMode: boolean;
-  onToggleSource: () => void;
+  onMarkdown: () => void; // switch to the Markdown view
   previewAvailable: boolean;
   previewOpen: boolean;
   onTogglePreview: () => void;
@@ -86,7 +85,7 @@ interface Props {
   onViewAs: (capabilities: string[] | null) => void;
 }
 
-export function Toolbar({ view, ctx, sourceMode, onToggleSource, previewAvailable, previewOpen, onTogglePreview, viewAs, onViewAs }: Props) {
+export function Toolbar({ view, ctx, onMarkdown, previewAvailable, previewOpen, onTogglePreview, viewAs, onViewAs }: Props) {
   const conditions = ctx.config.editor.conditions;
   const state = view?.state;
   const run = (cmd: Command) => {
@@ -94,11 +93,11 @@ export function Toolbar({ view, ctx, sourceMode, onToggleSource, previewAvailabl
     cmd(view.state, view.dispatch, view);
     view.focus();
   };
-  const can = (cmd: Command) => !!state && !sourceMode && cmd(state);
+  const can = (cmd: Command) => !!state && cmd(state);
   const mark = (name: keyof typeof schema.marks) => !!state && markActive(state, schema.marks[name]);
   const kind = state ? blockKind(state) : 'paragraph';
   const list = state ? inList(state) : null;
-  const disabled = !view || sourceMode;
+  const disabled = !view;
 
   const Btn = ({ label, title, cmd, active = false, wide = false }: { label: string; title: string; cmd: Command; active?: boolean; wide?: boolean }) => (
     <button
@@ -116,7 +115,7 @@ export function Toolbar({ view, ctx, sourceMode, onToggleSource, previewAvailabl
     </button>
   );
 
-  const inTable = !!state && !sourceMode && isInTable(state);
+  const inTable = !!state && isInTable(state);
   const spans = ctx.config.editor.tables;
   const align = state && inTable ? columnAlign(state) : null;
   return (
@@ -195,8 +194,8 @@ export function Toolbar({ view, ctx, sourceMode, onToggleSource, previewAvailabl
       >
         Preview
       </button>
-      <button type="button" className={`tb wide${sourceMode ? ' active' : ''}`} title="Show the Markdown source (Ctrl+/)" aria-pressed={sourceMode} onClick={onToggleSource}>
-        {sourceMode ? 'Back to editing' : 'Markdown'}
+      <button type="button" className="tb wide" title="Edit the Markdown beside a live preview (Ctrl+/)" onClick={onMarkdown}>
+        Markdown
       </button>
     </div>
     {inTable && (

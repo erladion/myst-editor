@@ -3,7 +3,7 @@
 A WYSIWYG editor for Sphinx + MyST Markdown, aimed at writers who shouldn't have to
 see Markdown syntax. An Electron app shipped as an AppImage.
 
-## Status: phase 5 — editable tables
+## Status: phase 6 — advanced (Markdown) view
 
 Open a documentation folder and edit its pages as formatted documents:
 
@@ -48,7 +48,15 @@ Open a documentation folder and edit its pages as formatted documents:
     wouldn't read back the same
   - atomic writes
   - external changes reload, or are flagged if there are unsaved edits
-- **Markdown view:** toggle (Ctrl+/) to see or edit the raw source.
+- **Markdown view** (Ctrl+/, remembered): for writers who prefer the source.
+  - **Source editor:** syntax highlighting, MyST roles, directive names, options and
+    targets picked out, find and replace (Ctrl+F), and Sphinx warnings in the gutter
+    on their lines.
+  - **Preview:** **Live** (the formatted view, read-only, as you type), **As built**
+    (the Sphinx page), or **Off**. The live preview follows the part of the source
+    you're in, and clicking a block jumps to its lines.
+  - **Saving:** the text is saved exactly as typed. The formatting toolbar is hidden.
+  - **Switching back** re-reads the text into the formatted editor.
 
 With the folder's permission, the real Sphinx build also runs in the background, one
 build per project:
@@ -322,6 +330,10 @@ With an internal PyPI mirror instead, the private environment works too: uv read
   extension strips them from the raw text.
 - One e2e failure (a `toHaveText` assertion) was seen once early in phase 2 and not
   reproduced since.
+- In the Markdown view, Enter inside a list continues it (CodeMirror's Markdown
+  behaviour). Preview sync follows blocks, not exact lines inside a long block, and
+  the live preview re-renders the whole page on each pause in typing, which may lag
+  on very long pages.
 - `npm audit` reports DoS-class advisories in markdown-it 13 / linkify-it 4, which
   myst-parser pins. Low risk for a local editor opening the user's own files (the
   affected linkify/smartquotes paths are disabled); revisit when myst-parser updates.
@@ -355,9 +367,8 @@ With an internal PyPI mirror instead, the private environment works too: uv read
 5. ~~Tables: create and edit tables visually, including row and column spans~~ ✅
    GFM tables, with spans written through the project's own roles (`[tables]`).
    Still cards: `{list-table}` and grid tables in `{eval-rst}`.
-6. Advanced view: pure Markdown editing next to a live preview, hiding the formatting
-   toolbar. For technical writers who prefer the source. The preview could come from
-   the phase 3 Sphinx build.
+6. ~~Advanced view: pure Markdown editing next to a live preview, hiding the
+   formatting toolbar~~ ✅
 7. Packaging: an RPM target alongside the AppImage. It can declare its dependencies
    and doesn't need FUSE, which RHEL 9 doesn't install by default.
 8. Git, last:

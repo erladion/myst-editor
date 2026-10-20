@@ -23,6 +23,9 @@ export interface Session {
   savedText: string; // the file content as last read or written
   dirty: boolean; // edits not yet written
   status: SaveStatus;
+  // In the advanced (Markdown) view the text is the page: saved exactly as typed.
+  // Null while the page is edited as formatted content.
+  text: string | null;
 }
 
 const AUTOSAVE_MS = 1000;
@@ -74,7 +77,7 @@ export class Workspace {
 
   private load(path: string, text: string): Session {
     const { doc, map } = loadDocument(text, configFor(this.project, path));
-    return { path, state: createEditorState(doc), map, savedText: text, dirty: false, status: { kind: 'saved' } };
+    return { path, state: createEditorState(doc), map, savedText: text, dirty: false, status: { kind: 'saved' }, text: null };
   }
 
   update(path: string, state: EditorState, docChanged: boolean) {
@@ -106,13 +109,15 @@ export class Workspace {
     if (!s.dirty && !force) return true;
     if (s.status.kind === 'conflict' && !force) return false;
 
-    const result = saveDocument(s.state.doc, s.map, configFor(this.project, path));
+    // Typed Markdown is saved as it is; formatted edits are serialized and checked.
+    const result = s.text !== null ? { text: s.text, verified: true } : saveDocument(s.state.doc, s.map, configFor(this.project, path));
     if (!result.verified && !force) {
       s.status = { kind: 'unsafe', problem: result.problem! };
       this.changed();
       return false;
     }
     const state = s.state;
+    const typed = s.text;
     if (result.text === s.savedText) {
       s.dirty = false;
       s.status = { kind: 'saved' };
@@ -125,7 +130,7 @@ export class Workspace {
       await this.api.writeFile(path, result.text);
       s.savedText = result.text;
       // Only clean if nothing was typed while writing.
-      if (s.state === state) s.dirty = false;
+      if (s.state === state && s.text === typed) s.dirty = false;
       s.status = s.dirty ? { kind: 'pending' } : { kind: 'saved' };
       if (s.dirty) this.schedule(path);
     } catch (e) {
@@ -144,22 +149,40 @@ export class Workspace {
     return [...this.sessions.values()].filter((s) => s.dirty).map((s) => s.path);
   }
 
-  // The Markdown the session would save right now (for source view).
+  // The Markdown the session would save right now.
   sourceOf(path: string): string {
     const s = this.sessions.get(path)!;
+    if (s.text !== null) return s.text;
     return s.dirty ? saveDocument(s.state.doc, s.map, configFor(this.project, path)).text : s.savedText;
   }
 
-  // Replace a document with edited Markdown source.
-  setSource(path: string, text: string) {
+  // ---- the advanced (Markdown) view ----
+
+  // Edit the page as text, starting from what the formatted editor would save.
+  enterTextMode(path: string) {
     const s = this.sessions.get(path);
-    if (!s || text === this.sourceOf(path)) return;
-    const { doc, map } = loadDocument(text, configFor(this.project, path));
-    s.map = map;
-    s.state = createEditorState(doc);
-    s.dirty = true;
-    s.status = { kind: 'pending' };
-    this.schedule(path);
+    if (!s || s.text !== null) return;
+    s.text = this.sourceOf(path);
+    this.changed();
+  }
+
+  setText(path: string, text: string) {
+    const s = this.sessions.get(path);
+    if (!s || s.text === text) return;
+    s.text = text;
+    s.dirty = text !== s.savedText;
+    if (s.status.kind !== 'conflict') s.status = s.dirty ? { kind: 'pending' } : { kind: 'saved' };
+    if (s.dirty) this.schedule(path);
+    this.changed();
+  }
+
+  // Back to formatted editing: read the text as it now stands.
+  leaveTextMode(path: string) {
+    const s = this.sessions.get(path);
+    if (!s || s.text === null) return;
+    const { text, dirty, status } = s;
+    const fresh = this.load(path, text);
+    this.sessions.set(path, { ...fresh, savedText: s.savedText, dirty, status });
     this.changed();
   }
 
@@ -181,7 +204,8 @@ export class Workspace {
         clearTimeout(this.timers.get(path));
         s.status = { kind: 'conflict' };
       } else {
-        this.sessions.set(path, this.load(path, text));
+        const reloaded = this.load(path, text);
+        this.sessions.set(path, s.text !== null ? { ...reloaded, text } : reloaded);
       }
     }
     this.changed();
@@ -192,7 +216,7 @@ export class Workspace {
   updateProject(project: ProjectInfo) {
     this.project = { ...project, files: this.project.files, titles: this.project.titles };
     for (const [path, s] of this.sessions) {
-      if (!s.dirty) this.sessions.set(path, this.load(path, s.savedText));
+      if (!s.dirty) this.sessions.set(path, { ...this.load(path, s.savedText), text: s.text });
     }
     this.changed();
   }
@@ -200,7 +224,10 @@ export class Workspace {
   // Resolve a conflict by taking the version on disk.
   async reload(path: string) {
     const text = await this.api.readFile(path);
-    this.sessions.set(path, this.load(path, text));
+    const prev = this.sessions.get(path);
+    const wasText = !!prev && prev.text !== null;
+    const reloaded = this.load(path, text);
+    this.sessions.set(path, wasText ? { ...reloaded, text } : reloaded);
     this.changed();
   }
 

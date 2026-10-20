@@ -16,6 +16,9 @@ import { Toolbar } from './components/Toolbar';
 import { Banner, StatusBar } from './components/Status';
 import { DialogHost, type DialogApi } from './components/Dialogs';
 import { EnvironmentDialog, Preview, ProblemsPanel, SphinxChip, SphinxDialog, TrustBanner } from './components/SphinxUi';
+import { SourceEditor } from './components/SourceEditor';
+import { LivePreview } from './components/LivePreview';
+import { AdvancedBar } from './components/AdvancedBar';
 import { resolveRef } from './paths';
 import { docnameOf, problemsIn, resolveLink, resolveRole, suggestTargets } from './sphinx';
 
@@ -23,6 +26,31 @@ const api = window.myst;
 const noop = () => () => {};
 const zero = () => 0;
 const NO_SPHINX: SphinxState = { status: { kind: 'off' }, info: null, environment: null };
+
+// A per-viewer preference kept in localStorage (which may be unavailable).
+function useStoredState<T extends string>(key: string, initial: T) {
+  const [value, setValue] = useState<T>(() => {
+    try {
+      return (localStorage.getItem(key) as T | null) ?? initial;
+    } catch {
+      return initial;
+    }
+  });
+  const set = useCallback(
+    (next: T | ((v: T) => T)) =>
+      setValue((prev) => {
+        const v = typeof next === 'function' ? next(prev) : next;
+        try {
+          localStorage.setItem(key, v);
+        } catch {
+          // not persisted; fine for a preference
+        }
+        return v;
+      }),
+    [key],
+  );
+  return [value, set] as const;
+}
 
 // The Markdown page a {doc} role or toctree entry refers to, if it exists.
 function findPage(info: ProjectInfo, from: string | null, ref: string): string | null {
@@ -56,8 +84,11 @@ function usePreviewBuild(project: string | null, docname: string | null, builtAt
 export function App() {
   const [ws, setWs] = useState<Workspace | null>(null);
   const [starting, setStarting] = useState(true);
-  const [sourceMode, setSourceMode] = useState(false);
-  const [source, setSource] = useState('');
+  // Rich (formatted) editing, or the advanced view: Markdown beside a preview.
+  const [mode, setMode] = useStoredState<'rich' | 'markdown'>('mysteditor.mode', 'rich');
+  const [advancedPreview, setAdvancedPreview] = useStoredState<'live' | 'built' | 'off'>('mysteditor.advancedPreview', 'live');
+  const [sourceLine, setSourceLine] = useState<number | null>(null); // where the writer is in the source
+  const [gotoLine, setGotoLine] = useState<number | null>(null);
   // Build state per Sphinx project id.
   const [sphinxStates, setSphinxStates] = useState<Record<string, SphinxState>>({});
   const [showProblems, setShowProblems] = useState(false);
@@ -83,7 +114,7 @@ export function App() {
       if (!ws) return;
       try {
         await ws.open(path);
-        setSourceMode(false);
+        setSourceLine(null);
       } catch (e) {
         dialogs.current?.notify(`Couldn’t open ${path}: ${e instanceof Error ? e.message : e}`);
       }
@@ -204,16 +235,16 @@ export function App() {
     await useProject(await api.chooseProject());
   }, [ws, useProject]);
 
-  const toggleSource = useCallback(() => {
-    if (!ws?.current) return;
-    if (sourceMode) {
-      ws.setSource(ws.current, source);
-      setSourceMode(false);
-    } else {
-      setSource(ws.sourceOf(ws.current));
-      setSourceMode(true);
-    }
-  }, [ws, sourceMode, source]);
+  const toggleMode = useCallback(() => {
+    setMode((m) => (m === 'rich' ? 'markdown' : 'rich'));
+  }, [setMode]);
+
+  // Pages follow the mode: as text in the advanced view, as formatted content otherwise.
+  useEffect(() => {
+    if (!ws || !session) return;
+    if (mode === 'markdown' && session.text === null) ws.enterTextMode(session.path);
+    if (mode === 'rich' && session.text !== null) ws.leaveTextMode(session.path);
+  }, [ws, session, mode]);
 
   const showLog = useCallback(async () => {
     const status = sphinx.status;
@@ -230,16 +261,17 @@ export function App() {
   const openProblem = useCallback(
     async (path: string, line: number | null) => {
       await openPage(path);
-      setReveal(line);
+      if (mode === 'markdown') setGotoLine(line);
+      else setReveal(line);
     },
-    [openPage],
+    [openPage, mode],
   );
 
   // Menu commands, external file changes and window closing.
   useEffect(() => {
     const offMenu = api.onMenu((cmd) => {
       if (cmd === 'open-folder') void chooseFolder();
-      else if (cmd === 'toggle-source') toggleSource();
+      else if (cmd === 'toggle-source') toggleMode();
       else if (cmd === 'save' && ws?.current) void ws.save(ws.current);
     });
     const offFiles = api.onFilesChanged((e) => void ws?.externalChange(e.changed, e.files, e.titles));
@@ -262,7 +294,19 @@ export function App() {
       offProject();
       offClose();
     };
-  }, [ws, chooseFolder, toggleSource]);
+  }, [ws, chooseFolder, toggleMode]);
+
+  // Ctrl+/ switches between formatted editing and the Markdown view, wherever focus is.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === '/' && ws?.current) {
+        e.preventDefault();
+        toggleMode();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [ws, toggleMode]);
 
   // Ctrl+K for links (needs the dialog, so it lives here rather than in the keymap).
   useEffect(() => {
@@ -287,6 +331,7 @@ export function App() {
     [ws],
   );
   const onRevealed = useCallback(() => setReveal(null), []);
+  const onGotoDone = useCallback(() => setGotoLine(null), []);
 
   const pageProblems = useMemo(() => problemsIn(info, session?.path ?? null), [info, session?.path]);
   // Hooks stay above the welcome screen's early return.
@@ -337,17 +382,28 @@ export function App() {
         onOpenFolder={chooseFolder}
       />
       <main className="main">
+        {mode === 'markdown' ? (
+          <AdvancedBar
+            preview={advancedPreview}
+            onPreview={setAdvancedPreview}
+            built={!!info}
+            onRich={toggleMode}
+            conditions={ctx.config.editor.conditions}
+            viewAs={viewAs}
+            onViewAs={setViewAs}
+          />
+        ) : (
         <Toolbar
-          view={session && !sourceMode ? view : null}
+          view={session ? view : null}
           ctx={ctx}
-          sourceMode={sourceMode}
-          onToggleSource={toggleSource}
+          onMarkdown={toggleMode}
           previewAvailable={!!info}
           previewOpen={showPreview}
           onTogglePreview={() => setShowPreview(!showPreview)}
           viewAs={viewAs}
           onViewAs={setViewAs}
         />
+        )}
         <TrustBanner
           state={trustState}
           onUse={useEnvironment}
@@ -358,18 +414,46 @@ export function App() {
           <Banner
             session={session}
             onSaveAnyway={() => void ws.save(session.path, { force: true })}
-            onShowSource={toggleSource}
+            onShowSource={() => mode === 'rich' && toggleMode()}
             onReload={() => void ws.reload(session.path)}
             onKeepMine={() => void ws.save(session.path, { force: true })}
             onRetry={() => void ws.save(session.path, { force: true })}
           />
         )}
+        {mode === 'markdown' && session && session.text !== null ? (
+          <div className="advanced">
+            <SourceEditor
+              key={session.path}
+              text={session.text}
+              onChange={(text) => ws.setText(session.path, text)}
+              problems={pageProblems}
+              onLine={setSourceLine}
+              goto={gotoLine}
+              onGotoDone={onGotoDone}
+            />
+            {advancedPreview !== 'off' && (
+              <div className="advanced-preview">
+                {advancedPreview === 'live' ? (
+                  <LivePreview
+                    key={session.path}
+                    text={session.text}
+                    ctx={ctx}
+                    savedText={session.savedText}
+                    build={previewBuild}
+                    viewAs={viewAs}
+                    line={sourceLine}
+                    onPick={setGotoLine}
+                  />
+                ) : (
+                  <Preview url={previewUrl} building={sphinx.status.kind === 'building'} />
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
         <div className={`workarea${showPreview && info ? ' with-preview' : ''}`}>
           <div className="scroll">
-            {session && sourceMode && (
-              <textarea className="source-view" value={source} spellCheck={false} aria-label="Markdown source" onChange={(e) => setSource(e.target.value)} />
-            )}
-            {session && !sourceMode && (
+            {session && (
               <Editor
                 key={session.path}
                 state={session.state}
@@ -389,6 +473,7 @@ export function App() {
           </div>
           {showPreview && info && <Preview url={previewUrl} building={sphinx.status.kind === 'building'} />}
         </div>
+        )}
         {showProblems && anyBuilt && (
           <ProblemsPanel
             warnings={allWarnings}

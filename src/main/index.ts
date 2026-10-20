@@ -283,7 +283,9 @@ function buildMenu() {
     {
       label: 'View',
       submenu: [
-        { label: 'Show Markdown Source', accelerator: 'CmdOrCtrl+/', click: () => send('toggle-source') },
+        // The page handles Ctrl+/ itself (so it also works over the source editor);
+        // the menu only shows the shortcut.
+        { label: 'Markdown View', accelerator: 'CmdOrCtrl+/', registerAccelerator: false, click: () => send('toggle-source') },
         { type: 'separator' },
         { role: 'zoomIn' },
         { role: 'zoomOut' },

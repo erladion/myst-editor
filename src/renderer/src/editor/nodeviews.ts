@@ -243,7 +243,7 @@ abstract class CardView implements NodeView {
     this.previewUrl = previewUrlOf(decorations);
     this.dom = el('div', { contenteditable: 'false' });
     this.dom.addEventListener('dblclick', (e) => {
-      if (!(e.target as HTMLElement).closest('a, button')) this.edit();
+      if (this.view.editable && !(e.target as HTMLElement).closest('a, button')) this.edit();
     });
     this.render();
   }
@@ -568,7 +568,7 @@ abstract class InlineView implements NodeView {
     this.dom = el('span', { contenteditable: 'false' });
     this.dom.addEventListener('dblclick', (e) => {
       e.preventDefault();
-      this.edit();
+      if (this.view.editable) this.edit();
     });
     this.render();
     // Cross-reference titles and broken-link marks come from the build.
