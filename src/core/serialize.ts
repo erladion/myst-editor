@@ -38,9 +38,13 @@ class Writer {
 
   container(node: PMNode, entry: ContainerEntry | undefined, tight = false): string {
     let out = '';
-    node.forEach((child, _off, i) => {
-      if (i > 0) out += this.gap(node.child(i - 1), child, tight);
-      out += this.block(child);
+    let prev: PMNode | null = null;
+    node.forEach((child) => {
+      const text = this.block(child);
+      if (text === '' && child.type.name === 'paragraph') return; // empty paragraphs vanish anyway
+      if (prev) out += this.gap(prev, child, tight);
+      out += text;
+      prev = child;
     });
     if (!entry) return out;
     return entry.lead + out + (node.childCount ? entry.trail : '');
@@ -177,8 +181,6 @@ const tick = (value: string) => {
 // Serializer state that also escapes text starting a line after a soft break, and
 // MyST's own line-start syntax (comments, colon fences, block breaks, targets).
 class MystInlineState extends MarkdownSerializerState {
-  lineStart = false;
-
   esc(str: string, startOfLine = false): string {
     let out = super.esc(str, startOfLine);
     if (startOfLine) out = out.replace(/^(%|\+\+\+|:::|\(.*\)=\s*$)/, '\\$&');
@@ -186,40 +188,37 @@ class MystInlineState extends MarkdownSerializerState {
   }
 }
 
-type State = MystInlineState & { atBlockStart: boolean; inAutolink?: boolean };
+type State = MystInlineState & { atBlockStart: boolean; out: string; inAutolink?: boolean };
 type NodeFn = (state: State, node: PMNode, parent: PMNode, index: number) => void;
-
-// Atoms write markup directly, which ends any pending line start.
-const atom =
-  (fn: NodeFn): NodeFn =>
-  (state, node, parent, index) => {
-    state.lineStart = false;
-    fn(state, node, parent, index);
-  };
 
 const nodes: Record<string, NodeFn> = {
   paragraph: (state, node) => state.renderInline(node),
   text: (state, node) => {
-    if (state.lineStart) state.atBlockStart = true;
-    state.lineStart = false;
-    state.text(node.text!);
+    // At the start of a line (after a soft break, or at the very start) the text
+    // gets line-start escaping, and loses leading spaces, which Markdown would strip
+    // or, with four of them, turn into a code block.
+    const atLineStart = state.out === '' || state.out.endsWith('\n');
+    if (atLineStart) state.atBlockStart = true;
+    const text = atLineStart ? node.text!.replace(/^[ \t]+/, '') : node.text!;
+    if (text) state.text(text);
   },
-  soft_break: (state) => {
-    state.write('\n');
-    state.lineStart = true;
+  soft_break: (state) => state.write('\n'),
+  // A trailing hard break would serialize as a literal backslash.
+  hard_break: (state, _node, parent, index) => {
+    for (let i = index + 1; i < parent.childCount; i++) {
+      if (!['soft_break', 'hard_break'].includes(parent.child(i).type.name)) return state.write('\\\n');
+    }
   },
-  hard_break: atom((state) => state.write('\\\n')),
-  role: atom((state, node) => {
+  role: (state, node) => {
     const t = tick(node.attrs.value);
     state.write(`{${node.attrs.name}}${t}${node.attrs.value}${t}`);
-  }),
-  inline_math: atom((state, node) => state.write(`$${node.attrs.value}$`)),
-  html_inline: atom((state, node) => state.write(node.attrs.value)),
-  footnote_ref: atom((state, node) => state.write(`[^${node.attrs.label}]`)),
-  ref_link: atom((state, node) => state.write(`[](${linkDestination(node.attrs.href, node.attrs.title)})`)),
-  image: atom((state, node) =>
+  },
+  inline_math: (state, node) => state.write(`$${node.attrs.value}$`),
+  html_inline: (state, node) => state.write(node.attrs.value),
+  footnote_ref: (state, node) => state.write(`[^${node.attrs.label}]`),
+  ref_link: (state, node) => state.write(`[](${linkDestination(node.attrs.href, node.attrs.title)})`),
+  image: (state, node) =>
     state.write(`![${state.esc(node.attrs.alt || '')}](${linkDestination(node.attrs.src, node.attrs.title)})`),
-  ),
 };
 
 // <scheme:...> autolinks, including MyST custom schemes like <gh-user:name>. Only used
@@ -295,5 +294,11 @@ function inlineMarkdown(textblock: PMNode, style: InlineStyle): string {
   const Ctor = MystInlineState as unknown as new (n: object, m: object, o: object) => MystInlineState & { out: string };
   const state = new Ctor(nodes, marksFor(style), inlineOptions);
   state.renderContent(para);
-  return state.out;
+  // Whitespace at line edges is insignificant in Markdown, except that trailing double
+  // spaces make a hard break; an empty line would split the paragraph.
+  return state.out
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '')
+    .join('\n');
 }

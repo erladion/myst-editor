@@ -22,14 +22,21 @@ export interface InlineStyle {
   autolinks: Set<string>; // URLs the document writes as <url>
 }
 
+// Shared by all maps, so nodes from separate parses never collide and a map can
+// absorb another (e.g. when the writer edits a block's source and it is re-parsed).
+let counter = 0;
+
 export class SourceMap {
   private entries = new Map<string, SourceEntry>();
-  private counter = 0;
   root: ContainerEntry = { lead: '', trail: '' };
   style: InlineStyle = { em: '*', strong: '**', refs: new Map(), autolinks: new Set() };
 
   nextSid(): string {
-    return `s${++this.counter}`;
+    return `s${++counter}`;
+  }
+
+  merge(other: SourceMap) {
+    for (const [sid, entry] of other.entries) this.entries.set(sid, entry);
   }
 
   record(sid: string, node: PMNode, text: string, container?: ContainerEntry) {

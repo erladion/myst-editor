@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { Node as PMNode } from 'prosemirror-model';
-import { parseMyst } from '../src/parse.js';
-import { serializeMyst } from '../src/serialize.js';
+import { parseMyst } from '../src/core/parse.js';
+import { serializeMyst } from '../src/core/serialize.js';
 import { normalized } from './helpers.js';
 
 const corpusDir = join(import.meta.dirname, '..', 'corpus');

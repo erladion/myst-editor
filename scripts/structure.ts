@@ -1,8 +1,8 @@
 // Print the block structure of parsed corpus files, and the fresh serialization.
 import { readFileSync } from 'node:fs';
 import type { Node } from 'prosemirror-model';
-import { parseMyst } from '../src/parse.js';
-import { serializeMyst } from '../src/serialize.js';
+import { parseMyst } from '../src/core/parse.js';
+import { serializeMyst } from '../src/core/serialize.js';
 
 const [file, mode] = process.argv.slice(2);
 const { doc, map } = parseMyst(readFileSync(file, 'utf8'));

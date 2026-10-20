@@ -1,26 +1,57 @@
 {
   "name": "mysteditor",
-  "version": "1.0.0",
+  "productName": "MyST Editor",
+  "version": "0.1.0",
   "description": "WYSIWYG editor for Sphinx + MyST Markdown",
-  "scripts": {
-    "test": "vitest run",
-    "roundtrip": "tsx scripts/roundtrip-report.ts",
-    "typecheck": "tsc -p ."
-  },
+  "author": "erladion",
   "license": "UNLICENSED",
-  "type": "module",
   "private": true,
-  "dependencies": {
-    "myst-parser": "^1.7.4",
-    "prosemirror-markdown": "^1.13.8",
-    "prosemirror-model": "^1.25.12",
-    "prosemirror-state": "^1.4.4"
+  "type": "module",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "test": "vitest run",
+    "test:e2e": "electron-vite build && playwright test",
+    "typecheck": "tsc -p .",
+    "roundtrip": "tsx scripts/roundtrip-report.ts",
+    "icon": "electron scripts/make-icon.cjs",
+    "dist": "electron-vite build && electron-builder --linux AppImage"
   },
   "devDependencies": {
+    "@playwright/test": "1.64.0",
     "@types/node": "^26.6.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "5.2.0",
     "diff": "^9.0.0",
+    "electron": "44.7.1",
+    "electron-builder": "26.15.3",
+    "electron-vite": "5.0.0",
+    "katex": "0.19.0",
+    "myst-parser": "^1.7.4",
+    "prosemirror-commands": "1.7.2",
+    "prosemirror-dropcursor": "1.8.4",
+    "prosemirror-gapcursor": "1.4.1",
+    "prosemirror-history": "1.5.1",
+    "prosemirror-inputrules": "1.5.1",
+    "prosemirror-keymap": "1.2.3",
+    "prosemirror-markdown": "^1.13.8",
+    "prosemirror-model": "^1.25.12",
+    "prosemirror-schema-list": "1.5.1",
+    "prosemirror-state": "^1.4.4",
+    "prosemirror-view": "1.42.6",
+    "punycode": "2.3.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
+    "vite": "7.3.7",
     "vitest": "^5.0.5"
-  }
+  },
+  "allowScripts": {
+    "electron-winstaller": false
+  },
+  "desktopName": "mysteditor.desktop"
 }

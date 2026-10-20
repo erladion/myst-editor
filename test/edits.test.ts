@@ -5,9 +5,9 @@ import { join } from 'node:path';
 import { diffLines } from 'diff';
 import type { Node as PMNode } from 'prosemirror-model';
 import { EditorState, type Transaction } from 'prosemirror-state';
-import { parseMyst } from '../src/parse.js';
-import { serializeMyst } from '../src/serialize.js';
-import { schema } from '../src/schema.js';
+import { parseMyst } from '../src/core/parse.js';
+import { serializeMyst } from '../src/core/serialize.js';
+import { schema } from '../src/core/schema.js';
 
 const read = (name: string) => readFileSync(join(import.meta.dirname, '..', 'corpus', name), 'utf8');
 

@@ -1,0 +1,200 @@
+// Open documents, autosave and external-change handling, independent of React.
+import type { EditorState } from 'prosemirror-state';
+import { loadDocument, saveDocument } from '../../core/document';
+import type { SourceMap } from '../../core/sourcemap';
+import type { MystApi, ProjectInfo } from '../../shared/api';
+import { createEditorState } from './editor/setup';
+
+export type SaveStatus =
+  | { kind: 'saved' }
+  | { kind: 'pending' }
+  | { kind: 'saving' }
+  // Saving would change the page in a way the writer didn't make; needs confirmation.
+  | { kind: 'unsafe'; problem: string }
+  | { kind: 'error'; message: string }
+  // Changed on disk while there were unsaved edits here.
+  | { kind: 'conflict' };
+
+export interface Session {
+  path: string;
+  state: EditorState;
+  map: SourceMap;
+  savedText: string; // the file content as last read or written
+  dirty: boolean; // edits not yet written
+  status: SaveStatus;
+}
+
+const AUTOSAVE_MS = 1000;
+
+export class Workspace {
+  private sessions = new Map<string, Session>();
+  private timers = new Map<string, ReturnType<typeof setTimeout>>();
+  private listeners = new Set<() => void>();
+  private version = 0;
+  current: string | null = null;
+
+  constructor(
+    private api: MystApi,
+    public project: ProjectInfo,
+  ) {}
+
+  // ---- subscription (for useSyncExternalStore) ----
+
+  subscribe = (fn: () => void) => {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  };
+
+  getVersion = () => this.version;
+
+  private changed() {
+    this.version++;
+    this.api.setUnsaved([...this.sessions.values()].some((s) => s.dirty));
+    this.listeners.forEach((fn) => fn());
+  }
+
+  // ---- documents ----
+
+  get(path: string | null): Session | undefined {
+    return path ? this.sessions.get(path) : undefined;
+  }
+
+  async open(path: string): Promise<Session> {
+    let session = this.sessions.get(path);
+    if (!session) {
+      const text = await this.api.readFile(path);
+      session = this.load(path, text);
+      this.sessions.set(path, session);
+    }
+    this.current = path;
+    this.changed();
+    return session;
+  }
+
+  private load(path: string, text: string): Session {
+    const { doc, map } = loadDocument(text, this.project.config);
+    return { path, state: createEditorState(doc), map, savedText: text, dirty: false, status: { kind: 'saved' } };
+  }
+
+  update(path: string, state: EditorState, docChanged: boolean) {
+    const s = this.sessions.get(path);
+    if (!s) return;
+    s.state = state;
+    if (docChanged) {
+      s.dirty = true;
+      if (s.status.kind !== 'conflict') s.status = { kind: 'pending' };
+      this.schedule(path);
+    }
+    this.changed();
+  }
+
+  absorb(path: string, map: SourceMap) {
+    this.sessions.get(path)?.map.merge(map);
+  }
+
+  private schedule(path: string) {
+    clearTimeout(this.timers.get(path));
+    this.timers.set(path, setTimeout(() => void this.save(path), AUTOSAVE_MS));
+  }
+
+  // Write a session if it has unsaved edits. Returns false if it couldn't be saved.
+  async save(path: string, { force = false } = {}): Promise<boolean> {
+    clearTimeout(this.timers.get(path));
+    const s = this.sessions.get(path);
+    if (!s) return true;
+    if (!s.dirty && !force) return true;
+    if (s.status.kind === 'conflict' && !force) return false;
+
+    const result = saveDocument(s.state.doc, s.map, this.project.config);
+    if (!result.verified && !force) {
+      s.status = { kind: 'unsafe', problem: result.problem! };
+      this.changed();
+      return false;
+    }
+    const state = s.state;
+    if (result.text === s.savedText) {
+      s.dirty = false;
+      s.status = { kind: 'saved' };
+      this.changed();
+      return true;
+    }
+    s.status = { kind: 'saving' };
+    this.changed();
+    try {
+      await this.api.writeFile(path, result.text);
+      s.savedText = result.text;
+      // Only clean if nothing was typed while writing.
+      if (s.state === state) s.dirty = false;
+      s.status = s.dirty ? { kind: 'pending' } : { kind: 'saved' };
+      if (s.dirty) this.schedule(path);
+    } catch (e) {
+      s.status = { kind: 'error', message: e instanceof Error ? e.message : String(e) };
+    }
+    this.changed();
+    return s.status.kind !== 'error';
+  }
+
+  async saveAll(): Promise<boolean> {
+    const results = await Promise.all([...this.sessions.keys()].map((p) => this.save(p)));
+    return results.every(Boolean);
+  }
+
+  unsavedPaths(): string[] {
+    return [...this.sessions.values()].filter((s) => s.dirty).map((s) => s.path);
+  }
+
+  // The Markdown the session would save right now (for source view).
+  sourceOf(path: string): string {
+    const s = this.sessions.get(path)!;
+    return s.dirty ? saveDocument(s.state.doc, s.map, this.project.config).text : s.savedText;
+  }
+
+  // Replace a document with edited Markdown source.
+  setSource(path: string, text: string) {
+    const s = this.sessions.get(path);
+    if (!s || text === this.sourceOf(path)) return;
+    const { doc, map } = loadDocument(text, this.project.config);
+    s.map = map;
+    s.state = createEditorState(doc);
+    s.dirty = true;
+    s.status = { kind: 'pending' };
+    this.schedule(path);
+    this.changed();
+  }
+
+  // ---- changes on disk ----
+
+  async externalChange(changed: string[], files: string[], titles: Record<string, string>) {
+    this.project = { ...this.project, files, titles };
+    for (const path of changed) {
+      const s = this.sessions.get(path);
+      if (!s) continue;
+      let text: string;
+      try {
+        text = await this.api.readFile(path);
+      } catch {
+        continue;
+      }
+      if (text === s.savedText) continue;
+      if (s.dirty) {
+        clearTimeout(this.timers.get(path));
+        s.status = { kind: 'conflict' };
+      } else {
+        this.sessions.set(path, this.load(path, text));
+      }
+    }
+    this.changed();
+  }
+
+  // Resolve a conflict by taking the version on disk.
+  async reload(path: string) {
+    const text = await this.api.readFile(path);
+    this.sessions.set(path, this.load(path, text));
+    this.changed();
+  }
+
+  dispose() {
+    this.timers.forEach(clearTimeout);
+    this.listeners.clear();
+  }
+}
