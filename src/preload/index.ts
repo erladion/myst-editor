@@ -20,6 +20,8 @@ const api: MystApi = {
   closeWindow: () => ipcRenderer.send('close-window'),
   onFilesChanged: (cb) => on('files-changed', cb),
   onOpenProgress: (cb) => on('open-progress', cb),
+  isDark: () => ipcRenderer.invoke('is-dark'),
+  onDarkChanged: (cb) => on('dark-changed', cb),
   onProjectChanged: (cb) => on('project-changed', cb),
   onMenu: (cb) => on('menu', cb),
   onCloseRequested: (cb) => on('close-requested', () => cb()),

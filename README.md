@@ -58,6 +58,7 @@ Open a documentation folder and edit its pages as formatted documents:
     wouldn't read back the same
   - atomic writes
   - external changes reload, or are flagged if there are unsaved edits
+- **Dark mode:** View → Appearance: light, dark, or the same as the system.
 - **Markdown view** (Ctrl+/, remembered): for writers who prefer the source.
   - **Source editor:** syntax highlighting, MyST roles, directive names, options and
     targets picked out, find and replace (Ctrl+F), and Sphinx warnings in the gutter

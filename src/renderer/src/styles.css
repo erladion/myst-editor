@@ -21,8 +21,29 @@
   color-scheme: light;
 }
 
+/* Dark: chosen in View → Appearance (data-theme, set by the app), or the system's
+   while the app hasn't said yet. */
+:root[data-theme='dark'] {
+  --bg: #17191d;
+  --bg-soft: #1e2126;
+  --bg-sidebar: #1b1d22;
+  --fg: #e6e8eb;
+  --fg-muted: #9aa1ad;
+  --border: #2d3138;
+  --accent: #6ea1ff;
+  --accent-soft: #1f2d47;
+  --code-bg: #23262c;
+  --tone-note: #6ea1ff;
+  --tone-info: #a98bf0;
+  --tone-tip: #3fc28e;
+  --tone-warning: #e6a43a;
+  --tone-danger: #f07070;
+  --tone-neutral: #9aa1ad;
+  color-scheme: dark;
+}
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     --bg: #17191d;
     --bg-soft: #1e2126;
     --bg-sidebar: #1b1d22;
@@ -1454,8 +1475,12 @@ button.toc-toggle:hover {
   --cond: #8a5cd1;
 }
 
+:root[data-theme='dark'] {
+  --cond: #b48cf2;
+}
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     --cond: #b48cf2;
   }
 }

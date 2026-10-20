@@ -62,6 +62,9 @@ export interface MystApi {
   // Close after the renderer has finished saving.
   closeWindow(): void;
   onFilesChanged(cb: (e: FilesChanged) => void): () => void;
+  // Whether the app is dark (the writer's choice, or the system's), now and on change.
+  isDark(): Promise<boolean>;
+  onDarkChanged(cb: (dark: boolean) => void): () => void;
   // While a folder is being opened; null when done.
   onOpenProgress(cb: (p: OpenProgress | null) => void): () => void;
   onProjectChanged(cb: (e: ProjectChanged) => void): () => void;

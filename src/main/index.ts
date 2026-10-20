@@ -1,5 +1,5 @@
 // Electron main process: window, menu, project file access and change watching.
-import { app, BrowserWindow, dialog, ipcMain, Menu, net, protocol, shell, type MenuItemConstructorOptions } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, net, protocol, shell, type MenuItemConstructorOptions } from 'electron';
 import { createHash } from 'node:crypto';
 import { promises as fs, statSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
@@ -96,6 +96,21 @@ interface Settings {
   trusted?: string[];
   // Per project root: where its builds get Python from.
   environments?: Record<string, EnvironmentChoice>;
+  // Light or dark, or as the system is.
+  theme?: Theme;
+}
+
+type Theme = 'system' | 'light' | 'dark';
+
+// The window's colour before the page has drawn, matching the theme (no white flash).
+const windowBackground = () => (nativeTheme.shouldUseDarkColors ? '#17191d' : '#ffffff');
+
+// Electron applies the choice everywhere: the app's own styles, and built pages whose
+// Sphinx theme follows the system's (Furo, PyData, Book theme).
+async function setTheme(theme: Theme, save = true) {
+  nativeTheme.themeSource = theme;
+  if (save) await updateSettings((s) => ({ ...s, theme }));
+  buildMenu(theme);
 }
 
 async function loadSettings(): Promise<Settings> {
@@ -485,7 +500,7 @@ function send(cmd: MenuCommand) {
   win?.webContents.send('menu', cmd);
 }
 
-function buildMenu() {
+function buildMenu(theme: Theme = nativeTheme.themeSource) {
   const template: MenuItemConstructorOptions[] = [
     {
       label: 'File',
@@ -508,6 +523,16 @@ function buildMenu() {
         // The page handles Ctrl+/ itself (so it also works over the source editor);
         // the menu only shows the shortcut.
         { label: 'Markdown View', accelerator: 'CmdOrCtrl+/', registerAccelerator: false, click: () => send('toggle-source') },
+        {
+          label: 'Appearance',
+          submenu: (
+            [
+              ['system', 'Same as the System'],
+              ['light', 'Light'],
+              ['dark', 'Dark'],
+            ] as const
+          ).map(([value, label]) => ({ id: `theme-${value}`, label, type: 'radio' as const, checked: theme === value, click: () => void setTheme(value) })),
+        },
         { type: 'separator' },
         { role: 'zoomIn' },
         { role: 'zoomOut' },
@@ -527,7 +552,7 @@ function createWindow() {
     height: 860,
     show: false,
     title: 'MyST Editor',
-    backgroundColor: '#ffffff',
+    backgroundColor: windowBackground(),
     webPreferences: {
       preload: join(import.meta.dirname, '../preload/index.cjs'),
       sandbox: true,
@@ -568,7 +593,14 @@ app.whenReady().then(async () => {
   });
   registerIpc();
   registerProtocols();
-  buildMenu();
+  await setTheme((await loadSettings()).theme ?? 'system', false);
+  // The window is told whether it's dark: on Linux, pages don't see the system's (or
+  // the chosen) scheme through prefers-color-scheme.
+  nativeTheme.on('updated', () => {
+    win?.setBackgroundColor(windowBackground());
+    win?.webContents.send('dark-changed', nativeTheme.shouldUseDarkColors);
+  });
+  ipcMain.handle('is-dark', () => nativeTheme.shouldUseDarkColors);
   createWindow();
 });
 
