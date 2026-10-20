@@ -144,5 +144,20 @@ e2e suite against a packaged build. The app takes a folder argument
 3. Sphinx integration: bundled `uv` manages a per-project Python environment from the
    project's requirements; background builds; real preview; cross-reference
    autocomplete and validation; toctree-based navigation; Sphinx warnings shown inline.
-4. Custom extensions: Sphinx-rendered previews of unknown directives, per-project
-   option forms, rich editing for tables.
+4. Custom extensions: Sphinx-rendered previews of unknown directives, and per-project
+   option forms.
+5. Tables: create and edit tables visually, including row and column spans.
+   - Open question: GFM tables and `list-table` can't express spans. Options are reST
+     grid tables in `{eval-rst}`, an extension directive such as `flat-table`, or raw
+     HTML (HTML output only). Possibly keep GFM until a writer merges cells, then
+     switch format.
+6. Advanced view: pure Markdown editing next to a live preview, hiding the formatting
+   toolbar. For technical writers who prefer the source. The preview could come from
+   the phase 3 Sphinx build.
+7. Packaging: an RPM target alongside the AppImage. It can declare its dependencies
+   and doesn't need FUSE, which RHEL 9 doesn't install by default.
+8. Git, last:
+   - open a repository from an HTTPS or SSH link, cloning it locally
+   - commit changes from the app
+   - Open questions: bundled git vs. the system's, and writer-friendly
+     authentication (SSH keys, HTTPS tokens).
