@@ -6,6 +6,7 @@ import { dirname, join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { buildInputsOf, isBuildInput, listDocuments, openProject, readDocument, readTitle, IMAGE_EXTENSIONS, placeImage, resolveInside, saveImage, UNWATCHED_DIRS, unwatchedDir, writeDocument } from './project.js';
 import { FolderWatcher } from './watch.js';
+import { Snapshots } from './history.js';
 import { SphinxManager } from './sphinx/manager.js';
 import { ASSET_SCHEME, BUILD_SCHEME, type MenuCommand, type ProjectInfo } from '../shared/api.js';
 import type { EnvironmentChoice, SphinxInfo, SphinxState } from '../shared/sphinx.js';
@@ -13,7 +14,7 @@ import { probePython } from './sphinx/pythons.js';
 import { fragmentPage } from './sphinx/fragments.js';
 import { Git, GitError } from './git/git.js';
 import { AskPass } from './git/askpass.js';
-import type { GitInfo } from '../shared/git.js';
+import type { GitInfo, PageVersion } from '../shared/git.js';
 import { projectFor } from '../shared/projects.js';
 import { ENV_NAME, SETTINGS_FILE } from '../core/editor-config.js';
 
@@ -33,6 +34,8 @@ let askpass: AskPass | null = null;
 const git = new Git(() => askpass?.env() ?? { GIT_TERMINAL_PROMPT: '0' });
 const pendingQuestions = new Map<number, (answer: string | null) => void>();
 let questionId = 0;
+// Earlier versions of pages, kept by the app (see history.ts).
+let snapshots: Snapshots;
 
 function askWriter(question: string): Promise<string | null> {
   if (!win) return Promise.resolve(null);
@@ -456,6 +459,9 @@ function registerIpc() {
   });
   ipcMain.handle('read-file', (_e, rel: string) => readDocument(requireProject(), rel));
   ipcMain.handle('write-file', async (_e, rel: string, text: string) => {
+    // The page as it was, as an earlier version (see history.ts).
+    const before = await readDocument(requireProject(), rel).catch(() => null);
+    if (before !== null && before !== text) await snapshots.keep(requireProject().root, rel, before).catch(() => {});
     fingerprints.set(rel, fingerprintText(text));
     await writeDocument(requireProject(), rel, text);
     buildFor(requireProject(), rel, false);
@@ -497,6 +503,34 @@ function registerIpc() {
     await pagesChanged(p, p.files.filter((f) => f !== rel));
     buildFor(p, rel, false);
     return { trashed: true };
+  });
+  // A page's earlier versions: the app's snapshots and its commits, newest first.
+  ipcMain.handle('page-history', async (_e, rel: string): Promise<PageVersion[]> => {
+    const p = requireProject();
+    const saved: PageVersion[] = (await snapshots.list(p.root, rel)).map((s) => ({ kind: 'saved', id: s.id, date: s.date }));
+    const repo = await git.repoRoot(p.root);
+    const commits: PageVersion[] = repo
+      ? (await git.fileHistory(repo, relative(repo, join(p.root, rel)).split(sep).join('/'))).map((c) => ({
+          kind: 'commit',
+          id: c.commit,
+          date: c.date,
+          author: c.author,
+          message: c.message,
+          path: c.path,
+        }))
+      : [];
+    return [...saved, ...commits].sort((a, b) => b.date.localeCompare(a.date));
+  });
+  ipcMain.handle('page-version', async (_e, rel: string, version: PageVersion): Promise<string | null> => {
+    const p = requireProject();
+    if (version.kind === 'saved') return snapshots.read(p.root, rel, version.id);
+    const repo = await git.repoRoot(p.root);
+    return repo && version.path ? git.fileAt(repo, version.id, version.path) : null;
+  });
+  // Keep the page as it is now before replacing it with an older version.
+  ipcMain.handle('snapshot-page', async (_e, rel: string) => {
+    const p = requireProject();
+    await snapshots.keep(p.root, rel, await readDocument(p, rel), { force: true });
   });
   ipcMain.handle('git-info', () => gitInfo());
   ipcMain.handle('choose-folder', async (_e, title: string) => {
@@ -620,6 +654,7 @@ function buildMenu(theme: Theme = nativeTheme.themeSource) {
         { type: 'separator' },
         { label: 'New Page…', accelerator: 'CmdOrCtrl+N', click: () => send('new-page') },
         { label: 'Delete Page…', click: () => send('delete-page') },
+        { id: 'page-history', label: 'Page History…', click: () => send('page-history') },
         { label: 'Save', accelerator: 'CmdOrCtrl+S', click: () => send('save') },
         { type: 'separator' },
         { role: 'quit' },
@@ -700,6 +735,7 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  snapshots = new Snapshots(join(app.getPath('userData'), 'history'));
   askpass = new AskPass(app.getPath('userData'), askWriter);
   await askpass.start().catch((e) => {
     console.warn('Git prompts unavailable:', e);

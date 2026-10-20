@@ -100,6 +100,17 @@ With an internal PyPI mirror instead, the private environment works too: uv read
     wouldn't read back the same
   - atomic writes, and a page's line endings (LF or Windows CRLF) are kept
   - changes made outside the app reload, or are flagged if there are unsaved edits
+- **Page history** (File → Page History…, or right-click a page → History…): the
+  page's earlier versions, newest first:
+  - the app's own: before saving a page, it keeps the page as it was, at most once
+    every 10 minutes (the last 50 per page, for 30 days, in the app's data folder,
+    not the repository), so a paragraph deleted by mistake can still be found even
+    if it was never committed;
+  - every commit that changed it, with who and why (following renames).
+
+  Each shows as **Changes since** (what's different now) or **This version**
+  (formatted). **Restore this version** puts it back, and keeps the page as it was
+  first, so a restore can be undone too.
 
 ### Pages and the table of contents
 

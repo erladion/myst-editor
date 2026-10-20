@@ -1,9 +1,18 @@
 // Git through the system's own `git`, which brings HTTPS and SSH, the writer's keys
 // and their credential helpers. Questions git or ssh ask go through AskPass.
+import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { GitChange, GitStatus } from '../../shared/git.js';
 import { run, type RunResult } from '../sphinx/run.js';
+
+export interface FileCommit {
+  commit: string;
+  author: string;
+  date: string; // ISO 8601
+  message: string;
+  path: string; // the file's path in that commit
+}
 
 export class GitError extends Error {
   constructor(
@@ -27,6 +36,19 @@ export class Git {
       env: { ...process.env, ...this.env(), LC_ALL: 'C', ELECTRON_RUN_AS_NODE: undefined },
       log,
       timeoutMs: 30 * 60_000,
+    });
+  }
+
+  // Only standard output, unshortened: for file contents and logs, where git's
+  // messages on stderr mustn't mix in.
+  private stdout(args: string[], cwd: string): Promise<string | null> {
+    return new Promise((resolve) => {
+      execFile(
+        'git',
+        [...SAFE, ...args],
+        { cwd, env: { ...process.env, ...this.env(), LC_ALL: 'C', ELECTRON_RUN_AS_NODE: undefined }, maxBuffer: 64 * 1024 * 1024, encoding: 'utf8', timeout: 60_000 },
+        (error, out) => resolve(error ? null : out),
+      );
     });
   }
 
@@ -107,6 +129,28 @@ export class Git {
     if (!message.trim()) throw new GitError('Write a short message saying what changed.', '');
     await this.checked(['add', '--all', '--', ...paths], root);
     await this.checked(['commit', '--only', '-m', message.trim(), '--', ...paths], root);
+  }
+
+  // The commits that changed a file (relative to the repository root), newest first,
+  // following renames: each with the path the file had then.
+  async fileHistory(root: string, path: string, limit = 200): Promise<FileCommit[]> {
+    const out = await this.stdout(['log', '--follow', `--max-count=${limit}`, '--name-only', '--format=%x1e%H%x1f%an%x1f%aI%x1f%s', '--', path], root);
+    if (out === null) return [];
+    return out
+      .split('\x1e')
+      .slice(1)
+      .map((record) => {
+        const [header, ...rest] = record.split('\n');
+        const [commit, author, date, message] = header.split('\x1f');
+        return { commit, author, date, message, path: rest.find((l) => l.trim())?.trim() ?? path };
+      })
+      .filter((c) => c.commit);
+  }
+
+  // A file as it was in a commit (null if it didn't exist there).
+  async fileAt(root: string, commit: string, path: string): Promise<string | null> {
+    if (!/^[0-9a-f]{7,64}$/i.test(commit)) return null;
+    return this.stdout(['show', `${commit}:${path}`], root);
   }
 
   async push(root: string, log?: (t: string) => void): Promise<void> {

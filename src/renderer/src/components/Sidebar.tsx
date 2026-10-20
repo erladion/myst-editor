@@ -20,6 +20,7 @@ interface Props {
   onNewPage: (folder: string | null) => void; // null: next to the current page
   onDeletePage: (path: string) => void;
   onMoveInContents: (move: ContentsMove) => Promise<string | null>; // an error, or null
+  onHistory: (path: string) => void;
 }
 
 interface MenuItem {
@@ -67,7 +68,7 @@ function buildTree(files: string[], base: string): Folder {
   return root;
 }
 
-export function Sidebar({ projectName, files, titles, projects, builds, current, unsaved, onOpen, onOpenFolder, onNewPage, onDeletePage, onMoveInContents }: Props) {
+export function Sidebar({ projectName, files, titles, projects, builds, current, unsaved, onOpen, onOpenFolder, onNewPage, onDeletePage, onMoveInContents, onHistory }: Props) {
   const [menu, setMenu] = useState<PageMenu | null>(null);
   useEffect(() => {
     if (!menu) return;
@@ -191,6 +192,7 @@ export function Sidebar({ projectName, files, titles, projects, builds, current,
           {[
             ['Open', () => onOpen(menu.path)],
             ...menu.extra.map((m) => [m.label, m.action]),
+            ['History…', () => onHistory(menu.path)],
             ['New page here…', () => onNewPage(menu.path.includes('/') ? menu.path.slice(0, menu.path.lastIndexOf('/')) : '')],
             ['Delete page…', () => onDeletePage(menu.path)],
           ].map(([label, action]) => (

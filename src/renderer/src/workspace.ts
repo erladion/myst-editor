@@ -114,6 +114,20 @@ export class Workspace {
     this.sessions.get(path)?.map.merge(map);
   }
 
+  // Put an earlier version of a page back, and save it. In the Markdown view the text
+  // is replaced; otherwise the page is read again from it.
+  async restore(path: string, text: string): Promise<boolean> {
+    const s = await this.session(path);
+    const lf = toLf(text);
+    if (s.text !== null) {
+      this.setText(path, lf);
+    } else {
+      const fresh = this.load(path, withEol(lf, s.eol), s.eol);
+      this.sessions.set(path, { ...fresh, savedText: s.savedText, dirty: true, status: { kind: 'pending' } });
+    }
+    return this.save(path);
+  }
+
   // Forget a page (it was deleted).
   close(path: string) {
     clearTimeout(this.timers.get(path));

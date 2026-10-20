@@ -1,7 +1,7 @@
 // The API the preload script exposes to the renderer as `window.myst`.
 import type { MystConfig } from '../core/project-config.js';
 import type { EnvironmentChoice, PythonCandidate, SphinxState } from './sphinx.js';
-import type { GitInfo } from './git.js';
+import type { GitInfo, PageVersion } from './git.js';
 
 // One Sphinx project (a conf.py and the pages under it) inside the opened folder.
 export interface SphinxProject {
@@ -43,7 +43,7 @@ export interface ProjectChanged {
   project: ProjectInfo;
 }
 
-export type MenuCommand = 'open-folder' | 'save' | 'toggle-source' | 'clone' | 'new-page' | 'delete-page' | 'go-to-page' | 'toggle-outline';
+export type MenuCommand = 'open-folder' | 'save' | 'toggle-source' | 'clone' | 'new-page' | 'delete-page' | 'go-to-page' | 'toggle-outline' | 'page-history';
 
 export interface MystApi {
   // The project from the command line or the last session, if any.
@@ -68,6 +68,11 @@ export interface MystApi {
   addImageData(page: string, name: string, bytes: Uint8Array): Promise<string>;
   // Where a dropped or pasted File is on disk ('' for a clipboard picture).
   filePath(file: File): string;
+  // A page's earlier versions, newest first, and one of them as text (null if it
+  // can't be read). snapshotPage keeps the page as it is now, before a restore.
+  pageHistory(rel: string): Promise<PageVersion[]>;
+  pageVersion(rel: string, version: PageVersion): Promise<string | null>;
+  snapshotPage(rel: string): Promise<void>;
   // Pick an image for a page: its path relative to the page, or null if cancelled.
   // Images from outside the opened folder are copied into one.
   chooseImage(page: string): Promise<string | null>;

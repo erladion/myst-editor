@@ -23,6 +23,8 @@ import { AskPassHost, CloneDialog, GitChip, GitPanel } from './components/GitUi'
 import { NewPageDialog, type NewPage } from './components/PageDialogs';
 import { GoToPage, Outline, markdownHeadings, type Heading } from './components/Navigation';
 import { loadPlaces, rememberPage, rememberScroll } from './places';
+import { HistoryDialog, when } from './components/History';
+import type { PageVersion } from '../../shared/git';
 import { addToContents, contentsPages, defaultContents, folderOf, listingPages, moveInContents, pageFolders, removeFromContents, type ContentsMove } from './pages';
 import type { GitInfo } from '../../shared/git';
 import { resolveRef } from './paths';
@@ -116,6 +118,7 @@ export function App() {
   const [cloning, setCloning] = useState(false);
   const [opening, setOpening] = useState<OpenProgress | null>(null);
   const [goTo, setGoTo] = useState(false);
+  const [history, setHistory] = useState<string | null>(null); // the page whose history is shown
   const [outline, setOutline] = useStoredState<'shown' | 'hidden'>('mysteditor.outline', 'hidden');
   const [recentFolders, setRecentFolders] = useState<string[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -409,6 +412,30 @@ export function App() {
     [ws, openPage],
   );
 
+  // Put an earlier version of a page back, keeping the page as it is now in its
+  // history first, so this can be undone the same way.
+  const restoreVersion = useCallback(
+    async (path: string, text: string, version: PageVersion) => {
+      if (!ws) return;
+      const title = ws.project.titles[path] ?? path;
+      const ok = await dialogs.current!.confirm({
+        title: 'Restore this version',
+        message: `Replace “${title}” with the version from ${when(version.date)}? The page as it is now is kept in its history, so you can go back to it.`,
+        confirm: 'Restore',
+      });
+      if (!ok) return;
+      try {
+        await ws.save(path);
+        await api.snapshotPage(path);
+        if (!(await ws.restore(path, text))) throw new Error('it couldn’t be saved');
+        setHistory(null);
+      } catch (e) {
+        dialogs.current?.notify(`Couldn’t restore ${path}: ${String(e instanceof Error ? e.message : e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')}`);
+      }
+    },
+    [ws],
+  );
+
   // Move a page in the contents (dragged in the sidebar, or Move up / down).
   const moveInContentsOf = useCallback(
     async (move: ContentsMove) => {
@@ -444,6 +471,7 @@ export function App() {
       else if (cmd === 'new-page' && ws) setNewPage({ folder: null });
       else if (cmd === 'delete-page' && ws?.current) void deletePage(ws.current);
       else if (cmd === 'go-to-page' && ws) setGoTo(true);
+      else if (cmd === 'page-history' && ws?.current) setHistory(ws.current);
       else if (cmd === 'toggle-outline') setOutline((o) => (o === 'shown' ? 'hidden' : 'shown'));
     });
     const offRecent = api.onOpenFolderPath((folder) => void openFolder(folder));
@@ -631,6 +659,7 @@ export function App() {
         onNewPage={(folder) => setNewPage({ folder })}
         onDeletePage={(path) => void deletePage(path)}
         onMoveInContents={moveInContentsOf}
+        onHistory={(path) => void openPage(path).then(() => setHistory(path))}
       />
       <main className="main">
         {mode === 'markdown' ? (
@@ -769,6 +798,16 @@ export function App() {
       )}
       {cloning && <CloneDialog onClose={() => setCloning(false)} onCloned={onCloned} />}
       <AskPassHost />
+      {history && ws.get(history) && (
+        <HistoryDialog
+          path={history}
+          title={ws.project.titles[history] ?? history}
+          current={ws.sourceOf(history)}
+          ctx={ctx}
+          onRestore={(text, version) => void restoreVersion(history, text, version)}
+          onClose={() => setHistory(null)}
+        />
+      )}
       {goTo && <GoToPage files={ws.project.files} titles={ws.project.titles} recent={loadPlaces(ws.project.root).recent} onOpen={(p) => void openPage(p)} onClose={() => setGoTo(false)} />}
       {newPage && (
         <NewPageDialog

@@ -2174,3 +2174,129 @@ button.secondary {
   white-space: nowrap;
   max-width: 100%;
 }
+
+/* ---- page history ---- */
+
+.modal.history {
+  width: min(1040px, 94vw);
+  max-width: none;
+}
+
+.history-body {
+  display: flex;
+  gap: 12px;
+  height: min(64vh, 640px);
+}
+
+.history-list {
+  flex: none;
+  width: 290px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.history-list li {
+  display: flex;
+  flex-direction: column;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.history-list li.active {
+  background: var(--accent-soft);
+}
+
+.history-list li.muted {
+  cursor: default;
+}
+
+.history-when {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.history-what {
+  font-size: 12px;
+  color: var(--fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-view {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.history-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-soft);
+}
+
+.history-tabs button[aria-selected='true'] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: transparent;
+}
+
+.history-preview {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.history-changes {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 12px;
+}
+
+.history-legend {
+  margin: 0 0 6px;
+  font-size: 12px;
+}
+
+.history-legend span {
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin-right: 6px;
+}
+
+.history-changes pre {
+  margin: 0;
+  font: 12.5px/1.55 var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.diff-add,
+.history-legend .add {
+  background: color-mix(in srgb, var(--tone-tip) 16%, transparent);
+}
+
+.diff-del,
+.history-legend .del {
+  background: color-mix(in srgb, var(--tone-danger) 14%, transparent);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--tone-danger) 50%, transparent);
+}
+
+.diff-fold {
+  color: var(--fg-muted);
+  font-style: italic;
+  padding: 2px 0;
+}

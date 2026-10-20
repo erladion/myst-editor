@@ -14,6 +14,11 @@ export interface GitStatus {
   changes: GitChange[];
 }
 
+// An earlier version of a page: one the app kept before a save, or a commit.
+export type PageVersion =
+  | { kind: 'saved'; id: string; date: string }
+  | { kind: 'commit'; id: string; date: string; author: string; message: string; path: string };
+
 // What the renderer knows about the opened folder's repository.
 export interface GitInfo {
   available: boolean; // a `git` command was found
