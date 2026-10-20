@@ -74,3 +74,55 @@ export function removeTocEntries(source: string, docnames: Set<string>, fromDir:
   });
   return kept.length === lines.length ? null : kept.join('\n');
 }
+
+// A toctree's entries, with the line each is on (in `source.split('\n')`).
+export interface TocLine {
+  line: number;
+  text: string;
+  docname: string;
+}
+
+export function tocLines(source: string, fromDir: string): TocLine[] {
+  const lines = source.split('\n');
+  const last = splitDirective(source)?.closing ? lines.length - 1 : lines.length;
+  const out: TocLine[] = [];
+  for (let i = 1; i < last; i++) {
+    const text = lines[i];
+    if (!text.trim() || /^\s*:[\w-]+:/.test(text)) continue;
+    const target = entryTarget(text);
+    // External links and the "self" entry aren't pages.
+    if (/^[a-z][\w+.-]*:/i.test(target) || target === 'self') continue;
+    out.push({ line: i, text, docname: entryDocname(target, fromDir) });
+  }
+  return out;
+}
+
+// An entry line pointed at `docname` from a toctree on a page in `fromDir`, keeping
+// its title (`Title <path>`) and indentation.
+export function retarget(text: string, docname: string, fromDir: string): string {
+  const indent = /^\s*/.exec(text)![0];
+  const path = entryFor(docname, fromDir);
+  const titled = /^(.*\S)\s*<[^<>]+>\s*$/.exec(text.trim());
+  return indent + (titled ? `${titled[1]} <${path}>` : path);
+}
+
+// The toctree with `entry` inserted before the entry for `before` (null if that
+// isn't in this toctree).
+export function insertTocEntry(source: string, entry: string, before: string, fromDir: string): string | null {
+  const at = tocLines(source, fromDir).find((l) => l.docname === before);
+  if (!at) return null;
+  const lines = source.split('\n');
+  const indent = /^\s*/.exec(lines[at.line])![0];
+  lines.splice(at.line, 0, indent + entry.trim());
+  return lines.join('\n');
+}
+
+// The toctree without the entry for `docname`, and that entry's line (null if it
+// isn't listed here by name, e.g. only through a :glob: pattern).
+export function takeTocEntry(source: string, docname: string, fromDir: string): { source: string; text: string } | null {
+  const at = tocLines(source, fromDir).find((l) => l.docname === docname);
+  if (!at) return null;
+  const lines = source.split('\n');
+  const [text] = lines.splice(at.line, 1);
+  return { source: lines.join('\n'), text };
+}

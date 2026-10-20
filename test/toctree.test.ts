@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addTocEntry, entryDocname, entryFor, globIncludes, removeTocEntries } from '../src/core/toctree.js';
+import { addTocEntry, entryDocname, entryFor, globIncludes, insertTocEntry, removeTocEntries, retarget, takeTocEntry, tocLines } from '../src/core/toctree.js';
 import { defaultContents, pageFolders, pageSlug } from '../src/renderer/src/pages.js';
 import type { ProjectInfo } from '../src/shared/api.js';
 
@@ -47,5 +47,28 @@ describe('new pages', () => {
     expect(defaultContents(project, 'docs/guide/deep', ['docs/guide/index.md', 'docs/index.md'])).toBe('docs/guide/index.md');
     expect(defaultContents(project, 'docs/other', ['docs/guide/index.md', 'docs/index.md'])).toBe('docs/index.md');
     expect(defaultContents(project, 'elsewhere', ['docs/index.md'])).toBeNull();
+  });
+});
+
+describe('moving entries', () => {
+  const toc = '```{toctree}\n:caption: Guide\n\ninstall\nSetting up <configure>\n/other/faq\nhttps://example.com\n```';
+  it('lists entries with their lines and page names', () => {
+    expect(tocLines(toc, 'guide').map((l) => [l.line, l.docname])).toEqual([
+      [3, 'guide/install'],
+      [4, 'guide/configure'],
+      [5, 'other/faq'],
+    ]);
+  });
+  it('takes an entry out and puts it back elsewhere, title and all', () => {
+    const taken = takeTocEntry(toc, 'guide/configure', 'guide')!;
+    expect(taken.text).toBe('Setting up <configure>');
+    expect(insertTocEntry(taken.source, taken.text, 'guide/install', 'guide')).toBe('```{toctree}\n:caption: Guide\n\nSetting up <configure>\ninstall\n/other/faq\nhttps://example.com\n```');
+    expect(insertTocEntry(toc, 'x', 'not/here', 'guide')).toBeNull();
+    expect(takeTocEntry(toc, 'not/here', 'guide')).toBeNull();
+  });
+  it('rewrites an entry for a toctree in another folder', () => {
+    expect(retarget('Setting up <configure>', 'guide/configure', '')).toBe('Setting up <guide/configure>');
+    expect(retarget('  install', 'guide/install', 'other')).toBe('  /guide/install');
+    expect(retarget('install', 'guide/install', 'guide')).toBe('install');
   });
 });

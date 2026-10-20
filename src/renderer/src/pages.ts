@@ -3,7 +3,9 @@ import type { Node as PMNode } from 'prosemirror-model';
 import type { EditorState } from 'prosemirror-state';
 import type { ProjectInfo, SphinxProject } from '../../shared/api';
 import type { SphinxInfo } from '../../shared/sphinx';
-import { addTocEntry, entryFor, globIncludes, removeTocEntries } from '../../core/toctree';
+import { addTocEntry, entryFor, globIncludes, insertTocEntry, removeTocEntries, retarget, takeTocEntry } from '../../core/toctree';
+import { loadDocument } from '../../core/document';
+import { configFor } from '../../shared/projects';
 import { dirname } from './paths';
 import type { Workspace } from './workspace';
 
@@ -121,4 +123,77 @@ export function defaultContents(project: ProjectInfo, folder: string, pages: str
     if (pages.includes(index)) return index;
     if (!d) return null;
   }
+}
+
+// Moving a page in the contents: out of one page's table of contents (if it was in
+// one) and into another's, before a given page or at the end. The page's file stays
+// where it is.
+export interface ContentsMove {
+  page: string; // the page moved
+  from: string | null; // the page whose contents list it; null if none does
+  to: string; // the page whose contents get it
+  before: string | null; // the page it goes in front of; null: at the end
+}
+
+export async function moveInContents(ws: Workspace, project: SphinxProject | null, move: ContentsMove): Promise<string | null> {
+  const doc = docnameOf(project, move.page);
+  const before = move.before && docnameOf(project, move.before);
+  const dirOf = (page: string) => dirname(docnameOf(project, page));
+  const toDir = dirOf(move.to);
+  const title = (p: string) => ws.project.titles[p] ?? p;
+
+  // The entry as written where it is now, to keep its "Title <path>" form.
+  let text: string | null = null;
+  if (move.from) {
+    const fromDir = dirOf(move.from);
+    for (const { node } of toctrees((await ws.stateOf(move.from)).doc)) {
+      text ??= takeTocEntry(node.attrs.source, doc, fromDir)?.text ?? null;
+    }
+    if (text === null) return `“${title(move.page)}” is listed in “${title(move.from)}” by a pattern (:glob:), so its place there follows the pattern. Change it in the Markdown view.`;
+  }
+  const entry = text !== null ? retarget(text, doc, toDir) : entryFor(doc, toDir);
+
+  // Into the new place first, so a failure can't lose the page from the contents.
+  const into = (state: EditorState) => {
+    let tr = state.tr;
+    // Moving within one page: out of where it is (and remember which toctree that was).
+    // Toctrees are atoms, so changing one leaves the others' positions as they were.
+    let home: number | null = null;
+    if (move.from === move.to) {
+      for (const { node, pos } of toctrees(tr.doc)) {
+        const taken = takeTocEntry(node.attrs.source, doc, toDir);
+        if (!taken) continue;
+        tr = tr.setNodeMarkup(pos, null, { ...node.attrs, source: taken.source });
+        home ??= pos;
+      }
+    }
+    const now = toctrees(tr.doc);
+    if (!now.length) {
+      // A page with no table of contents gets one, at its end.
+      const { doc: snippet, map } = loadDocument('```{toctree}\n' + entry.trim() + '\n```\n', configFor(ws.project, move.to));
+      ws.absorbInto(move.to, map);
+      return tr.insert(tr.doc.content.size, snippet.content);
+    }
+    for (const { node, pos } of now) {
+      const next = before ? insertTocEntry(node.attrs.source, entry, before, toDir) : null;
+      if (next !== null) return tr.setNodeMarkup(pos, null, { ...node.attrs, source: next });
+    }
+    // At the end: of the toctree it was in (moving within a page), else the last one.
+    const target = now.find((t) => t.pos === home) ?? now[now.length - 1];
+    return tr.setNodeMarkup(target.pos, null, { ...target.node.attrs, source: addTocEntry(target.node.attrs.source, entry.trim()) });
+  };
+  if (!(await ws.edit(move.to, into))) return `“${title(move.to)}” is open in the Markdown view or couldn’t be saved.`;
+  if (move.from && move.from !== move.to) {
+    const fromDir = dirOf(move.from);
+    const out = await ws.edit(move.from, (state) => {
+      let tr = state.tr;
+      for (const { node, pos } of toctrees(state.doc)) {
+        const taken = takeTocEntry(node.attrs.source, doc, fromDir);
+        if (taken) tr = tr.setNodeMarkup(pos, null, { ...node.attrs, source: taken.source });
+      }
+      return tr;
+    });
+    if (!out) return `It’s now also in “${title(move.to)}”, but couldn’t be taken out of “${title(move.from)}”, which is open in the Markdown view or couldn’t be saved.`;
+  }
+  return null;
 }

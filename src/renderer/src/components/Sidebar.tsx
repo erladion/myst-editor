@@ -5,6 +5,7 @@ import type { SphinxInfo } from '../../../shared/sphinx';
 import { projectFor } from '../../../shared/projects';
 import { basename } from '../paths';
 import { tocTree, type TocEntry } from '../sphinx';
+import type { ContentsMove } from '../pages';
 
 interface Props {
   projectName: string;
@@ -18,6 +19,12 @@ interface Props {
   onOpenFolder: () => void;
   onNewPage: (folder: string | null) => void; // null: next to the current page
   onDeletePage: (path: string) => void;
+  onMoveInContents: (move: ContentsMove) => Promise<string | null>; // an error, or null
+}
+
+interface MenuItem {
+  label: string;
+  action: () => void;
 }
 
 // What right-clicking a page offers.
@@ -25,6 +32,7 @@ interface PageMenu {
   path: string;
   x: number;
   y: number;
+  extra: MenuItem[]; // Move up / down, for pages in the contents
 }
 
 interface Folder {
@@ -59,7 +67,7 @@ function buildTree(files: string[], base: string): Folder {
   return root;
 }
 
-export function Sidebar({ projectName, files, titles, projects, builds, current, unsaved, onOpen, onOpenFolder, onNewPage, onDeletePage }: Props) {
+export function Sidebar({ projectName, files, titles, projects, builds, current, unsaved, onOpen, onOpenFolder, onNewPage, onDeletePage, onMoveInContents }: Props) {
   const [menu, setMenu] = useState<PageMenu | null>(null);
   useEffect(() => {
     if (!menu) return;
@@ -72,10 +80,10 @@ export function Sidebar({ projectName, files, titles, projects, builds, current,
     };
   }, [menu]);
   // Right-click (or the context-menu key) on a page.
-  const onPageMenu = (e: React.MouseEvent, path: string) => {
+  const onPageMenu = (e: React.MouseEvent, path: string, extra: MenuItem[] = []) => {
     e.preventDefault();
     const box = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setMenu({ path, x: e.clientX || box.left + 16, y: e.clientY || box.bottom });
+    setMenu({ path, x: e.clientX || box.left + 16, y: e.clientY || box.bottom, extra });
   };
   const [mode, setMode] = useState<'contents' | 'files'>('contents');
   const [filter, setFilter] = useState('');
@@ -156,6 +164,7 @@ export function Sidebar({ projectName, files, titles, projects, builds, current,
                 )}
                 <ProjectPages
                   onPageMenu={onPageMenu}
+                  onMove={onMoveInContents}
                   project={project}
                   files={sections.byProject.get(project.id) ?? []}
                   allFiles={allFiles}
@@ -181,6 +190,7 @@ export function Sidebar({ projectName, files, titles, projects, builds, current,
         <div className="menu-items page-menu" role="menu" style={{ left: menu.x, top: menu.y }} onMouseDown={(e) => e.stopPropagation()}>
           {[
             ['Open', () => onOpen(menu.path)],
+            ...menu.extra.map((m) => [m.label, m.action]),
             ['New page here…', () => onNewPage(menu.path.includes('/') ? menu.path.slice(0, menu.path.lastIndexOf('/')) : '')],
             ['Delete page…', () => onDeletePage(menu.path)],
           ].map(([label, action]) => (
@@ -204,7 +214,8 @@ export function Sidebar({ projectName, files, titles, projects, builds, current,
 }
 
 interface ProjectPagesProps {
-  onPageMenu: (e: React.MouseEvent, path: string) => void;
+  onPageMenu: (e: React.MouseEvent, path: string, extra?: MenuItem[]) => void;
+  onMove: (move: ContentsMove) => Promise<string | null>; // an error, or null
   project: SphinxProject;
   files: string[];
   allFiles: Set<string>;
@@ -215,8 +226,11 @@ interface ProjectPagesProps {
   fileItem: (file: string) => ReactElement;
 }
 
-function ProjectPages({ onPageMenu, project, files, allFiles, info, current, unsaved, onOpen, fileItem }: ProjectPagesProps) {
-  const toc = useMemo(() => (info ? tocTree(info) : null), [info]);
+function ProjectPages({ onPageMenu, onMove, project, files, allFiles, info, current, unsaved, onOpen, fileItem }: ProjectPagesProps) {
+  // The order of pages just moved, until the next build shows them where they now are.
+  const [order, setOrder] = useState<Record<string, string[]>>({});
+  useEffect(() => setOrder({}), [info]);
+  const toc = useMemo(() => (info ? tocTree(info, order) : null), [info, order]);
   // Entries the writer opened or closed; the rest show the top level, and the way to
   // the current page. Kept by page name, so a new build doesn't reset them.
   const [chosen, setChosen] = useState<Record<string, boolean>>({});
@@ -226,22 +240,98 @@ function ProjectPages({ onPageMenu, project, files, allFiles, info, current, uns
     if (ancestors.some((d) => chosen[d] === false)) setChosen((c) => ({ ...c, ...Object.fromEntries(ancestors.map((d) => [d, true])) }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ancestors]);
+  const [drag, setDrag] = useState<TocEntry | null>(null);
+  const [dropAt, setDropAt] = useState<DropAt | null>(null);
+  const byName = useMemo(() => {
+    const map = new Map<string, TocEntry>();
+    const add = (e: TocEntry) => {
+      map.set(e.docname, e);
+      e.children.forEach(add);
+    };
+    if (toc?.root) add(toc.root);
+    toc?.orphans.forEach(add);
+    return map;
+  }, [toc]);
   if (!toc) return <FolderView folder={buildTree(files, project.dir)} depth={0} current={current} fileItem={fileItem} />;
+
+  const childrenOf = (d: string) => byName.get(d)?.children.map((c) => c.docname) ?? [];
+  const within = (d: string, ancestor: string) => {
+    for (let e = byName.get(d); e; e = e.parent ? byName.get(e.parent) : undefined) if (e.docname === ancestor) return true;
+    return false;
+  };
+  // What dropping `moved` there would do (and the order to show meanwhile), or null
+  // if it can't go there: onto itself or a page inside it, or next to the top page.
+  const plan = (moved: TocEntry, at: DropAt): { move: ContentsMove; order: Record<string, string[]>; parent: string } | null => {
+    const target = byName.get(at.docname);
+    if (!target || within(target.docname, moved.docname)) return null;
+    const parentName = at.where === 'into' ? target.docname : target.parent;
+    const parent = parentName ? byName.get(parentName) : undefined;
+    if (!parentName || !parent || !allFiles.has(parent.source)) return null;
+    const siblings = childrenOf(parentName).filter((c) => c !== moved.docname);
+    const index = at.where === 'into' ? siblings.length : siblings.indexOf(target.docname) + (at.where === 'after' ? 1 : 0);
+    const placed = [...siblings.slice(0, index), moved.docname, ...siblings.slice(index)];
+    if (moved.parent === parentName && placed.join('\0') === childrenOf(parentName).join('\0')) return null; // where it is already
+    const next = { ...order };
+    if (moved.parent) next[moved.parent] = childrenOf(moved.parent).filter((c) => c !== moved.docname);
+    next[parentName] = placed;
+    const before = placed[index + 1];
+    return {
+      move: { page: moved.source, from: moved.parent ? byName.get(moved.parent)!.source : null, to: parent.source, before: before ? byName.get(before)!.source : null },
+      order: next,
+      parent: parentName,
+    };
+  };
+  const apply = async (p: NonNullable<ReturnType<typeof plan>>) => {
+    const before = order;
+    setOrder(p.order);
+    setChosen((c) => ({ ...c, [p.parent]: true })); // show where it went
+    if (await onMove(p.move)) setOrder(before); // it didn't work: show it as it was
+  };
   const tree: TreeProps = {
     files: allFiles,
     current,
     unsaved,
     onOpen,
-    onPageMenu,
     isOpen: (e, depth) => chosen[e.docname] ?? (depth === 0 || ancestors.includes(e.docname)),
     toggle: (e, open) => setChosen((c) => ({ ...c, [e.docname]: open })),
+    // The top page stays at the top; every other page (listed or not) can move.
+    draggable: (e) => allFiles.has(e.source) && e.docname !== toc.root?.docname,
+    dropAt,
+    onDragStart: setDrag,
+    onDragOver: (e, at) => {
+      if (!drag) return false;
+      const ok = !!plan(drag, at);
+      setDropAt(ok ? at : null);
+      return ok;
+    },
+    onDrop: () => {
+      const p = drag && dropAt && plan(drag, dropAt);
+      setDrag(null);
+      setDropAt(null);
+      if (p) void apply(p);
+    },
+    onDragEnd: () => {
+      setDrag(null);
+      setDropAt(null);
+    },
+    // Right-click: Move up / Move down, among the pages next to it.
+    onPageMenu: (e, entry) => {
+      const siblings = entry.parent ? childrenOf(entry.parent) : [];
+      const i = siblings.indexOf(entry.docname);
+      const up = i > 0 ? plan(entry, { docname: siblings[i - 1], where: 'before' }) : null;
+      const down = i >= 0 && i < siblings.length - 1 ? plan(entry, { docname: siblings[i + 1], where: 'after' }) : null;
+      onPageMenu(e, entry.source, [
+        ...(up ? [{ label: 'Move up', action: () => void apply(up) }] : []),
+        ...(down ? [{ label: 'Move down', action: () => void apply(down) }] : []),
+      ]);
+    },
   };
   return (
     <>
       {toc.root && <ul>{tocItem(toc.root, tree, 0)}</ul>}
       {toc.orphans.length > 0 && (
         <>
-          <div className="folder-name static" title="Pages that no table of contents links to">
+          <div className="folder-name static" title="Pages that no table of contents links to. Drag one into the contents to add it.">
             Not in the contents
           </div>
           <ul>{toc.orphans.map((o) => tocItem(o, tree, 0))}</ul>
@@ -264,14 +354,26 @@ function ancestorsOf(root: TocEntry | null, source: string): string[] {
   return root && find(root) ? path : [];
 }
 
+// Where a dragged page would go: before or after a page, or into its contents.
+interface DropAt {
+  docname: string;
+  where: 'before' | 'after' | 'into';
+}
+
 interface TreeProps {
   files: Set<string>;
   current: string | null;
   unsaved: Set<string>;
   onOpen: (path: string) => void;
-  onPageMenu: (e: React.MouseEvent, path: string) => void;
+  onPageMenu: (e: React.MouseEvent, entry: TocEntry) => void;
   isOpen: (entry: TocEntry, depth: number) => boolean;
   toggle: (entry: TocEntry, open: boolean) => void;
+  draggable: (entry: TocEntry) => boolean;
+  dropAt: DropAt | null;
+  onDragStart: (entry: TocEntry) => void;
+  onDragOver: (e: React.DragEvent, at: DropAt) => boolean; // whether it can go there
+  onDrop: () => void;
+  onDragEnd: () => void;
 }
 
 function tocItem(entry: TocEntry, tree: TreeProps, depth: number): ReactElement {
@@ -279,9 +381,34 @@ function tocItem(entry: TocEntry, tree: TreeProps, depth: number): ReactElement 
   const editable = files.has(entry.source);
   const parent = entry.children.length > 0;
   const open = parent && tree.isOpen(entry, depth);
+  const drop = tree.dropAt?.docname === entry.docname ? ` drop-${tree.dropAt.where}` : '';
   return (
     <li key={entry.docname}>
-      <div className="toc-row" style={{ paddingLeft: depth * 14 }}>
+      <div
+        className={`toc-row${drop}`}
+        style={{ paddingLeft: depth * 14 }}
+        draggable={tree.draggable(entry)}
+        onDragStart={(e) => {
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', entry.title);
+          tree.onDragStart(entry);
+        }}
+        onDragOver={(e) => {
+          // Top third: before it; bottom third: after it; middle: into its contents.
+          const box = e.currentTarget.getBoundingClientRect();
+          const y = (e.clientY - box.top) / box.height;
+          const where = y < 0.3 ? 'before' : y > 0.7 ? 'after' : 'into';
+          if (tree.onDragOver(e, { docname: entry.docname, where })) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+          }
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          tree.onDrop();
+        }}
+        onDragEnd={tree.onDragEnd}
+      >
         {parent ? (
           <button
             type="button"
@@ -299,11 +426,11 @@ function tocItem(entry: TocEntry, tree: TreeProps, depth: number): ReactElement 
         <button
           type="button"
           className={`page${entry.source === current ? ' current' : ''}`}
-          title={editable ? entry.source : `${entry.source} isn’t a Markdown page`}
+          title={editable ? `${entry.source} (drag to move it in the contents)` : `${entry.source} isn’t a Markdown page`}
           aria-current={entry.source === current ? 'page' : undefined}
           disabled={!editable}
           onClick={() => onOpen(entry.source)}
-          onContextMenu={(e) => editable && tree.onPageMenu(e, entry.source)}
+          onContextMenu={(e) => editable && tree.onPageMenu(e, entry)}
         >
           <span className="page-title">{entry.title}</span>
           {unsaved.has(entry.source) && <span className="unsaved-dot" title="Unsaved changes" />}

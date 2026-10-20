@@ -97,12 +97,14 @@ export interface TocEntry {
   source: string;
   title: string;
   children: TocEntry[];
+  parent: string | null; // the page whose table of contents lists it; null at the top or outside
 }
 
 // The page hierarchy from the root document's toctrees, and pages not in it.
-export function tocTree(info: SphinxInfo): { root: TocEntry | null; orphans: TocEntry[] } {
+// `order` replaces some pages' children (a move that the next build will confirm).
+export function tocTree(info: SphinxInfo, order: Record<string, string[]> = {}): { root: TocEntry | null; orphans: TocEntry[] } {
   const seen = new Set<string>();
-  const entry = (docname: string): TocEntry | null => {
+  const entry = (docname: string, parent: string | null): TocEntry | null => {
     const doc = info.docs[docname];
     if (!doc || seen.has(docname)) return null;
     seen.add(docname);
@@ -110,13 +112,14 @@ export function tocTree(info: SphinxInfo): { root: TocEntry | null; orphans: Toc
       docname,
       source: doc.source,
       title: doc.title ?? docname,
-      children: doc.children.map(entry).filter((e): e is TocEntry => !!e),
+      parent,
+      children: (order[docname] ?? doc.children).map((c) => entry(c, docname)).filter((e): e is TocEntry => !!e),
     };
   };
-  const root = entry(info.rootDoc);
+  const root = entry(info.rootDoc, null);
   const orphans = Object.keys(info.docs)
     .filter((d) => !seen.has(d))
     .sort()
-    .map((d) => ({ docname: d, source: info.docs[d].source, title: info.docs[d].title ?? d, children: [] }));
+    .map((d) => ({ docname: d, source: info.docs[d].source, title: info.docs[d].title ?? d, children: [], parent: null }));
   return { root, orphans };
 }

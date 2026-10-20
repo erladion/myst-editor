@@ -21,7 +21,7 @@ import { LivePreview } from './components/LivePreview';
 import { AdvancedBar } from './components/AdvancedBar';
 import { AskPassHost, CloneDialog, GitChip, GitPanel } from './components/GitUi';
 import { NewPageDialog, type NewPage } from './components/PageDialogs';
-import { addToContents, contentsPages, defaultContents, folderOf, listingPages, pageFolders, removeFromContents } from './pages';
+import { addToContents, contentsPages, defaultContents, folderOf, listingPages, moveInContents, pageFolders, removeFromContents, type ContentsMove } from './pages';
 import type { GitInfo } from '../../shared/git';
 import { resolveRef } from './paths';
 import { docnameOf, problemsIn, resolveLink, resolveRole, suggestTargets } from './sphinx';
@@ -341,6 +341,17 @@ export function App() {
     [ws, openPage],
   );
 
+  // Move a page in the contents (dragged in the sidebar, or Move up / down).
+  const moveInContentsOf = useCallback(
+    async (move: ContentsMove) => {
+      if (!ws) return 'No folder is open.';
+      const problem = await moveInContents(ws, projectFor(ws.project.projects, move.to), move).catch((e) => String(e instanceof Error ? e.message : e));
+      if (problem) dialogs.current?.notify(problem);
+      return problem;
+    },
+    [ws],
+  );
+
   const createPage = useCallback(
     async ({ title, path, contents }: NewPage) => {
       if (!ws) return;
@@ -500,6 +511,7 @@ export function App() {
         onOpenFolder={chooseFolder}
         onNewPage={(folder) => setNewPage({ folder })}
         onDeletePage={(path) => void deletePage(path)}
+        onMoveInContents={moveInContentsOf}
       />
       <main className="main">
         {mode === 'markdown' ? (

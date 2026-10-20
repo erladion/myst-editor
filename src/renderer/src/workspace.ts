@@ -105,6 +105,15 @@ export class Workspace {
     return this.save(path);
   }
 
+  // A page's current state, loading it if it isn't open.
+  async stateOf(path: string): Promise<EditorState> {
+    return (await this.session(path)).state;
+  }
+
+  absorbInto(path: string, map: SourceMap) {
+    this.sessions.get(path)?.map.merge(map);
+  }
+
   // Forget a page (it was deleted).
   close(path: string) {
     clearTimeout(this.timers.get(path));

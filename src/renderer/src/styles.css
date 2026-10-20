@@ -356,6 +356,22 @@ button.toc-toggle:hover {
   padding-left: 4px;
 }
 
+/* Dragging a page in the contents: a line where it would go, or the page it would
+   go into. */
+.toc-row.drop-before {
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+
+.toc-row.drop-after {
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.toc-row.drop-into .page {
+  background: var(--accent-soft);
+  outline: 1px dashed var(--accent);
+  outline-offset: -1px;
+}
+
 .unsaved-dot {
   width: 7px;
   height: 7px;
