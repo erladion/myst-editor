@@ -4,7 +4,7 @@ import type { EditorState } from 'prosemirror-state';
 import type { ProjectInfo } from '../../shared/api';
 import type { EnvironmentChoice, SphinxState } from '../../shared/sphinx';
 import type { SourceMap } from '../../core/sourcemap';
-import { DEFAULT_CONFIG } from '../../core/project-config';
+import { configFor, fromProject, projectFor } from '../../shared/projects';
 import { Workspace } from './workspace';
 import { Editor } from './editor/Editor';
 import type { EditorContext } from './editor/context';
@@ -14,7 +14,7 @@ import { Toolbar } from './components/Toolbar';
 import { Banner, StatusBar } from './components/Status';
 import { DialogHost, type DialogApi } from './components/Dialogs';
 import { EnvironmentDialog, Preview, ProblemsPanel, SphinxChip, SphinxDialog, TrustBanner } from './components/SphinxUi';
-import { join, resolveRef } from './paths';
+import { resolveRef } from './paths';
 import { docnameOf, problemsIn, resolveLink, resolveRole, suggestTargets } from './sphinx';
 
 const api = window.myst;
@@ -23,15 +23,23 @@ const zero = () => 0;
 const NO_SPHINX: SphinxState = { status: { kind: 'off' }, info: null, environment: null };
 
 // The Markdown page a {doc} role or toctree entry refers to, if it exists.
-function findPage(files: string[], from: string | null, ref: string): string | null {
-  const target = resolveRef(from, ref);
+function findPage(info: ProjectInfo, from: string | null, ref: string): string | null {
+  const projectDir = from ? (projectFor(info.projects, from)?.dir ?? '') : '';
+  const target = resolveRef(from, ref, projectDir);
   if (!target) return null;
-  return [target, `${target}.md`, `${target}/index.md`].find((c) => files.includes(c)) ?? null;
+  return [target, `${target}.md`, `${target}/index.md`].find((c) => info.files.includes(c)) ?? null;
 }
 
-// The page to show when a project opens.
-function landingPage(files: string[]): string | null {
-  return files.find((f) => f === 'index.md') ?? files.find((f) => f.endsWith('/index.md')) ?? files[0] ?? null;
+// The page to show when a folder opens: the first project's root page if there is one.
+function landingPage(info: ProjectInfo): string | null {
+  const { files, projects } = info;
+  return (
+    projects.map((p) => fromProject(p, 'index.md')).find((f) => files.includes(f)) ??
+    files.find((f) => f === 'index.md') ??
+    files.find((f) => f.endsWith('/index.md')) ??
+    files[0] ??
+    null
+  );
 }
 
 export function App() {
@@ -39,7 +47,8 @@ export function App() {
   const [starting, setStarting] = useState(true);
   const [sourceMode, setSourceMode] = useState(false);
   const [source, setSource] = useState('');
-  const [sphinx, setSphinx] = useState<SphinxState>(NO_SPHINX);
+  // Build state per Sphinx project id.
+  const [sphinxStates, setSphinxStates] = useState<Record<string, SphinxState>>({});
   const [showProblems, setShowProblems] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [reveal, setReveal] = useState<number | null>(null);
@@ -50,7 +59,12 @@ export function App() {
   useSyncExternalStore(ws?.subscribe ?? noop, ws?.getVersion ?? zero);
 
   const session = ws?.get(ws.current);
-  const info = sphinx.info;
+  const projects = ws?.project.projects ?? [];
+  // The open page's project; status and dialogs fall back to the first project.
+  const pageProject = session ? projectFor(projects, session.path) : null;
+  const activeProject = pageProject ?? projects[0] ?? null;
+  const sphinx = (activeProject && sphinxStates[activeProject.id]) || NO_SPHINX;
+  const info = (pageProject && sphinxStates[pageProject.id]?.info) || null;
 
   const openPage = useCallback(
     async (path: string) => {
@@ -66,12 +80,20 @@ export function App() {
   );
 
   // One context object for the lifetime of the app; node views read it lazily.
-  const ctxRef = useRef({ ws: null as Workspace | null, openPage: (_p: string) => {}, sphinx: NO_SPHINX });
-  ctxRef.current = { ws, openPage, sphinx };
+  const ctxRef = useRef({ ws: null as Workspace | null, openPage: (_p: string) => {}, states: {} as Record<string, SphinxState> });
+  ctxRef.current = { ws, openPage, states: sphinxStates };
   const listeners = useRef(new Set<() => void>());
   const ctx = useMemo<EditorContext>(() => {
     const current = () => ctxRef.current.ws;
-    const build = () => ctxRef.current.sphinx.info;
+    const pageProject = () => {
+      const w = current();
+      return w?.current ? projectFor(w.project.projects, w.current) : null;
+    };
+    // Cross-references resolve within the open page's own project.
+    const build = () => {
+      const p = pageProject();
+      return (p && ctxRef.current.states[p.id]?.info) || null;
+    };
     return {
       ui: {
         editSource: (o) => dialogs.current!.editSource(o),
@@ -80,7 +102,8 @@ export function App() {
         notify: (m) => dialogs.current!.notify(m),
       },
       get config() {
-        return current()?.project.config ?? DEFAULT_CONFIG;
+        const w = current();
+        return configFor(w?.project ?? { root: '', name: '', projects: [], files: [], titles: {} }, w?.current ?? '');
       },
       get filePath() {
         return current()?.current ?? null;
@@ -88,20 +111,18 @@ export function App() {
       assetUrl(ref: string) {
         const w = current();
         if (!w || /^(https?:|data:)/.test(ref)) return ref;
-        const inSource = resolveRef(w.current, ref);
-        const prefix = w.project.sourceDir.slice(w.project.root.length).replace(/^\//, '');
-        const rel = inSource === null ? null : join(prefix, inSource);
+        const rel = resolveRef(w.current, ref, pageProject()?.dir ?? '');
         return rel === null ? '' : api.assetUrl(rel);
       },
       openDocument(ref: string) {
         const w = current();
-        const found = w && findPage(w.project.files, w.current, ref);
+        const found = w && findPage(w.project, w.current, ref);
         if (found) ctxRef.current.openPage(found);
         else dialogs.current?.notify(`No Markdown page found for “${ref}”`);
       },
       pageTitle(ref: string) {
         const w = current();
-        const found = w && findPage(w.project.files, w.current, ref);
+        const found = w && findPage(w.project, w.current, ref);
         return found ? (w.project.titles[found] ?? null) : null;
       },
       absorb(map: SourceMap) {
@@ -120,13 +141,13 @@ export function App() {
 
   // Build results: keep them, and let node views refresh their cross-references.
   useEffect(() => {
-    const apply = (state: SphinxState) => {
-      ctxRef.current.sphinx = state;
-      setSphinx(state);
+    const refresh = (states: Record<string, SphinxState>) => {
+      ctxRef.current.states = states;
+      setSphinxStates(states);
       listeners.current.forEach((fn) => fn());
     };
-    const off = api.onSphinxState(apply);
-    void api.sphinxState().then(apply);
+    const off = api.onSphinxState(({ project, state }) => refresh({ ...ctxRef.current.states, [project]: state }));
+    void api.sphinxState().then(refresh);
     return off;
   }, []);
 
@@ -136,9 +157,9 @@ export function App() {
       old?.dispose();
       return new Workspace(api, project);
     });
-    void api.sphinxState().then((s) => {
-      ctxRef.current.sphinx = s;
-      setSphinx(s);
+    void api.sphinxState().then((states) => {
+      ctxRef.current.states = states;
+      setSphinxStates(states);
     });
   }, []);
 
@@ -153,7 +174,7 @@ export function App() {
   // Open the landing page of a newly opened project.
   useEffect(() => {
     if (ws && !ws.current) {
-      const page = landingPage(ws.project.files);
+      const page = landingPage(ws.project);
       if (page) void openPage(page);
     }
   }, [ws, openPage]);
@@ -183,10 +204,10 @@ export function App() {
 
   const showLog = useCallback(async () => {
     const status = sphinx.status;
-    const log = await api.sphinxLog();
+    const log = activeProject ? await api.sphinxLog(activeProject.id) : '';
     const summary = status.kind === 'error' ? `${status.message}\n\n` : '';
     await dialogs.current?.showText({ title: 'Sphinx build', text: `${summary}${log.trim() || 'Nothing logged yet.'}` });
-  }, [sphinx]);
+  }, [sphinx, activeProject]);
 
   const useEnvironment = useCallback((choice: EnvironmentChoice) => {
     setSphinxDialog(null);
@@ -271,7 +292,12 @@ export function App() {
   const unsaved = new Set(ws.unsavedPaths());
   const docname = info && session ? docnameOf(info, session.path) : null;
   const uri = docname ? info?.docs[docname]?.uri : null;
-  const previewUrl = uri && info ? `${api.buildUrl(uri)}?built=${info.builtAt}` : null;
+  const previewUrl = uri && info && pageProject ? `${api.buildUrl(pageProject.id, uri)}?built=${info.builtAt}` : null;
+  // Trust and the environment are decided once for all of the folder's projects.
+  const trustState = Object.values(sphinxStates).find((st) => st.status.kind === 'needs-trust') ?? sphinx;
+  const builds = Object.fromEntries(projects.map((p) => [p.id, sphinxStates[p.id]?.info ?? null]));
+  const allWarnings = Object.values(sphinxStates).flatMap((st) => st.info?.warnings ?? []);
+  const anyBuilt = projects.some((p) => builds[p.id]);
 
   return (
     <div className="app">
@@ -279,7 +305,8 @@ export function App() {
         projectName={ws.project.name}
         files={ws.project.files}
         titles={ws.project.titles}
-        sphinx={info}
+        projects={projects}
+        builds={builds}
         current={ws.current}
         unsaved={unsaved}
         onOpen={openPage}
@@ -296,7 +323,7 @@ export function App() {
           onTogglePreview={() => setShowPreview(!showPreview)}
         />
         <TrustBanner
-          state={sphinx}
+          state={trustState}
           onUse={useEnvironment}
           onChooseOther={() => setSphinxDialog('environment')}
           onDecline={() => void api.declineSphinx()}
@@ -334,19 +361,20 @@ export function App() {
           </div>
           {showPreview && info && <Preview url={previewUrl} building={sphinx.status.kind === 'building'} />}
         </div>
-        {showProblems && info && (
+        {showProblems && anyBuilt && (
           <ProblemsPanel
-            warnings={info.warnings}
+            warnings={allWarnings}
             titles={ws.project.titles}
             current={ws.current}
             onOpen={(path, line) => void openProblem(path, line)}
             onClose={() => setShowProblems(false)}
           />
         )}
-        <StatusBar session={session} config={ws.project.config} confPy={ws.project.confPy}>
+        <StatusBar session={session} config={configFor(ws.project, session?.path ?? '')} confPy={pageProject?.confPy ?? null}>
           <SphinxChip
             state={sphinx}
-            problems={info?.warnings.length ?? 0}
+            project={projects.length > 1 ? activeProject?.name : undefined}
+            problems={allWarnings.length}
             onShowProblems={() => setShowProblems(!showProblems)}
             onShowDetails={() => setSphinxDialog('details')}
             onEnable={() => setSphinxDialog('environment')}
@@ -357,8 +385,9 @@ export function App() {
         <SphinxDialog
           state={sphinx}
           onChangeEnvironment={() => setSphinxDialog('environment')}
+          project={projects.length > 1 ? activeProject?.name : undefined}
           onRebuild={() => {
-            void api.rebuild();
+            if (activeProject) void api.rebuild(activeProject.id);
             setSphinxDialog(null);
           }}
           onShowLog={() => {
@@ -368,7 +397,9 @@ export function App() {
           onClose={() => setSphinxDialog(null)}
         />
       )}
-      {sphinxDialog === 'environment' && <EnvironmentDialog state={sphinx} onUse={useEnvironment} onClose={() => setSphinxDialog(null)} />}
+      {sphinxDialog === 'environment' && (
+        <EnvironmentDialog state={trustState.status.kind === 'needs-trust' ? trustState : sphinx} projects={projects.length} onUse={useEnvironment} onClose={() => setSphinxDialog(null)} />
+      )}
       <DialogHost ref={dialogs} />
     </div>
   );

@@ -1,7 +1,7 @@
 // Pythons already on this computer that could run a project's Sphinx build, for
 // machines without internet access or with a hand-made documentation environment.
 import { existsSync, realpathSync } from 'node:fs';
-import { delimiter, dirname, join } from 'node:path';
+import { delimiter, dirname, join, relative, sep } from 'node:path';
 import type { PythonCandidate } from '../../shared/sphinx.js';
 import { run } from './run.js';
 
@@ -37,13 +37,40 @@ export async function probePython(python: string, label: string): Promise<Python
   }
 }
 
-// Usual places for a documentation environment: virtualenvs in the project, the one
-// the app was started from, and the system's Python.
-export async function findPythons(root: string, sourceDir: string): Promise<PythonCandidate[]> {
+// Folders to look for virtualenvs in, nearest first: each project's source directory
+// up to the opened folder, then on up to the repository root (where .git is), so a
+// shared .venv is found even when only one project's folder was opened.
+function searchDirs(root: string, sourceDirs: string[]): string[] {
+  const dirs: string[] = [];
+  const add = (d: string) => !dirs.includes(d) && dirs.push(d);
+  for (const start of [...sourceDirs, root]) {
+    for (let d = start; d.startsWith(root); d = dirname(d)) {
+      add(d);
+      if (d === root || dirname(d) === d) break;
+    }
+  }
+  // Above the opened folder only within its repository, never into unrelated
+  // folders like the home directory.
+  const above: string[] = [];
+  for (let d = root; !existsSync(join(d, '.git')); ) {
+    if (dirname(d) === d || above.length >= 6) return dirs;
+    d = dirname(d);
+    above.push(d);
+  }
+  above.forEach(add);
+  return dirs;
+}
+
+// Usual places for a documentation environment: virtualenvs in or above the projects,
+// the one the app was started from, and the system's Python.
+export async function findPythons(root: string, sourceDirs: string[]): Promise<PythonCandidate[]> {
   const venv = (dir: string) => join(dir, 'bin', 'python');
   const places: [string, string][] = [];
-  for (const dir of [sourceDir, dirname(sourceDir), root]) {
-    for (const name of ['.venv', 'venv', '.env', 'env']) places.push([venv(join(dir, name)), `Project ${name}`]);
+  for (const dir of searchDirs(root, sourceDirs)) {
+    const where = relative(root, dir).split(sep).join('/');
+    for (const name of ['.venv', 'venv', '.env', 'env']) {
+      places.push([venv(join(dir, name)), `Project ${where ? `${where}/` : ''}${name}`]);
+    }
   }
   if (process.env.VIRTUAL_ENV) places.push([venv(process.env.VIRTUAL_ENV), 'Active virtual environment']);
   for (const dir of (process.env.PATH ?? '').split(delimiter)) {

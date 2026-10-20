@@ -8,6 +8,10 @@ import { SphinxManager } from './sphinx/manager.js';
 import { ASSET_SCHEME, BUILD_SCHEME, type MenuCommand, type ProjectInfo } from '../shared/api.js';
 import type { EnvironmentChoice, SphinxState } from '../shared/sphinx.js';
 import { probePython } from './sphinx/pythons.js';
+import { projectFor } from '../shared/projects.js';
+
+// Not watched: changes in build output, dependencies and virtualenvs aren't edits.
+const IGNORED_DIRS = new Set(['_build', 'build', 'node_modules', 'venv', 'env', '__pycache__', 'site-packages', 'dist']);
 
 // Lets tests (and portable setups) keep settings out of the real profile.
 if (process.env.MYSTEDITOR_USER_DATA) app.setPath('userData', process.env.MYSTEDITOR_USER_DATA);
@@ -20,7 +24,8 @@ protocol.registerSchemesAsPrivileged([
 let win: BrowserWindow | null = null;
 let project: ProjectInfo | null = null;
 let watcher: FSWatcher | null = null;
-let sphinx: SphinxManager | null = null;
+// One build manager per Sphinx project, by project id.
+const sphinx = new Map<string, SphinxManager>();
 let unsaved = false;
 let closing = false;
 // What we last wrote to each file, so our own saves aren't reported as external changes.
@@ -60,20 +65,36 @@ async function useProject(folder: string): Promise<ProjectInfo> {
   return project;
 }
 
+// Trust and the environment choice belong to the opened folder, so one decision
+// covers all its projects (e.g. two guides sharing one .venv).
 async function startSphinx(p: ProjectInfo) {
-  sphinx?.dispose();
+  sphinx.forEach((m) => m.dispose());
+  sphinx.clear();
   const settings = await loadSettings();
-  sphinx = new SphinxManager(p, {
-    // Tests share one data dir so Python and packages are only downloaded once.
-    dataDir: process.env.MYSTEDITOR_SPHINX_DATA ?? join(app.getPath('userData'), 'sphinx'),
-    // out/main/index.js → the repository, where resources/ lives in development.
-    appRoot: join(import.meta.dirname, '..', '..'),
-    resourcesPath: app.isPackaged ? process.resourcesPath : null,
-    trusted: !!settings.trusted?.includes(p.root),
-    environment: settings.environments?.[p.root] ?? null,
-    emit: (state: SphinxState) => win?.webContents.send('sphinx-state', state),
-  });
-  sphinx.start();
+  for (const sp of p.projects) {
+    const manager = new SphinxManager(sp, {
+      root: p.root,
+      searchDirs: p.projects.map((x) => x.sourceDir),
+      // Tests share one data dir so Python and packages are only downloaded once.
+      dataDir: process.env.MYSTEDITOR_SPHINX_DATA ?? join(app.getPath('userData'), 'sphinx'),
+      // out/main/index.js → the repository, where resources/ lives in development.
+      appRoot: join(import.meta.dirname, '..', '..'),
+      resourcesPath: app.isPackaged ? process.resourcesPath : null,
+      trusted: !!settings.trusted?.includes(p.root),
+      environment: settings.environments?.[p.root] ?? null,
+      emit: (state: SphinxState) => win?.webContents.send('sphinx-state', { project: sp.id, state }),
+    });
+    sphinx.set(sp.id, manager);
+    manager.start();
+  }
+}
+
+// Build the project a changed file belongs to; files outside every project (say a
+// shared extension module or requirements file) may affect them all.
+function buildFor(p: ProjectInfo, rel: string, fresh: boolean) {
+  const owner = projectFor(p.projects, rel);
+  if (owner) sphinx.get(owner.id)?.requestBuild({ fresh });
+  else if (fresh) sphinx.forEach((m) => m.requestBuild({ fresh }));
 }
 
 function startWatching(p: ProjectInfo) {
@@ -93,19 +114,19 @@ function startWatching(p: ProjectInfo) {
     }
     const others = [...pending].filter((rel) => !rel.endsWith('.md'));
     pending.clear();
-    p.files = await listDocuments(p.sourceDir);
-    p.titles = await readTitles(p.sourceDir, p.files);
+    p.files = await listDocuments(p.root);
+    p.titles = await readTitles(p.root, p.files);
     win?.webContents.send('files-changed', { files: p.files, titles: p.titles, changed });
     // Our own saves request builds directly; here it's changes made outside the app.
-    // Configuration, extensions and templates can affect every page.
-    const config = others.some((rel) => /\.(py|html|jinja2?|toml|ya?ml|txt|json)$/.test(rel));
-    if (changed.length || others.length) sphinx?.requestBuild({ fresh: config });
+    // Configuration, extensions and templates can affect every page of a project.
+    for (const rel of changed) buildFor(p, rel, false);
+    for (const rel of others) buildFor(p, rel, /\.(py|html|jinja2?|toml|ya?ml|txt|json)$/.test(rel));
   };
   try {
-    watcher = watch(p.sourceDir, { recursive: true }, (_event, filename) => {
+    watcher = watch(p.root, { recursive: true }, (_event, filename) => {
       if (!filename) return;
       const rel = filename.toString().split(sep).join('/');
-      if (rel.split('/').some((part) => part.startsWith('.') || part === '_build')) return;
+      if (rel.split('/').some((part) => part.startsWith('.') || IGNORED_DIRS.has(part))) return;
       pending.add(rel);
       clearTimeout(timer);
       timer = setTimeout(flush, 300);
@@ -154,9 +175,9 @@ function registerIpc() {
   ipcMain.handle('write-file', async (_e, rel: string, text: string) => {
     written.set(rel, text);
     await writeDocument(requireProject(), rel, text);
-    sphinx?.requestBuild();
+    buildFor(requireProject(), rel, false);
   });
-  ipcMain.handle('sphinx-state', () => sphinx?.getState() ?? { status: { kind: 'off' }, info: null });
+  ipcMain.handle('sphinx-state', () => Object.fromEntries([...sphinx].map(([id, m]) => [id, m.getState()])));
   ipcMain.handle('sphinx-use', async (_e, choice: EnvironmentChoice) => {
     const root = requireProject().root;
     await updateSettings((s) => ({
@@ -164,9 +185,10 @@ function registerIpc() {
       trusted: [...new Set([...(s.trusted ?? []), root])],
       environments: { ...s.environments, [root]: choice },
     }));
-    sphinx?.use(choice);
+    sphinx.forEach((m) => m.use(choice));
   });
-  ipcMain.handle('sphinx-candidates', () => sphinx?.candidates() ?? []);
+  // All managers of a folder search the same places, so any one can answer.
+  ipcMain.handle('sphinx-candidates', () => [...sphinx.values()][0]?.candidates() ?? []);
   ipcMain.handle('sphinx-browse-python', async () => {
     const result = await dialog.showOpenDialog(win!, {
       title: 'Choose the Python to build the documentation with',
@@ -175,9 +197,9 @@ function registerIpc() {
     });
     return result.canceled ? null : probePython(result.filePaths[0], 'Chosen');
   });
-  ipcMain.handle('sphinx-decline', () => sphinx?.decline());
-  ipcMain.handle('sphinx-rebuild', () => sphinx?.requestBuild({ fresh: true }));
-  ipcMain.handle('sphinx-log', () => sphinx?.getLog() ?? '');
+  ipcMain.handle('sphinx-decline', () => sphinx.forEach((m) => m.decline()));
+  ipcMain.handle('sphinx-rebuild', (_e, id: string) => sphinx.get(id)?.requestBuild({ fresh: true }));
+  ipcMain.handle('sphinx-log', (_e, id: string) => sphinx.get(id)?.getLog() ?? '');
   ipcMain.on('set-unsaved', (_e, value: boolean) => {
     unsaved = value;
   });
@@ -187,9 +209,9 @@ function registerIpc() {
   });
 }
 
-function serveFrom(base: () => string | null) {
+function serveFrom(base: (url: URL) => string | null) {
   return async (request: Request) => {
-    const dir = base();
+    const dir = base(new URL(request.url));
     if (!dir) return new Response('Not available', { status: 404 });
     try {
       let rel = decodeURIComponent(new URL(request.url).pathname.replace(/^\//, ''));
@@ -204,8 +226,9 @@ function serveFrom(base: () => string | null) {
 function registerProtocols() {
   // myst-asset://project/<path relative to the project root>: images in pages
   protocol.handle(ASSET_SCHEME, serveFrom(() => project?.root ?? null));
-  // myst-build://project/<path in the HTML output>: the Sphinx preview
-  protocol.handle(BUILD_SCHEME, serveFrom(() => sphinx?.outputDir ?? null));
+  // myst-build://<project id>/<path in its HTML output>: the Sphinx preview, one
+  // origin per project
+  protocol.handle(BUILD_SCHEME, serveFrom((url) => sphinx.get(url.hostname)?.outputDir ?? null));
 }
 
 function send(cmd: MenuCommand) {
@@ -293,7 +316,7 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   watcher?.close();
-  sphinx?.dispose();
+  sphinx.forEach((m) => m.dispose());
   app.quit();
 });
 

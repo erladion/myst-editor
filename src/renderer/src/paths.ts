@@ -20,11 +20,12 @@ export function join(...parts: string[]): string | null {
 }
 
 // Resolve a reference written in `fromFile` the way Sphinx does: absolute paths are
-// relative to the source directory, everything else to the file's own directory.
-export function resolveRef(fromFile: string | null, ref: string): string | null {
+// relative to the project's source directory (`projectDir`), everything else to the
+// file's own directory. All paths are relative to the opened folder.
+export function resolveRef(fromFile: string | null, ref: string, projectDir = ''): string | null {
   const clean = ref.split('#')[0].trim();
   if (!clean) return null;
-  return clean.startsWith('/') ? join(clean) : join(dirname(fromFile ?? ''), clean);
+  return clean.startsWith('/') ? join(projectDir, clean) : join(dirname(fromFile ?? ''), clean);
 }
 
 export function basename(path: string): string {

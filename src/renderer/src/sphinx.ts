@@ -79,7 +79,9 @@ export function suggestTargets(info: SphinxInfo | null, fromSource: string | nul
     case 'term':
       return std('term').map((o) => ({ value: o.name, label: `Glossary — ${o.doc}` }));
     case 'doc': {
-      const fromDir = fromSource ? dirname(fromSource) : '';
+      // Page names are relative to the project's source directory.
+      const fromDoc = fromSource ? docnameOf(info, fromSource) : null;
+      const fromDir = fromDoc ? dirname(fromDoc) : '';
       return Object.entries(info.docs).map(([docname, doc]) => ({
         value: fromDir && docname.startsWith(fromDir + '/') ? docname.slice(fromDir.length + 1) : `/${docname}`,
         label: doc.title ?? docname,

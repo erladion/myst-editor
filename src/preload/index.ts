@@ -26,9 +26,9 @@ const api: MystApi = {
   pythonCandidates: () => ipcRenderer.invoke('sphinx-candidates'),
   browsePython: () => ipcRenderer.invoke('sphinx-browse-python'),
   declineSphinx: () => ipcRenderer.invoke('sphinx-decline'),
-  rebuild: () => ipcRenderer.invoke('sphinx-rebuild'),
-  sphinxLog: () => ipcRenderer.invoke('sphinx-log'),
-  buildUrl: (uri) => `${BUILD_SCHEME}://project/${uri.split('/').map(encodeURIComponent).join('/')}`,
+  rebuild: (project) => ipcRenderer.invoke('sphinx-rebuild', project),
+  sphinxLog: (project) => ipcRenderer.invoke('sphinx-log', project),
+  buildUrl: (project, uri) => `${BUILD_SCHEME}://${project}/${uri.split('/').map(encodeURIComponent).join('/')}`,
 };
 
 contextBridge.exposeInMainWorld('myst', api);

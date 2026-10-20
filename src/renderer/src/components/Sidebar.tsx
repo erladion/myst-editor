@@ -1,14 +1,17 @@
-// Page tree for the project.
+// Page tree: one section per Sphinx project in the opened folder, plus other files.
 import { useMemo, useState, type ReactElement } from 'react';
+import type { SphinxProject } from '../../../shared/api';
 import type { SphinxInfo } from '../../../shared/sphinx';
+import { projectFor } from '../../../shared/projects';
 import { basename } from '../paths';
 import { tocTree, type TocEntry } from '../sphinx';
 
 interface Props {
   projectName: string;
-  files: string[];
+  files: string[]; // relative to the opened folder
   titles: Record<string, string>;
-  sphinx: SphinxInfo | null; // when built, pages are shown in table-of-contents order
+  projects: SphinxProject[];
+  builds: Record<string, SphinxInfo | null>; // by project id; when built, pages follow the toctree
   current: string | null;
   unsaved: Set<string>;
   onOpen: (path: string) => void;
@@ -22,10 +25,11 @@ interface Folder {
   files: string[];
 }
 
-function buildTree(files: string[]): Folder {
-  const root: Folder = { name: '', path: '', folders: [], files: [] };
+// A folder tree of `files`, shown relative to `base` ('' for none).
+function buildTree(files: string[], base: string): Folder {
+  const root: Folder = { name: '', path: base, folders: [], files: [] };
   for (const file of files) {
-    const parts = file.split('/');
+    const parts = (base ? file.slice(base.length + 1) : file).split('/');
     let folder = root;
     for (const part of parts.slice(0, -1)) {
       let next = folder.folders.find((f) => f.name === part);
@@ -46,14 +50,26 @@ function buildTree(files: string[]): Folder {
   return root;
 }
 
-export function Sidebar({ projectName, files, titles, sphinx, current, unsaved, onOpen, onOpenFolder }: Props) {
-  const tree = useMemo(() => buildTree(files), [files]);
-  const toc = useMemo(() => (sphinx ? tocTree(sphinx) : null), [sphinx]);
+export function Sidebar({ projectName, files, titles, projects, builds, current, unsaved, onOpen, onOpenFolder }: Props) {
   const [mode, setMode] = useState<'contents' | 'files'>('contents');
   const [filter, setFilter] = useState('');
-  const matches = filter
-    ? files.filter((f) => `${titles[f] ?? ''} ${f}`.toLowerCase().includes(filter.toLowerCase()))
-    : null;
+  const anyBuilt = projects.some((p) => builds[p.id]);
+
+  // Files grouped by the project they belong to.
+  const sections = useMemo(() => {
+    const byProject = new Map<string, string[]>();
+    const other: string[] = [];
+    for (const f of files) {
+      const owner = projectFor(projects, f);
+      if (owner) byProject.set(owner.id, [...(byProject.get(owner.id) ?? []), f]);
+      else other.push(f);
+    }
+    return { byProject, other };
+  }, [files, projects]);
+
+  const matches = filter ? files.filter((f) => `${titles[f] ?? ''} ${f}`.toLowerCase().includes(filter.toLowerCase())) : null;
+  // Section headings only when there's more than one group of pages.
+  const headings = projects.length + (sections.other.length ? 1 : 0) > 1;
 
   const fileItem = (file: string) => (
     <li key={file}>
@@ -80,7 +96,7 @@ export function Sidebar({ projectName, files, titles, sphinx, current, unsaved, 
           Open…
         </button>
       </div>
-      {toc && (
+      {anyBuilt && (
         <div className="sidebar-modes" role="tablist" aria-label="Show pages as">
           <button type="button" role="tab" aria-selected={mode === 'contents'} onClick={() => setMode('contents')}>
             Contents
@@ -94,24 +110,65 @@ export function Sidebar({ projectName, files, titles, sphinx, current, unsaved, 
       <div className="tree">
         {matches ? (
           <ul>{matches.map(fileItem)}</ul>
-        ) : toc && mode === 'contents' ? (
+        ) : (
           <>
-            {toc.root && <ul>{tocItem(toc.root, files, current, unsaved, onOpen, 0)}</ul>}
-            {toc.orphans.length > 0 && (
-              <>
-                <div className="folder-name static" title="Pages that no table of contents links to">
-                  Not in the contents
-                </div>
-                <ul>{toc.orphans.map((o) => tocItem(o, files, current, unsaved, onOpen, 0))}</ul>
-              </>
+            {projects.map((project) => (
+              <section key={project.id} className="tree-section" aria-label={project.name}>
+                {headings && (
+                  <div className="section-name" title={project.confPy}>
+                    {project.name}
+                  </div>
+                )}
+                <ProjectPages
+                  project={project}
+                  files={sections.byProject.get(project.id) ?? []}
+                  info={mode === 'contents' ? builds[project.id] : null}
+                  current={current}
+                  unsaved={unsaved}
+                  onOpen={onOpen}
+                  fileItem={fileItem}
+                />
+              </section>
+            ))}
+            {sections.other.length > 0 && (
+              <section className="tree-section" aria-label="Other files">
+                {headings && <div className="section-name">Other files</div>}
+                <FolderView folder={buildTree(sections.other, '')} depth={0} current={current} fileItem={fileItem} />
+              </section>
             )}
           </>
-        ) : (
-          <FolderView folder={tree} depth={0} current={current} fileItem={fileItem} />
         )}
         {!files.length && <p className="muted pad">No Markdown pages found in this folder.</p>}
       </div>
     </nav>
+  );
+}
+
+interface ProjectPagesProps {
+  project: SphinxProject;
+  files: string[];
+  info: SphinxInfo | null | undefined; // shown as contents when present
+  current: string | null;
+  unsaved: Set<string>;
+  onOpen: (path: string) => void;
+  fileItem: (file: string) => ReactElement;
+}
+
+function ProjectPages({ project, files, info, current, unsaved, onOpen, fileItem }: ProjectPagesProps) {
+  const toc = useMemo(() => (info ? tocTree(info) : null), [info]);
+  if (!toc) return <FolderView folder={buildTree(files, project.dir)} depth={0} current={current} fileItem={fileItem} />;
+  return (
+    <>
+      {toc.root && <ul>{tocItem(toc.root, files, current, unsaved, onOpen, 0)}</ul>}
+      {toc.orphans.length > 0 && (
+        <>
+          <div className="folder-name static" title="Pages that no table of contents links to">
+            Not in the contents
+          </div>
+          <ul>{toc.orphans.map((o) => tocItem(o, files, current, unsaved, onOpen, 0))}</ul>
+        </>
+      )}
+    </>
   );
 }
 
@@ -137,7 +194,7 @@ function tocItem(entry: TocEntry, files: string[], current: string | null, unsav
 }
 
 function FolderView({ folder, depth, current, fileItem }: { folder: Folder; depth: number; current: string | null; fileItem: (f: string) => ReactElement }) {
-  const containsCurrent = !!current && current.startsWith(folder.path + '/');
+  const containsCurrent = !!current && (folder.path === '' || current.startsWith(folder.path + '/'));
   const [open, setOpen] = useState(depth === 0 || containsCurrent);
   const isOpen = open || containsCurrent;
   const children = (

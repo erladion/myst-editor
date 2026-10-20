@@ -29,7 +29,9 @@ async function project(venvPackages?: string[]) {
 function manager(info: Awaited<ReturnType<typeof openProject>>, dataDir: string, environment: EnvironmentChoice) {
   const states: SphinxState[] = [];
   let notify = () => {};
-  const m = new SphinxManager(info, {
+  const m = new SphinxManager(info.projects[0], {
+    root: info.root,
+    searchDirs: info.projects.map((x) => x.sourceDir),
     dataDir,
     appRoot: repo,
     resourcesPath: null,
@@ -56,7 +58,7 @@ describe('existing environments', () => {
   it('finds a project .venv with Sphinx and builds with it, without uv', async () => {
     const { root, work, info } = await project(['sphinx', 'myst-parser', 'sphinx-design', 'furo']);
     const venvPython = join(root, '.venv', 'bin', 'python');
-    const found = await findPythons(info.root, info.sourceDir);
+    const found = await findPythons(info.root, info.projects.map((x) => x.sourceDir));
     expect(found[0]).toMatchObject({ python: venvPython, label: 'Project .venv' });
     expect(found[0].sphinx).toMatch(/^\d/);
 

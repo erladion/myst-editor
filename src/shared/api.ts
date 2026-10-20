@@ -2,13 +2,21 @@
 import type { MystConfig } from '../core/project-config.js';
 import type { EnvironmentChoice, PythonCandidate, SphinxState } from './sphinx.js';
 
+// One Sphinx project (a conf.py and the pages under it) inside the opened folder.
+export interface SphinxProject {
+  id: string; // stable, hostname-safe; also names the project's preview origin
+  name: string; // `project = "..."` from conf.py, or the folder name
+  dir: string; // source directory relative to the opened folder ('' for the folder itself)
+  sourceDir: string; // absolute
+  confPy: string; // relative to the opened folder
+  config: MystConfig;
+}
+
 export interface ProjectInfo {
   root: string; // the folder the writer opened
-  sourceDir: string; // the Sphinx source directory (where conf.py is), or root
   name: string;
-  confPy: string | null; // relative to root
-  config: MystConfig;
-  files: string[]; // Markdown files, POSIX paths relative to sourceDir
+  projects: SphinxProject[]; // may be empty: a plain Markdown folder
+  files: string[]; // Markdown files, POSIX paths relative to root
   titles: Record<string, string>; // first heading of each file, where found
 }
 
@@ -37,21 +45,21 @@ export interface MystApi {
   onMenu(cb: (cmd: MenuCommand) => void): () => void;
   onCloseRequested(cb: () => void): () => void;
 
-  // Background Sphinx builds.
-  sphinxState(): Promise<SphinxState>;
-  onSphinxState(cb: (state: SphinxState) => void): () => void;
-  // Allow this project to run Sphinx with the given environment (remembered), or
-  // not for now.
+  // Background Sphinx builds, per project id.
+  sphinxState(): Promise<Record<string, SphinxState>>;
+  onSphinxState(cb: (update: { project: string; state: SphinxState }) => void): () => void;
+  // Allow the opened folder's projects to run Sphinx with the given environment
+  // (remembered for the folder), or not for now.
   useEnvironment(choice: EnvironmentChoice): Promise<void>;
   declineSphinx(): Promise<void>;
-  // Pythons on this computer that could build the project.
+  // Pythons on this computer that could build the projects.
   pythonCandidates(): Promise<PythonCandidate[]>;
   // Let the writer pick an interpreter; null if cancelled or not a working Python.
   browsePython(): Promise<PythonCandidate | null>;
-  rebuild(): Promise<void>;
-  sphinxLog(): Promise<string>;
-  // URL of a page in the HTML output, for the preview; `uri` as in SphinxDoc.
-  buildUrl(uri: string): string;
+  rebuild(project: string): Promise<void>;
+  sphinxLog(project: string): Promise<string>;
+  // URL of a page in a project's HTML output, for the preview; `uri` as in SphinxDoc.
+  buildUrl(project: string, uri: string): string;
 }
 
 export const ASSET_SCHEME = 'myst-asset';

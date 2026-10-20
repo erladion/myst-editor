@@ -3,7 +3,8 @@
 import { createHash } from 'node:crypto';
 import { createWriteStream, existsSync, mkdirSync, promises as fs, type WriteStream } from 'node:fs';
 import { join } from 'node:path';
-import type { ProjectInfo } from '../../shared/api.js';
+import type { SphinxProject } from '../../shared/api.js';
+import { fromProject } from '../../shared/projects.js';
 import {
   mergeWarnings,
   usable,
@@ -21,6 +22,8 @@ import { canDownload } from './network.js';
 import { run, CommandError } from './run.js';
 
 export interface ManagerOptions {
+  root: string; // the opened folder
+  searchDirs: string[]; // where to look for existing virtualenvs (all projects' source dirs)
   dataDir: string; // e.g. <userData>/sphinx
   appRoot: string; // for development: where resources/ lives
   resourcesPath: string | null; // packaged app resources
@@ -51,10 +54,10 @@ export class SphinxManager {
   private readonly paths: EnvPaths;
 
   constructor(
-    private project: ProjectInfo,
+    private project: SphinxProject,
     private opts: ManagerOptions,
   ) {
-    this.key = createHash('sha256').update(project.root).digest('hex').slice(0, 16);
+    this.key = createHash('sha256').update(project.sourceDir).digest('hex').slice(0, 16);
     this.paths = { dataDir: opts.dataDir, envDir: join(opts.dataDir, 'envs', this.key) };
     mkdirSync(join(opts.dataDir, 'logs'), { recursive: true });
     this.log = createWriteStream(join(opts.dataDir, 'logs', `${this.key}.log`), { flags: 'w' });
@@ -73,14 +76,13 @@ export class SphinxManager {
   }
 
   start() {
-    if (!this.project.confPy) return; // not a Sphinx project
     if (this.opts.trusted) void this.setUp();
     else void this.askForTrust();
   }
 
   // Pythons on this computer that could build the project (for choosing one).
   candidates(): Promise<PythonCandidate[]> {
-    return findPythons(this.project.root, this.project.sourceDir);
+    return findPythons(this.opts.root, this.opts.searchDirs);
   }
 
   // Allow builds, with the given environment.
@@ -93,7 +95,7 @@ export class SphinxManager {
   }
 
   private async askForTrust() {
-    const plan = planEnvironment(this.project.root, this.project.sourceDir);
+    const plan = planEnvironment(this.opts.root, this.project.sourceDir);
     const candidates = await this.candidates();
     if (this.abort.signal.aborted) return;
     this.setStatus({ kind: 'needs-trust', requirements: plan.description, candidates });
@@ -163,7 +165,7 @@ export class SphinxManager {
   private async useManaged() {
     const uv = findUv(this.opts.resourcesPath, this.opts.appRoot);
     if (!uv) throw new Error('The uv tool needed to set up Sphinx was not found.');
-    const plan = planEnvironment(this.project.root, this.project.sourceDir);
+    const plan = planEnvironment(this.opts.root, this.project.sourceDir);
     this.state = { ...this.state, environment: { kind: 'managed', requirements: plan.description } };
     // An environment that's already set up needs no network; otherwise check first,
     // rather than letting downloads time out.
@@ -174,7 +176,7 @@ export class SphinxManager {
     this.setStatus({ kind: 'setting-up', step: 'Checking the Python environment' });
     const { python } = await ensureEnvironment(
       uv,
-      this.project.root,
+      this.opts.root,
       this.project.sourceDir,
       this.paths,
       (step) => this.setStatus({ kind: 'setting-up', step }),
@@ -184,7 +186,7 @@ export class SphinxManager {
   }
 
   private offline() {
-    const plan = planEnvironment(this.project.root, this.project.sourceDir);
+    const plan = planEnvironment(this.opts.root, this.project.sourceDir);
     this.write('No internet connection: the managed environment can’t be set up.\n');
     this.setStatus({
       kind: 'error',
@@ -236,7 +238,14 @@ export class SphinxManager {
     }
   }
 
-  private apply(result: BuildResult, fresh: boolean) {
+  private apply(raw: BuildResult, fresh: boolean) {
+    // The driver reports paths relative to the source directory; the app uses paths
+    // relative to the opened folder.
+    const result: BuildResult = {
+      ...raw,
+      docs: raw.docs && Object.fromEntries(Object.entries(raw.docs).map(([name, d]) => [name, { ...d, source: fromProject(this.project, d.source) }])),
+      warnings: raw.warnings.map((w) => ({ ...w, source: w.source && fromProject(this.project, w.source) })),
+    };
     if (!result.ok) {
       const last = (result.error ?? 'Unknown error').trim().split('\n').slice(-3).join('\n');
       this.state = { ...this.state, status: { kind: 'error', message: `The Sphinx build failed:\n${last}` } };

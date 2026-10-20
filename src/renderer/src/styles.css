@@ -1336,3 +1336,16 @@ button:focus-visible {
 .sphinx-error.offline {
   background: color-mix(in srgb, var(--tone-warning) 12%, var(--bg));
 }
+
+/* ---- several projects in one folder ---- */
+
+.tree-section + .tree-section {
+  margin-top: 10px;
+}
+
+.section-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--fg);
+  padding: 6px 14px 2px;
+}

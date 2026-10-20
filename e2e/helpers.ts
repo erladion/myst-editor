@@ -10,6 +10,7 @@ export interface App {
 }
 
 export interface LaunchOptions {
+  fixture?: string; // folder under e2e/ to copy; default "fixture"
   env?: Record<string, string>;
   // Runs on the project copy before the app starts (e.g. to add a .venv).
   prepare?: (project: string) => void;
@@ -19,7 +20,7 @@ export interface LaunchOptions {
 export async function launch(opts: LaunchOptions = {}): Promise<App> {
   const work = mkdtempSync(join(tmpdir(), 'mysteditor-e2e-'));
   const project = join(work, 'project');
-  cpSync(join(import.meta.dirname, 'fixture'), project, { recursive: true });
+  cpSync(join(import.meta.dirname, opts.fixture ?? 'fixture'), project, { recursive: true });
   opts.prepare?.(project);
   // Set when running inside another Electron app's Node (e.g. an editor extension host).
   const { ELECTRON_RUN_AS_NODE: _, ...env } = process.env;

@@ -3,6 +3,7 @@ import type { EditorState } from 'prosemirror-state';
 import { loadDocument, saveDocument } from '../../core/document';
 import type { SourceMap } from '../../core/sourcemap';
 import type { MystApi, ProjectInfo } from '../../shared/api';
+import { configFor } from '../../shared/projects';
 import { createEditorState } from './editor/setup';
 
 export type SaveStatus =
@@ -72,7 +73,7 @@ export class Workspace {
   }
 
   private load(path: string, text: string): Session {
-    const { doc, map } = loadDocument(text, this.project.config);
+    const { doc, map } = loadDocument(text, configFor(this.project, path));
     return { path, state: createEditorState(doc), map, savedText: text, dirty: false, status: { kind: 'saved' } };
   }
 
@@ -105,7 +106,7 @@ export class Workspace {
     if (!s.dirty && !force) return true;
     if (s.status.kind === 'conflict' && !force) return false;
 
-    const result = saveDocument(s.state.doc, s.map, this.project.config);
+    const result = saveDocument(s.state.doc, s.map, configFor(this.project, path));
     if (!result.verified && !force) {
       s.status = { kind: 'unsafe', problem: result.problem! };
       this.changed();
@@ -146,14 +147,14 @@ export class Workspace {
   // The Markdown the session would save right now (for source view).
   sourceOf(path: string): string {
     const s = this.sessions.get(path)!;
-    return s.dirty ? saveDocument(s.state.doc, s.map, this.project.config).text : s.savedText;
+    return s.dirty ? saveDocument(s.state.doc, s.map, configFor(this.project, path)).text : s.savedText;
   }
 
   // Replace a document with edited Markdown source.
   setSource(path: string, text: string) {
     const s = this.sessions.get(path);
     if (!s || text === this.sourceOf(path)) return;
-    const { doc, map } = loadDocument(text, this.project.config);
+    const { doc, map } = loadDocument(text, configFor(this.project, path));
     s.map = map;
     s.state = createEditorState(doc);
     s.dirty = true;

@@ -16,7 +16,9 @@ async function setUp() {
   const project = await openProject(join(work, 'project'));
   const states: SphinxState[] = [];
   let notify = () => {};
-  const manager = new SphinxManager(project, {
+  const manager = new SphinxManager(project.projects[0], {
+    root: project.root,
+    searchDirs: project.projects.map((x) => x.sourceDir),
     // A shared data dir keeps the downloaded Python and packages between runs.
     dataDir: process.env.MYSTEDITOR_TEST_DATA ?? join(tmpdir(), 'mysteditor-sphinx-data'),
     appRoot: repo,
@@ -50,9 +52,9 @@ describe('SphinxManager', () => {
     const info = first.info!;
     expect(info.rootDoc).toBe('index');
     expect(info.docs.index.children).toEqual(['guide/install', 'guide/configure']);
-    expect(info.docs['guide/install'].title).toBe('Installing Widget');
+    expect(info.docs['guide/install']).toMatchObject({ title: 'Installing Widget', source: 'docs/guide/install.md' });
     expect(info.objects).toContainEqual(expect.objectContaining({ type: 'label', name: 'configuration', title: 'Configuration', doc: 'guide/install' }));
-    expect(info.warnings.map((w) => [w.source, w.line, w.type])).toEqual([['index.md', 47, 'myst.directive_unknown']]);
+    expect(info.warnings.map((w) => [w.source, w.line, w.type])).toEqual([['docs/index.md', 47, 'myst.directive_unknown']]);
     expect(states.some((s) => s.status.kind === 'setting-up')).toBe(true);
 
     // Break a reference in another page: the incremental build only touches that
@@ -62,8 +64,8 @@ describe('SphinxManager', () => {
     manager.requestBuild();
     const second = await until((s) => s.status.kind === 'ready', mark);
     expect(second.info!.warnings.map((w) => [w.source, w.type]).sort()).toEqual([
-      ['guide/configure.md', 'ref.ref'],
-      ['index.md', 'myst.directive_unknown'],
+      ['docs/guide/configure.md', 'ref.ref'],
+      ['docs/index.md', 'myst.directive_unknown'],
     ]);
     manager.dispose();
   });
@@ -71,7 +73,9 @@ describe('SphinxManager', () => {
   it('asks before running anything for an untrusted project', async () => {
     const { project } = await setUp();
     let state: SphinxState | null = null;
-    const manager = new SphinxManager(project, { dataDir: join(tmpdir(), 'unused'), appRoot: repo, resourcesPath: null, trusted: false, environment: null, emit: (s) => (state = s) });
+    const manager = new SphinxManager(project.projects[0], {
+    root: project.root,
+    searchDirs: project.projects.map((x) => x.sourceDir), dataDir: join(tmpdir(), 'unused'), appRoot: repo, resourcesPath: null, trusted: false, environment: null, emit: (s) => (state = s) });
     manager.start();
     await new Promise((r) => setTimeout(r, 3000)); // finding Pythons on this computer
     expect(state).toMatchObject({ status: { kind: 'needs-trust', requirements: 'docs/requirements.txt' }, info: null });

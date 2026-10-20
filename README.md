@@ -7,11 +7,16 @@ see Markdown syntax. An Electron app shipped as an AppImage.
 
 Open a documentation folder and edit its pages as formatted documents:
 
-- **Project:** finds `conf.py` (in the folder, `docs/`, `docs/source/`, …) and reads
-  `myst_enable_extensions`, so the editor parses the same MyST dialect as the project's
-  Sphinx build. For example, without `colon_fence`, `:::{note}` stays plain text, and
-  new callouts are written with backtick fences.
-- **Sidebar:** pages listed by their title, with folders and a filter.
+- **Projects:** finds every Sphinx `conf.py` under the opened folder, so one folder
+  can hold several projects (say `user-guide/` and `admin-guide/` sharing a `.venv`).
+  A `conf.py` only counts if it looks like Sphinx configuration and has a root
+  document next to it, and virtualenvs are skipped whatever they're called. Each page
+  belongs to the nearest project above it and is parsed with that project's
+  `myst_enable_extensions`, matching its Sphinx build. For example, without
+  `colon_fence`, `:::{note}` stays plain text and new callouts use backtick fences.
+  Pages outside every project are listed as "Other files".
+- **Sidebar:** pages listed by their title, with folders and a filter, in one section
+  per project when there are several.
 - **Editing:** headings, bold/italic/code/strike, links, lists, quotes. Markdown
   shortcuts (`# `, `- `, `1. `, `**bold**`, `` `code` ``) work while typing.
 - **MyST constructs:**
@@ -33,14 +38,18 @@ Open a documentation folder and edit its pages as formatted documents:
   - external changes reload, or are flagged if there are unsaved edits
 - **Markdown view:** toggle (Ctrl+/) to see or edit the raw source.
 
-With the project's permission, the real Sphinx build also runs in the background:
+With the folder's permission, the real Sphinx build also runs in the background, one
+build per project:
 
-- **Trust prompt:** building runs the project's `conf.py` (arbitrary Python) and
-  installs packages, so the app asks once per project and remembers the answer.
+- **Trust prompt:** building runs the projects' `conf.py` files (arbitrary Python),
+  so the app asks once per opened folder, covering all its projects, and remembers
+  the answer and the environment chosen.
 - **Where Python comes from**, chosen in the trust prompt and changeable from the
   status bar:
-  - **An environment already on the computer:** a project `.venv`/`venv`, the
-    active virtualenv, or the system `python3`, if it has Sphinx and MyST-Parser.
+  - **An environment already on the computer:** a `.venv`/`venv` in or above the
+    projects (up to the repository root, so a shared one is found even when a single
+    project's folder is opened), the active virtualenv, or the system `python3`, if
+    it has Sphinx and MyST-Parser.
     It's used as-is and nothing is downloaded, which makes it the option for
     air-gapped machines and for keeping a known-good setup (e.g. Python 3.9 with
     older Sphinx). Any other interpreter can be picked with Browse.
@@ -50,7 +59,9 @@ With the project's permission, the real Sphinx build also runs in the background
     or, as a fallback, are guessed from `conf.py`'s extensions and theme. It's
     rebuilt when they change, and once set up it needs no network. Without internet,
     setup stops within seconds with a clear message pointing to the first option.
-- **Incremental builds** after every save, in about a second for small projects.
+- **Incremental builds** after every save, of the saved page's project only, in about
+  a second for small projects. Changes to files outside every project, such as a
+  shared extension module, rebuild them all.
 - **Problems:** Sphinx warnings with page and line, in a panel and marked on the
   offending blocks. Clicking one jumps there.
 - **Cross-references:** `{ref}` chips show the real section title, `{doc}` chips the
@@ -78,11 +89,13 @@ With the project's permission, the real Sphinx build also runs in the background
   - `document.ts` handles load/save, plus the save verification.
   - `project-config.ts` reads `conf.py`.
 - `src/main/`: the Electron main process. It handles project discovery, file access
-  sandboxed to the project (symlinks included), the `myst-asset://` protocol for
+  sandboxed to the opened folder (symlinks included), the `myst-asset://` protocol for
   images, file watching and the menu.
-  - `sphinx/`: requirements discovery, the uv-managed environment, and the build
-    manager (debounced incremental builds, merged warnings). The preview is served
-    over `myst-build://`.
+  - `sphinx/`: requirements discovery, environments (uv-managed or existing), and a
+    build manager per project (debounced incremental builds, merged warnings). The
+    preview is served over `myst-build://<project id>/`.
+- `src/shared/projects.ts`: which project a page belongs to. All page paths are
+  relative to the opened folder.
 - `resources/sphinx/mysteditor_build.py`: the build driver. It runs Sphinx through
   its Python API and exports the toctree, titles, every cross-reference target and
   phase-tagged warnings as JSON. Sphinx only re-reports warnings for what an
@@ -202,6 +215,10 @@ With an internal PyPI mirror instead, the private environment works too: uv read
 - The private environment's Python version comes from `.readthedocs.yaml` or
   `.python-version` (default 3.12). `requires-python` in `pyproject.toml` isn't read
   yet.
+- With several projects, one environment choice covers them all; there's no
+  per-project override yet. Links between the projects (intersphinx) aren't
+  resolved by the editor, and each project builds separately.
+- Projects are searched for up to six folders deep.
 - Installing the project itself (`pip install -e .` from `.readthedocs.yaml` or a
   pyproject docs extra) can fail for projects with compiled code. Details are in the
   build log.

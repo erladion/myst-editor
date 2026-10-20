@@ -21,11 +21,10 @@ describe('openProject', () => {
   it('finds conf.py in docs/, reads its MyST extensions and lists pages with titles', async () => {
     const root = project();
     const p = await openProject(root);
-    expect(p.sourceDir).toBe(join(p.root, 'docs'));
-    expect(p.confPy).toBe(join('docs', 'conf.py'));
-    expect(p.config.extensions).toEqual(['colon_fence']);
-    expect(p.files).toEqual(['guide/a.md', 'index.md']);
-    expect(p.titles).toEqual({ 'index.md': 'Home page', 'guide/a.md': 'Setext title' });
+    expect(p.projects).toHaveLength(1);
+    expect(p.projects[0]).toMatchObject({ dir: 'docs', sourceDir: join(p.root, 'docs'), confPy: 'docs/conf.py', config: { extensions: ['colon_fence'] } });
+    expect(p.files).toEqual(['docs/guide/a.md', 'docs/index.md', 'outside/secret.md']);
+    expect(p.titles).toEqual({ 'docs/index.md': 'Home page', 'docs/guide/a.md': 'Setext title' }); // secret.md has no heading
   });
 
   it('skips build output', async () => {

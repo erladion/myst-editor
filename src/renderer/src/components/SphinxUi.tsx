@@ -55,12 +55,13 @@ export function TrustBanner({ state, onUse, onChooseOther, onDecline }: TrustPro
 
 interface EnvironmentDialogProps {
   state: SphinxState;
+  projects: number; // how many projects the choice applies to
   onUse: (choice: EnvironmentChoice) => void;
   onClose: () => void;
 }
 
 // Choose where builds get Python from: a private uv environment, or one already here.
-export function EnvironmentDialog({ state, onUse, onClose }: EnvironmentDialogProps) {
+export function EnvironmentDialog({ state, projects, onUse, onClose }: EnvironmentDialogProps) {
   const [candidates, setCandidates] = useState<PythonCandidate[] | null>(null);
   const current = state.environment;
   const [selected, setSelected] = useState<string>(current?.kind === 'existing' ? current.python : 'managed');
@@ -90,8 +91,10 @@ export function EnvironmentDialog({ state, onUse, onClose }: EnvironmentDialogPr
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal" role="dialog" aria-modal="true" aria-label="Python environment">
-        <h2>Python environment for this project</h2>
-        <p className="modal-help">Sphinx builds run with this Python. It needs Sphinx, MyST-Parser and the extensions the project’s conf.py uses.</p>
+        <h2>Python environment for {projects > 1 ? `the ${projects} projects in this folder` : 'this project'}</h2>
+        <p className="modal-help">
+          Sphinx builds run with this Python. It needs Sphinx, MyST-Parser and the extensions {projects > 1 ? 'each' : 'the'} project’s conf.py uses.
+        </p>
         <div className="env-options" role="radiogroup" aria-label="Python environment">
           <label className="env-option">
             <input type="radio" name="env" checked={selected === 'managed'} onChange={() => setSelected('managed')} />
@@ -143,6 +146,7 @@ export function EnvironmentDialog({ state, onUse, onClose }: EnvironmentDialogPr
 
 interface SphinxDialogProps {
   state: SphinxState;
+  project?: string; // named when the folder has several projects
   onChangeEnvironment: () => void;
   onRebuild: () => void;
   onShowLog: () => void;
@@ -150,7 +154,7 @@ interface SphinxDialogProps {
 }
 
 // Build status and the environment in use, from the status bar.
-export function SphinxDialog({ state, onChangeEnvironment, onRebuild, onShowLog, onClose }: SphinxDialogProps) {
+export function SphinxDialog({ state, project, onChangeEnvironment, onRebuild, onShowLog, onClose }: SphinxDialogProps) {
   const { status, info, environment } = state;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -166,7 +170,7 @@ export function SphinxDialog({ state, onChangeEnvironment, onRebuild, onShowLog,
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal" role="dialog" aria-modal="true" aria-label="Sphinx">
-        <h2>Sphinx</h2>
+        <h2>Sphinx{project ? ` — ${project}` : ''}</h2>
         {status.kind === 'error' && <p className={`sphinx-error${status.offline ? ' offline' : ''}`}>{status.message}</p>}
         <dl className="facts">
           <dt>Status</dt>
@@ -205,14 +209,16 @@ export function SphinxDialog({ state, onChangeEnvironment, onRebuild, onShowLog,
 
 interface ChipProps {
   state: SphinxState;
+  project?: string; // named when the folder has several projects
   problems: number;
   onShowProblems: () => void;
   onShowDetails: () => void;
   onEnable: () => void;
 }
 
-export function SphinxChip({ state, problems, onShowProblems, onShowDetails, onEnable }: ChipProps) {
+export function SphinxChip({ state, project, problems, onShowProblems, onShowDetails, onEnable }: ChipProps) {
   const { status, info } = state;
+  const prefix = project ? `${project}: ` : '';
   switch (status.kind) {
     case 'off':
     case 'needs-trust':
@@ -232,7 +238,7 @@ export function SphinxChip({ state, problems, onShowProblems, onShowDetails, onE
       );
     case 'building':
     case 'ready': {
-      const label = status.kind === 'building' ? 'Building…' : info ? `Built in ${info.duration.toFixed(1)} s` : 'Ready';
+      const label = prefix + (status.kind === 'building' ? 'Building…' : info ? `Built in ${info.duration.toFixed(1)} s` : 'Ready');
       return (
         <>
           <button type="button" className={`chip-button${status.kind === 'building' ? ' busy' : ''}`} onClick={onShowDetails} title={info ? `Sphinx ${info.sphinxVersion}` : undefined}>
@@ -250,7 +256,7 @@ export function SphinxChip({ state, problems, onShowProblems, onShowDetails, onE
     case 'error':
       return (
         <button type="button" className="chip-button failed" onClick={onShowDetails} title={status.message}>
-          {status.offline ? 'Offline — choose Python…' : 'Build failed — details'}
+          {status.offline ? 'Offline — choose Python…' : `${prefix}Build failed — details`}
         </button>
       );
   }
