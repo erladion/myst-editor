@@ -197,3 +197,26 @@ export async function moveInContents(ws: Workspace, project: SphinxProject | nul
   }
   return null;
 }
+
+// Pages matching what was typed in Go to page, best first: every word must appear in
+// the title or the path; titles starting with the text come first, then titles
+// containing it, then the rest, each group with recently opened pages first. With
+// nothing typed: the recent pages, then the others by title.
+export function rankPages(query: string, files: string[], titles: Record<string, string>, recent: string[], limit = 50): string[] {
+  const title = (f: string) => titles[f] ?? f.split('/').pop()!.replace(/\.md$/, '');
+  const q = query.trim().toLowerCase();
+  const words = q.split(/\s+/).filter(Boolean);
+  const recency = (f: string) => {
+    const i = recent.indexOf(f);
+    return i < 0 ? recent.length : i;
+  };
+  const scored = files
+    .filter((f) => words.every((w) => `${title(f)} ${f}`.toLowerCase().includes(w)))
+    .map((f) => {
+      const t = title(f).toLowerCase();
+      const group = !q ? (recent.includes(f) ? 0 : 1) : t.startsWith(q) ? 0 : t.includes(q) ? 1 : words.every((w) => t.includes(w)) ? 2 : 3;
+      return { f, group, recency: recency(f), t };
+    });
+  scored.sort((a, b) => a.group - b.group || a.recency - b.recency || a.t.localeCompare(b.t));
+  return scored.slice(0, limit).map((s) => s.f);
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { addTocEntry, entryDocname, entryFor, globIncludes, insertTocEntry, removeTocEntries, retarget, takeTocEntry, tocLines } from '../src/core/toctree.js';
-import { defaultContents, pageFolders, pageSlug } from '../src/renderer/src/pages.js';
+import { defaultContents, pageFolders, pageSlug, rankPages } from '../src/renderer/src/pages.js';
 import type { ProjectInfo } from '../src/shared/api.js';
 
 const toc = '```{toctree}\n:maxdepth: 2\n:caption: Contents\n\nguide/install\nConfiguring <guide/configure>\n```';
@@ -70,5 +70,20 @@ describe('moving entries', () => {
     expect(retarget('Setting up <configure>', 'guide/configure', '')).toBe('Setting up <guide/configure>');
     expect(retarget('  install', 'guide/install', 'other')).toBe('  /guide/install');
     expect(retarget('install', 'guide/install', 'guide')).toBe('install');
+  });
+});
+
+describe('Go to page', () => {
+  const files = ['docs/index.md', 'docs/guide/install.md', 'docs/guide/configure.md', 'docs/reference/install-options.md', 'docs/faq.md'];
+  const titles = { 'docs/index.md': 'Widget documentation', 'docs/guide/install.md': 'Installing Widget', 'docs/guide/configure.md': 'Configuring Widget', 'docs/reference/install-options.md': 'Options for installers', 'docs/faq.md': 'FAQ' };
+  it('ranks titles that start with the text first, then ones containing it, then paths', () => {
+    expect(rankPages('inst', files, titles, [])).toEqual(['docs/guide/install.md', 'docs/reference/install-options.md']);
+    expect(rankPages('widget', files, titles, [])).toEqual(['docs/index.md', 'docs/guide/configure.md', 'docs/guide/install.md']);
+    expect(rankPages('guide conf', files, titles, [])).toEqual(['docs/guide/configure.md']); // words in title or path
+    expect(rankPages('reference', files, titles, [])).toEqual(['docs/reference/install-options.md']);
+  });
+  it('puts recently opened pages first', () => {
+    expect(rankPages('widget', files, titles, ['docs/guide/install.md'])).toEqual(['docs/index.md', 'docs/guide/install.md', 'docs/guide/configure.md']);
+    expect(rankPages('', files, titles, ['docs/faq.md', 'docs/guide/install.md']).slice(0, 3)).toEqual(['docs/faq.md', 'docs/guide/install.md', 'docs/guide/configure.md']);
   });
 });

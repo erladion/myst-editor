@@ -131,6 +131,17 @@ With an internal PyPI mirror instead, the private environment works too: uv read
   and `build/` or `dist/` only as build output when it holds no pages. Symlinked
   pages and folders inside the opened folder are followed.
 
+### Getting around
+
+- **Go to page** (Ctrl+P, or File → Go to Page…): type part of a page's title or file
+  name, then pick it with the arrow keys and Enter. Pages opened lately come first.
+- **Outline** (Ctrl+Shift+O, or View → Outline): the open page's headings beside it,
+  in both views. Click one to go there; the one you're in is highlighted. It stays
+  open until hidden.
+- **Where you left off:** a folder reopens on the page last open, scrolled where it
+  was, and each page keeps its place when switching between pages.
+- **Recent folders** are listed on the welcome screen and under File → Open Recent.
+
 ### Markdown view
 
 Ctrl+/ (remembered) switches to the Markdown source, for writers who prefer it:
@@ -315,6 +326,8 @@ With `[conditions]` set:
   the next build.
 - **Pasted pictures** have no description until one is added (double-click the
   picture).
+- **Scroll positions** are remembered in the formatted view, not yet in the Markdown
+  view.
 - **Getting the latest** only fast-forwards: when a colleague pushed while you have
   commits of your own, someone familiar with git has to merge them. There are no
   branches in the app.

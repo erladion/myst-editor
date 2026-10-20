@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { EditorView } from 'prosemirror-view';
-import type { EditorState } from 'prosemirror-state';
+import { TextSelection, type EditorState } from 'prosemirror-state';
 import type { OpenProgress, ProjectInfo } from '../../shared/api';
 import type { EnvironmentChoice, SphinxState } from '../../shared/sphinx';
 import type { SourceMap } from '../../core/sourcemap';
@@ -21,6 +21,8 @@ import { LivePreview } from './components/LivePreview';
 import { AdvancedBar } from './components/AdvancedBar';
 import { AskPassHost, CloneDialog, GitChip, GitPanel } from './components/GitUi';
 import { NewPageDialog, type NewPage } from './components/PageDialogs';
+import { GoToPage, Outline, markdownHeadings, type Heading } from './components/Navigation';
+import { loadPlaces, rememberPage, rememberScroll } from './places';
 import { addToContents, contentsPages, defaultContents, folderOf, listingPages, moveInContents, pageFolders, removeFromContents, type ContentsMove } from './pages';
 import type { GitInfo } from '../../shared/git';
 import { resolveRef } from './paths';
@@ -113,6 +115,10 @@ export function App() {
   const [gitPanel, setGitPanel] = useState(false);
   const [cloning, setCloning] = useState(false);
   const [opening, setOpening] = useState<OpenProgress | null>(null);
+  const [goTo, setGoTo] = useState(false);
+  const [outline, setOutline] = useStoredState<'shown' | 'hidden'>('mysteditor.outline', 'hidden');
+  const [recentFolders, setRecentFolders] = useState<string[]>([]);
+  const scrollRef = useRef<HTMLDivElement>(null);
   // The New page dialog, with the folder it starts in (null: the current page's).
   const [newPage, setNewPage] = useState<{ folder: string | null } | null>(null);
   useEffect(() => api.onOpenProgress(setOpening), []);
@@ -254,25 +260,69 @@ export function App() {
       .finally(() => setStarting(false));
   }, [useProject]);
 
-  // Open the landing page of a newly opened project.
+  // Open the page last open in this folder, or else its landing page.
   useEffect(() => {
     if (ws && !ws.current) {
-      const page = landingPage(ws.project);
+      const last = loadPlaces(ws.project.root).page;
+      const page = last && ws.project.files.includes(last) ? last : landingPage(ws.project);
       if (page) void openPage(page);
     }
   }, [ws, openPage]);
 
+  // Remember the open page, and where each page was scrolled to.
+  const current = ws?.current ?? null;
+  useEffect(() => {
+    if (ws && current) rememberPage(ws.project.root, current);
+  }, [ws, current]);
+  const scrollTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const onScroll = useCallback(() => {
+    clearTimeout(scrollTimer.current);
+    const el = scrollRef.current;
+    if (!ws || !current || !el) return;
+    const top = el.scrollTop;
+    scrollTimer.current = setTimeout(() => rememberScroll(ws.project.root, current, top), 250);
+  }, [ws, current]);
+  // Back where it was, once the page's editor is there (it mounts first).
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!ws || !current || !el) return;
+    const top = loadPlaces(ws.project.root).scroll[current] ?? 0;
+    el.scrollTop = top;
+    // Again once images and previews have their size.
+    const again = setTimeout(() => el.scrollTop < top && (el.scrollTop = top), 400);
+    return () => clearTimeout(again);
+  }, [ws, current, mode]);
+
+  // Recent folders, for the welcome screen.
+  useEffect(() => {
+    if (!ws) void api.recentFolders().then(setRecentFolders);
+  }, [ws]);
+
+  // Before opening another folder: save, or ask about what couldn't be saved.
+  const canLeave = useCallback(async () => {
+    if (!ws || (await ws.saveAll())) return true;
+    return dialogs.current!.confirm({
+      title: 'Unsaved changes',
+      message: `Some pages couldn’t be saved (${ws.unsavedPaths().join(', ')}). Open another folder anyway and lose those changes?`,
+      confirm: 'Discard changes',
+    });
+  }, [ws]);
+
   const chooseFolder = useCallback(async () => {
-    if (ws && !(await ws.saveAll())) {
-      const ok = await dialogs.current!.confirm({
-        title: 'Unsaved changes',
-        message: `Some pages couldn’t be saved (${ws.unsavedPaths().join(', ')}). Open another folder anyway and lose those changes?`,
-        confirm: 'Discard changes',
-      });
-      if (!ok) return;
-    }
-    await useProject(await api.chooseProject());
-  }, [ws, useProject]);
+    if (await canLeave()) await useProject(await api.chooseProject());
+  }, [canLeave, useProject]);
+
+  const openFolder = useCallback(
+    async (folder: string) => {
+      if (!(await canLeave())) return;
+      try {
+        await useProject(await api.openProject(folder));
+      } catch (e) {
+        dialogs.current?.notify(`Couldn’t open ${folder}: ${String(e instanceof Error ? e.message : e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')}`);
+      }
+    },
+    [canLeave, useProject],
+  );
 
   const onCloned = useCallback(
     async (folder: string) => {
@@ -393,7 +443,10 @@ export function App() {
       else if (cmd === 'save' && ws?.current) void ws.save(ws.current);
       else if (cmd === 'new-page' && ws) setNewPage({ folder: null });
       else if (cmd === 'delete-page' && ws?.current) void deletePage(ws.current);
+      else if (cmd === 'go-to-page' && ws) setGoTo(true);
+      else if (cmd === 'toggle-outline') setOutline((o) => (o === 'shown' ? 'hidden' : 'shown'));
     });
+    const offRecent = api.onOpenFolderPath((folder) => void openFolder(folder));
     const offFiles = api.onFilesChanged((e) => void ws?.externalChange(e.changed, e.files, e.titles));
     const offProject = api.onProjectChanged(({ project }) => {
       ws?.updateProject(project);
@@ -410,11 +463,12 @@ export function App() {
     });
     return () => {
       offMenu();
+      offRecent();
       offFiles();
       offProject();
       offClose();
     };
-  }, [ws, chooseFolder, toggleMode]);
+  }, [ws, chooseFolder, openFolder, toggleMode, deletePage, setOutline]);
 
   // Ctrl+/ switches between formatted editing and the Markdown view, wherever focus is.
   useEffect(() => {
@@ -452,6 +506,38 @@ export function App() {
   );
   const onRevealed = useCallback(() => setReveal(null), []);
   const onGotoDone = useCallback(() => setGotoLine(null), []);
+
+  // The open page's headings for the outline: top-level ones (Sphinx's sections) in the
+  // formatted view, # lines in the Markdown view.
+  const textMode = mode === 'markdown' && session?.text != null;
+  const headings = useMemo<Heading[]>(() => {
+    if (!session) return [];
+    if (textMode) return markdownHeadings(session.text!);
+    const out: Heading[] = [];
+    session.state.doc.forEach((node, offset) => {
+      if (node.type.name === 'heading') out.push({ level: node.attrs.level, text: node.textContent, at: offset });
+    });
+    return out;
+  }, [session, session?.state.doc, session?.text, textMode]);
+  const where = textMode ? (sourceLine ?? 1) : (session?.state.selection.from ?? 0);
+  const currentHeading = useMemo(() => {
+    let found: number | null = null;
+    headings.forEach((h, i) => {
+      if (h.at <= where) found = i;
+    });
+    return found;
+  }, [headings, where]);
+  const pickHeading = useCallback(
+    (h: Heading) => {
+      if (textMode) return setGotoLine(h.at);
+      const v = viewRef.current;
+      if (!v) return;
+      (v.nodeDOM(h.at) as HTMLElement | null)?.scrollIntoView({ block: 'start' });
+      v.dispatch(v.state.tr.setSelection(TextSelection.near(v.state.doc.resolve(h.at + 1))));
+      v.focus();
+    },
+    [textMode],
+  );
 
   // Pages that could list a new page, worked out once when the dialog opens.
   const newPageContents = useMemo(() => {
@@ -491,6 +577,21 @@ export function App() {
             <button type="button" className="large secondary" onClick={() => setCloning(true)}>
               Get from a repository…
             </button>
+            {recentFolders.length > 0 && (
+              <section className="recent-folders" aria-label="Recent folders">
+                <h2>Recent</h2>
+                <ul>
+                  {recentFolders.map((folder) => (
+                    <li key={folder}>
+                      <button type="button" className="link-button" title={folder} onClick={() => void openFolder(folder)}>
+                        <span className="recent-name">{folder.split(/[\\/]/).filter(Boolean).pop()}</span>
+                        <span className="recent-path">{folder}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
           </div>
         )}
         {cloning && <CloneDialog onClose={() => setCloning(false)} onCloned={onCloned} />}
@@ -601,10 +702,11 @@ export function App() {
                 )}
               </div>
             )}
+            {outline === 'shown' && <Outline headings={headings} current={currentHeading} onPick={pickHeading} onClose={() => setOutline('hidden')} />}
           </div>
         ) : (
         <div className={`workarea${showPreview && info ? ' with-preview' : ''}`}>
-          <div className="scroll">
+          <div className="scroll" ref={scrollRef} onScroll={onScroll}>
             {session && (
               <Editor
                 key={session.path}
@@ -624,6 +726,7 @@ export function App() {
             {!session && <div className="empty-state muted">Choose a page on the left.</div>}
           </div>
           {showPreview && info && <Preview url={previewUrl} building={sphinx.status.kind === 'building'} />}
+          {outline === 'shown' && session && <Outline headings={headings} current={currentHeading} onPick={pickHeading} onClose={() => setOutline('hidden')} />}
         </div>
         )}
         {showProblems && anyBuilt && (
@@ -666,6 +769,7 @@ export function App() {
       )}
       {cloning && <CloneDialog onClose={() => setCloning(false)} onCloned={onCloned} />}
       <AskPassHost />
+      {goTo && <GoToPage files={ws.project.files} titles={ws.project.titles} recent={loadPlaces(ws.project.root).recent} onOpen={(p) => void openPage(p)} onClose={() => setGoTo(false)} />}
       {newPage && (
         <NewPageDialog
           folders={pageFolders(ws.project)}

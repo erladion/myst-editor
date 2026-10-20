@@ -43,13 +43,17 @@ export interface ProjectChanged {
   project: ProjectInfo;
 }
 
-export type MenuCommand = 'open-folder' | 'save' | 'toggle-source' | 'clone' | 'new-page' | 'delete-page';
+export type MenuCommand = 'open-folder' | 'save' | 'toggle-source' | 'clone' | 'new-page' | 'delete-page' | 'go-to-page' | 'toggle-outline';
 
 export interface MystApi {
   // The project from the command line or the last session, if any.
   initialProject(): Promise<ProjectInfo | null>;
   chooseProject(): Promise<ProjectInfo | null>;
   openProject(folder: string): Promise<ProjectInfo>;
+  // Folders opened lately that still exist, most recent first.
+  recentFolders(): Promise<string[]>;
+  // File → Open Recent asked for a folder.
+  onOpenFolderPath(cb: (folder: string) => void): () => void;
   // Environment variables for a project's Sphinx builds: from its .mysteditor.toml,
   // and the writer's own for the opened folder (which win). Setting them rebuilds.
   sphinxEnv(project: string): Promise<{ project: Record<string, string>; yours: Record<string, string> }>;

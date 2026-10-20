@@ -92,6 +92,8 @@ const settingsPath = () => join(app.getPath('userData'), 'settings.json');
 
 interface Settings {
   lastProject?: string;
+  // Folders opened lately, most recent first.
+  recent?: string[];
   // Projects the writer allowed to run Sphinx (which executes their conf.py).
   trusted?: string[];
   // Per project root: where its builds get Python from.
@@ -102,6 +104,9 @@ interface Settings {
   // top of (and overriding) the projects' [sphinx.env].
   sphinxEnv?: Record<string, Record<string, string>>;
 }
+
+// Settings.recent, for the File → Open Recent menu.
+let recentFolders: string[] = [];
 
 // The writer's variables for the open folder (see Settings.sphinxEnv).
 let userEnv: Record<string, string> = {};
@@ -166,7 +171,10 @@ async function useProject(folder: string): Promise<ProjectInfo> {
   builtPages.clear();
   startWatching(project);
   win?.setTitle(`${project.name} — MyST Editor`);
-  await updateSettings((s) => ({ ...s, lastProject: project!.root }));
+  const root = project.root;
+  await updateSettings((s) => ({ ...s, lastProject: root, recent: [root, ...(s.recent ?? []).filter((r) => r !== root)].slice(0, 10) }));
+  recentFolders = (await loadSettings()).recent ?? [];
+  buildMenu();
   await startSphinx(project);
   refreshGit();
   return project;
@@ -416,6 +424,18 @@ function registerIpc() {
     return result.canceled ? null : useProject(result.filePaths[0]);
   });
   ipcMain.handle('open-project', (_e, folder: string) => useProject(folder));
+  // Recent folders that are still there, for the welcome screen.
+  ipcMain.handle('recent-folders', async () => {
+    const out: string[] = [];
+    for (const folder of (await loadSettings()).recent ?? []) {
+      try {
+        if ((await fs.stat(folder)).isDirectory()) out.push(folder);
+      } catch {
+        // gone (or on a drive that isn't there now)
+      }
+    }
+    return out;
+  });
   // Images pasted or dropped into a page: a file on disk (referenced where it is if
   // it's in the folder, else copied in), or bytes (a pasted screenshot).
   ipcMain.handle('add-image-file', (_e, page: string, path: string) => {
@@ -588,7 +608,15 @@ function buildMenu(theme: Theme = nativeTheme.themeSource) {
       label: 'File',
       submenu: [
         { label: 'Open Folder…', accelerator: 'CmdOrCtrl+O', click: () => send('open-folder') },
+        {
+          label: 'Open Recent',
+          submenu: recentFolders.length
+            ? recentFolders.map((folder) => ({ label: folder, click: () => win?.webContents.send('open-folder-path', folder) }))
+            : [{ label: 'No folders yet', enabled: false }],
+        },
         { label: 'Clone Repository…', click: () => send('clone') },
+        { type: 'separator' },
+        { id: 'go-to-page', label: 'Go to Page…', accelerator: 'CmdOrCtrl+P', click: () => send('go-to-page') },
         { type: 'separator' },
         { label: 'New Page…', accelerator: 'CmdOrCtrl+N', click: () => send('new-page') },
         { label: 'Delete Page…', click: () => send('delete-page') },
@@ -608,6 +636,7 @@ function buildMenu(theme: Theme = nativeTheme.themeSource) {
         // The page handles Ctrl+/ itself (so it also works over the source editor);
         // the menu only shows the shortcut.
         { label: 'Markdown View', accelerator: 'CmdOrCtrl+/', registerAccelerator: false, click: () => send('toggle-source') },
+        { id: 'outline', label: 'Outline', accelerator: 'CmdOrCtrl+Shift+O', click: () => send('toggle-outline') },
         {
           label: 'Appearance',
           submenu: (
@@ -678,6 +707,7 @@ app.whenReady().then(async () => {
   });
   registerIpc();
   registerProtocols();
+  recentFolders = (await loadSettings()).recent ?? [];
   await setTheme((await loadSettings()).theme ?? 'system', false);
   // The window is told whether it's dark: on Linux, pages don't see the system's (or
   // the chosen) scheme through prefers-color-scheme.

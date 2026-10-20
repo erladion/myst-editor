@@ -2034,3 +2034,143 @@ button.danger-text {
 button.secondary {
   margin-left: 8px;
 }
+
+/* ---- getting around: Go to page, the outline, recent folders ---- */
+
+.goto-backdrop {
+  align-items: flex-start;
+  padding-top: 12vh;
+}
+
+.modal.goto {
+  width: min(560px, 92vw);
+  padding: 8px;
+}
+
+.goto input {
+  width: 100%;
+  font-size: 15px;
+  padding: 8px 10px;
+}
+
+.goto-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  max-height: 50vh;
+  overflow: auto;
+}
+
+.goto-list li {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.goto-list li.active {
+  background: var(--accent-soft);
+}
+
+.goto-title {
+  font-weight: 500;
+}
+
+.goto-path {
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.goto-list li.goto-none {
+  cursor: default;
+}
+
+.outline {
+  flex: none;
+  width: 220px;
+  border-left: 1px solid var(--border);
+  background: var(--bg-sidebar);
+  overflow: auto;
+  font-size: 13px;
+}
+
+.outline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px 4px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.outline ul {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 12px;
+}
+
+.outline-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  border-radius: 0;
+  padding: 3px 12px;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.outline-item:hover {
+  background: var(--border);
+}
+
+.outline-item.current {
+  color: var(--accent);
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.recent-folders {
+  margin-top: 28px;
+  text-align: left;
+}
+
+.recent-folders h2 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-muted);
+  margin: 0 0 6px;
+}
+
+.recent-folders ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.recent-folders .link-button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  padding: 5px 0;
+  text-align: left;
+}
+
+.recent-name {
+  font-weight: 500;
+}
+
+.recent-path {
+  font-size: 12px;
+  color: var(--fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
