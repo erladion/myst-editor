@@ -1564,3 +1564,77 @@ button.danger-text {
   border-radius: 999px;
   padding: 0 6px;
 }
+
+/* ---- tables ---- */
+
+.toolbars {
+  border-bottom: 1px solid var(--border);
+}
+
+.toolbars > .toolbar {
+  border-bottom: none;
+}
+
+.toolbar-table {
+  background: var(--bg-soft);
+  border-top: 1px solid var(--border) !important;
+  padding-top: 3px;
+  padding-bottom: 3px;
+}
+
+.tb-heading {
+  font-weight: 600;
+  color: var(--fg-muted);
+  margin-right: 6px;
+  font-size: 12px;
+}
+
+.tb-hint {
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.prose table {
+  border-collapse: collapse;
+  font: 15px/1.5 var(--font-doc);
+  white-space: normal;
+  table-layout: auto;
+  min-width: 40%;
+}
+
+.prose th,
+.prose td {
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  vertical-align: top;
+  min-width: 3em;
+  position: relative;
+}
+
+.prose th {
+  background: var(--bg-soft);
+  font-weight: 600;
+}
+
+.prose td p,
+.prose th p {
+  margin: 0;
+}
+
+/* prosemirror-tables: selected cells */
+.prose .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  pointer-events: none;
+}
+
+.ProseMirror.resize-cursor {
+  cursor: col-resize;
+}
+
+.menu-items.menu-right {
+  left: auto;
+  right: 0;
+}

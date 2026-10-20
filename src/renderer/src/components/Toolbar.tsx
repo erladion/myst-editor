@@ -1,7 +1,7 @@
 // Formatting toolbar. Reads the editor state on every render; App re-renders on each change.
 import { useEffect, useRef, useState } from 'react';
 import type { EditorView } from 'prosemirror-view';
-import type { Command } from 'prosemirror-state';
+import type { Command, EditorState } from 'prosemirror-state';
 import { undo, redo } from 'prosemirror-history';
 import { schema } from '../../../core/schema';
 import {
@@ -11,6 +11,10 @@ import {
 import type { EditorContext } from '../editor/context';
 import { ADMONITIONS } from '../editor/directives';
 import { conditionKind, makeConditional } from '../editor/conditions';
+import {
+  addColumnAfter, addColumnBefore, addRowAfter, addRowBefore, alignColumn, columnAlign, deleteColumn, deleteRow, deleteTable,
+  insertTable, isInTable, mergeCells, splitCell,
+} from '../editor/tables';
 
 // Ask for the condition, then wrap the selection (inline) or the blocks (block).
 async function makeConditionalInteractive(ctx: EditorContext, view: EditorView) {
@@ -101,7 +105,8 @@ export function Toolbar({ view, ctx, sourceMode, onToggleSource, previewAvailabl
       type="button"
       className={`tb${active ? ' active' : ''}${wide ? ' wide' : ''}`}
       title={title}
-      aria-label={title}
+      // Symbol buttons are named by their tooltip; text buttons by their text.
+      aria-label={wide ? undefined : title}
       aria-pressed={active}
       disabled={disabled || !can(cmd)}
       onMouseDown={(e) => e.preventDefault()}
@@ -111,7 +116,11 @@ export function Toolbar({ view, ctx, sourceMode, onToggleSource, previewAvailabl
     </button>
   );
 
+  const inTable = !!state && !sourceMode && isInTable(state);
+  const spans = ctx.config.editor.tables;
+  const align = state && inTable ? columnAlign(state) : null;
   return (
+    <div className="toolbars">
     <div className="toolbar" role="toolbar" aria-label="Formatting">
       <Btn label="↶" title="Undo (Ctrl+Z)" cmd={undo} />
       <Btn label="↷" title="Redo (Ctrl+Shift+Z)" cmd={redo} />
@@ -190,6 +199,80 @@ export function Toolbar({ view, ctx, sourceMode, onToggleSource, previewAvailabl
         {sourceMode ? 'Back to editing' : 'Markdown'}
       </button>
     </div>
+    {inTable && (
+      <div className="toolbar toolbar-table" role="toolbar" aria-label="Table">
+        <span className="tb-heading">Table</span>
+        <Btn label="Row above" title="Insert a row above" cmd={addRowBefore} wide />
+        <Btn label="Row below" title="Insert a row below" cmd={addRowAfter} wide />
+        <Btn label="Column left" title="Insert a column to the left" cmd={addColumnBefore} wide />
+        <Btn label="Column right" title="Insert a column to the right" cmd={addColumnAfter} wide />
+        <span className="tb-sep" />
+        <Btn label="⇤" title="Align column left" cmd={alignColumn(align === 'left' ? null : 'left')} active={align === 'left'} />
+        <Btn label="↔" title="Center column" cmd={alignColumn(align === 'center' ? null : 'center')} active={align === 'center'} />
+        <Btn label="⇥" title="Align column right" cmd={alignColumn(align === 'right' ? null : 'right')} active={align === 'right'} />
+        <span className="tb-sep" />
+        {spans.colspan || spans.rowspan ? (
+          <>
+            <Btn label="Merge cells" title="Merge the selected cells (drag across cells to select them)" cmd={mergeCells} wide />
+            <Btn label="Split cell" title="Split a merged cell" cmd={splitCell} wide />
+          </>
+        ) : (
+          <span className="tb-hint" title="Set colspan_role and rowspan_role under [tables] in .mysteditor.toml to write merged cells the way your project's extension expects">
+            Merging cells needs span roles in .mysteditor.toml
+          </span>
+        )}
+        <span className="spacer" />
+        <MenuButton
+          label="Delete ▾"
+          items={[
+            ['Delete row', deleteRow],
+            ['Delete column', deleteColumn],
+            ['Delete table', deleteTable],
+          ]}
+          state={state!}
+          run={run}
+        />
+      </div>
+    )}
+    </div>
+  );
+}
+
+// A small dropdown of commands.
+function MenuButton({ label, items, state, run }: { label: string; items: [string, Command][]; state: EditorState; run: (cmd: Command) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    window.addEventListener('mousedown', close);
+    return () => window.removeEventListener('mousedown', close);
+  }, [open]);
+  return (
+    <div className="menu" ref={ref}>
+      <button type="button" className="tb wide" aria-haspopup="menu" aria-expanded={open} onMouseDown={(e) => e.preventDefault()} onClick={() => setOpen(!open)}>
+        {label}
+      </button>
+      {open && (
+        <div className="menu-items menu-right" role="menu">
+          {items.map(([name, cmd]) => (
+            <button
+              key={name}
+              type="button"
+              role="menuitem"
+              disabled={!cmd(state)}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                setOpen(false);
+                run(cmd);
+              }}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -227,6 +310,7 @@ function InsertMenu({ disabled, ctx, run }: { disabled: boolean; ctx: EditorCont
           {['note', 'tip', 'important', 'warning', 'danger', 'seealso'].map((n) => item(ADMONITIONS[n].label, () => run(insertDirective(ctx, n))))}
           <div className="menu-heading">Blocks</div>
           {item('Figure…', () => insertFigure(ctx, run))}
+          {item('Table', () => run(insertTable))}
           {item('Code block', () => run(insertCodeBlock()))}
           {item('Equation', () => run(insertMath(ctx)))}
           {item('Dropdown', () => run(insertDirective(ctx, 'dropdown', 'Click to expand')))}

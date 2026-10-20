@@ -51,6 +51,38 @@ const own = (name: string, extra: Partial<TagParseRule> = {}): TagParseRule => (
   ...extra,
 });
 
+function cellSpec(tag: 'td' | 'th', tableRole: string): NodeSpec {
+  return {
+    // Markdown table cells hold inline content only; several paragraphs (e.g. after
+    // merging cells) are joined when written.
+    content: 'paragraph+',
+    tableRole,
+    isolating: true,
+    attrs: { colspan: { default: 1 }, rowspan: { default: 1 }, colwidth: { default: null }, align: { default: null } },
+    parseDOM: [
+      {
+        tag,
+        getAttrs: (dom) => {
+          const el = dom as HTMLElement;
+          const align = el.style.textAlign || el.getAttribute('align');
+          return {
+            colspan: Number(el.getAttribute('colspan') ?? 1) || 1,
+            rowspan: Number(el.getAttribute('rowspan') ?? 1) || 1,
+            align: ['left', 'center', 'right'].includes(align ?? '') ? align : null,
+          };
+        },
+      },
+    ],
+    toDOM: (node) => {
+      const attrs: Record<string, string> = {};
+      if (node.attrs.colspan > 1) attrs.colspan = String(node.attrs.colspan);
+      if (node.attrs.rowspan > 1) attrs.rowspan = String(node.attrs.rowspan);
+      if (node.attrs.align) attrs.style = `text-align: ${node.attrs.align}`;
+      return [tag, attrs, 0];
+    },
+  };
+}
+
 const nodes: Record<string, NodeSpec> = {
   doc: { content: 'block+' },
 
@@ -202,6 +234,29 @@ const nodes: Record<string, NodeSpec> = {
     parseDOM: [own('raw_block')],
     toDOM: (node) => ['div', dataAttrs(node, { class: 'raw' }), node.attrs.source],
   },
+
+  // GFM tables. Shaped for prosemirror-tables (tableRole, colspan/rowspan/colwidth);
+  // spans are written with the project's span roles (see editor-config). Alignment
+  // lives on each cell so it survives adding and removing columns; the header row's
+  // cells decide each column's alignment when written. `pretty` keeps padded columns.
+  table: {
+    group: 'block',
+    content: 'table_row+',
+    tableRole: 'table',
+    isolating: true,
+    // `ruleSpaces`: the delimiter row is written `| --- |` rather than `|-----|`.
+    attrs: { ...sid, pretty: { default: true }, ruleSpaces: { default: true } },
+    parseDOM: [{ tag: 'table', getAttrs: (dom) => fromData(dom as HTMLElement) }],
+    toDOM: (node) => ['table', dataAttrs(node), ['tbody', 0]],
+  },
+  table_row: {
+    content: '(table_cell | table_header)*',
+    tableRole: 'row',
+    parseDOM: [{ tag: 'tr' }],
+    toDOM: () => ['tr', 0],
+  },
+  table_cell: cellSpec('td', 'cell'),
+  table_header: cellSpec('th', 'header_cell'),
 
   text: { group: 'inline' },
 

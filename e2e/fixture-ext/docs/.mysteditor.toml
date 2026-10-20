@@ -13,3 +13,7 @@ url = "https://jira.example.com/browse/{value}"
 [conditions]
 capabilities = "capabilities.json"
 key = "product.capabilities"
+
+[tables]
+colspan_role = "colspan"
+rowspan_role = "rowspan"

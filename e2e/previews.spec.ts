@@ -42,19 +42,16 @@ test('a custom directive the editor doesn’t know shows as the build renders it
   await expect(page.locator('.chip-button', { hasText: 'No problems' })).toBeVisible();
 });
 
-test('tables are previewed from the build, and update after editing', async () => {
+test('raw HTML is previewed from the build, and updates after editing', async () => {
   const { page } = ctx;
-  const card = page.locator('.card-table');
-  await expect(card.frameLocator('iframe.card-preview').locator('td').first()).toHaveText('Basic');
+  const card = page.locator('.card-raw', { hasText: 'raw-note' });
+  await expect(card.frameLocator('iframe.card-preview').locator('.raw-note p')).toHaveText('Raw HTML from the docs.');
 
   await card.dblclick();
-  const dialog = page.getByRole('dialog', { name: 'Edit table' });
-  const source = dialog.locator('textarea');
-  await source.fill((await source.inputValue()).trimEnd() + '\n| Pro   | Paid  |\n');
+  const dialog = page.getByRole('dialog', { name: 'Edit html' });
+  await dialog.locator('textarea').fill('<div class="raw-note"><p>Changed in the editor.</p></div>');
   await dialog.getByRole('button', { name: 'Save' }).click();
-  await expect(page.locator('.card-table').frameLocator('iframe.card-preview').locator('td')).toHaveText(['Basic', 'Free', 'Pro', 'Paid'], {
-    timeout: 30_000,
-  });
+  await expect(page.locator('.card-raw').frameLocator('iframe.card-preview').locator('.raw-note p')).toHaveText('Changed in the editor.', { timeout: 30_000 });
 });
 
 test('a previewed card hides its own view; condition markers are never previewed', async () => {

@@ -14,6 +14,10 @@
 //   label = "Jira issue"
 //   url = "https://jira.example.com/browse/{value}"
 //
+//   [tables]
+//   colspan_role = "colspan"     # cells written as {colspan}`2` text, covered cells empty
+//   rowspan_role = "rowspan"
+//
 //   [conditions]
 //   capabilities = "capabilities.json"   # relative to this file
 //   block = ["if", "endif"]
@@ -60,14 +64,21 @@ export interface SettingsProblem {
   message: string;
 }
 
+// Roles a project's extension uses for merged table cells, e.g. {colspan}`2`.
+export interface TableSpans {
+  colspan?: string;
+  rowspan?: string;
+}
+
 export interface EditorConfig {
   directives: Record<string, DirectiveDef>;
   roles: Record<string, RoleDef>;
+  tables: TableSpans;
   conditions: ConditionsDef | null;
   problems: SettingsProblem[];
 }
 
-export const EMPTY_EDITOR_CONFIG: EditorConfig = { directives: {}, roles: {}, conditions: null, problems: [] };
+export const EMPTY_EDITOR_CONFIG: EditorConfig = { directives: {}, roles: {}, tables: {}, conditions: null, problems: [] };
 
 const DEFAULT_CONDITIONS: Omit<ConditionsDef, 'capabilities' | 'capabilitiesFile'> = {
   block: ['if', 'endif'],
@@ -89,7 +100,7 @@ export interface SettingsSource {
 // Merge the settings files that apply to a project, outermost first: later files
 // override earlier ones per directive, per role and per conditions setting.
 export function loadEditorConfig(sources: SettingsSource[]): EditorConfig {
-  const config: EditorConfig = { directives: {}, roles: {}, conditions: null, problems: [] };
+  const config: EditorConfig = { directives: {}, roles: {}, tables: {}, conditions: null, problems: [] };
   for (const source of sources) applySettings(config, source);
   return config;
 }
@@ -104,7 +115,20 @@ function applySettings(config: EditorConfig, { file, text, readCapabilities }: S
     return;
   }
   for (const key of Object.keys(raw)) {
-    if (!['directives', 'roles', 'conditions'].includes(key)) problem(`Unknown section [${key}] (expected directives, roles or conditions)`);
+    if (!['directives', 'roles', 'tables', 'conditions'].includes(key)) problem(`Unknown section [${key}] (expected directives, roles, tables or conditions)`);
+  }
+
+  if (raw.tables !== undefined) {
+    const t = raw.tables;
+    if (!isTable(t)) problem('[tables] must be a table');
+    else {
+      for (const [key, field] of [['colspan_role', 'colspan'], ['rowspan_role', 'rowspan']] as const) {
+        if (t[key] === undefined) continue;
+        if (typeof t[key] === 'string' && /^[\w:.-]+$/.test(t[key] as string)) config.tables = { ...config.tables, [field]: t[key] as string };
+        else problem(`[tables] ${key} must be a role name, like "${field}"`);
+      }
+      for (const key of Object.keys(t)) if (!['colspan_role', 'rowspan_role'].includes(key)) problem(`[tables] unknown setting "${key}"`);
+    }
   }
 
   if (raw.directives !== undefined) {

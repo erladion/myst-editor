@@ -14,6 +14,7 @@ import { heading, paragraph, toggleCode, toggleEm, toggleStrike, toggleStrong } 
 import { problemsPlugin } from './problems';
 import { conditionsPlugin } from './conditions';
 import { previewsPlugin } from './previews';
+import { tablePlugins } from './tables';
 
 const { nodes, marks } = schema;
 
@@ -128,6 +129,8 @@ export function createEditorState(doc: PMNode): EditorState {
     doc,
     plugins: [
       syncSelectionOnKey,
+      // Before the general keymap, so Tab and Enter move between cells in tables.
+      ...tablePlugins,
       rules,
       keys,
       keymap(baseKeymap),

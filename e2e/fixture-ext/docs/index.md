@@ -27,3 +27,5 @@ Closing words.
 | Plan  | Price |
 |-------|-------|
 | Basic | Free  |
+
+<div class="raw-note"><p>Raw HTML from the docs.</p></div>

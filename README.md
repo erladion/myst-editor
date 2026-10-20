@@ -3,7 +3,7 @@
 A WYSIWYG editor for Sphinx + MyST Markdown, aimed at writers who shouldn't have to
 see Markdown syntax. An Electron app shipped as an AppImage.
 
-## Status: phase 4 — custom extensions (settings file, conditional content and build previews done)
+## Status: phase 5 — editable tables
 
 Open a documentation folder and edit its pages as formatted documents:
 
@@ -28,6 +28,18 @@ Open a documentation folder and edit its pages as formatted documents:
   - roles as chips; `{doc}` links show the page title, Ctrl+click opens the page
   - the toctree as a clickable table of contents
   - an Insert menu for callouts, figures, code, equations and cross-references
+- **Tables:** Markdown tables are edited as tables:
+  - Tab and Shift+Tab move between cells. Enter moves down a row, adding one at the
+    bottom.
+  - A table toolbar inserts and deletes rows and columns, and sets column alignment.
+  - **Merged cells** use your project's span roles (see `[tables]` below): a merged
+    cell is written `{colspan}`2` text` or `{rowspan}`2` text`, and the cells it
+    covers as empty `| |`.
+  - Unedited tables are kept byte-for-byte. Edited ones keep their style: padded or
+    compact columns, `| --- |` or `|-----|` delimiters.
+  - Tables the model can't hold exactly stay as cards, kept as written and previewed
+    from the build: a covered cell with content, a span past the edge, or more cells
+    than the header.
 - **Everything else is still safe:** unknown directives, tables, front matter and HTML
   show as cards with a preview, and can be edited as source.
 - **Saving:**
@@ -100,6 +112,12 @@ choices = ["internal", "partners", "public"]
 default = "internal"        # used when inserting
 [directives.company-callout.options.draft]
 flag = true                 # a checkbox: present or absent
+
+# Merged table cells, written the way the project's extension reads them:
+# {colspan}`2` text, with covered cells left empty. Merging is offered once set.
+[tables]
+colspan_role = "colspan"
+rowspan_role = "rowspan"
 
 # A role: a labelled chip, and Ctrl+click opens the link.
 [roles.jira]
@@ -288,6 +306,10 @@ With an internal PyPI mirror instead, the private environment works too: uv read
   pyproject docs extra) can fail for projects with compiled code. Details are in the
   build log.
 - No find/replace yet, and no image picker. Figures take a typed path.
+- Editing a padded table re-pads every row of a column when its widest cell changes,
+  as table formatters do. Cells hold one line: line breaks can't be typed in a cell,
+  and merged cells' text is joined with a space. With both spans on one cell, the
+  editor writes `{colspan}` before `{rowspan}`, and reads them in either order.
 - Custom syntax built on MyST's own extension points (`{role}` and `{directive}`) is
   parsed and preserved exactly. Syntax an extension finds in the raw text instead
   (for example a source-read preprocessor matching `[[...]]`) is ordinary text to
@@ -330,11 +352,9 @@ With an internal PyPI mirror instead, the private environment works too: uv read
       MyST roles or directives): declare its patterns so the editor keeps those spans
       verbatim. Today they're ordinary text, and editing such a paragraph may escape
       their punctuation (see Known limitations).
-5. Tables: create and edit tables visually, including row and column spans.
-   - Open question: GFM tables and `list-table` can't express spans. Options are reST
-     grid tables in `{eval-rst}`, an extension directive such as `flat-table`, or raw
-     HTML (HTML output only). Possibly keep GFM until a writer merges cells, then
-     switch format.
+5. ~~Tables: create and edit tables visually, including row and column spans~~ ✅
+   GFM tables, with spans written through the project's own roles (`[tables]`).
+   Still cards: `{list-table}` and grid tables in `{eval-rst}`.
 6. Advanced view: pure Markdown editing next to a live preview, hiding the formatting
    toolbar. For technical writers who prefer the source. The preview could come from
    the phase 3 Sphinx build.

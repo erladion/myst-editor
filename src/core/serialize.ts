@@ -12,16 +12,21 @@ import { headerKey, renderHeader, fenceFor } from './directive.js';
 export interface SerializeOptions {
   // Ignore the source map and serialize everything (used to test the serializer).
   fresh?: boolean;
+  // Roles for merged table cells, e.g. { colspan: 'colspan' } → {colspan}`2`.
+  tableSpans?: { colspan?: string; rowspan?: string };
 }
 
 export function serializeMyst(doc: PMNode, map: SourceMap, opts: SerializeOptions = {}): string {
-  return new Writer(map, !!opts.fresh).container(doc, opts.fresh ? undefined : map.root);
+  return new Writer(map, !!opts.fresh, opts.tableSpans ?? {}).container(doc, opts.fresh ? undefined : map.root);
 }
+
+const ALIGN_RULE = { left: (w: number) => `:${'-'.repeat(w - 1)}`, center: (w: number) => `:${'-'.repeat(w - 2)}:`, right: (w: number) => `${'-'.repeat(w - 1)}:` };
 
 class Writer {
   constructor(
     private map: SourceMap,
     private fresh: boolean,
+    private tableSpans: { colspan?: string; rowspan?: string },
   ) {}
 
   private unchanged(node: PMNode): string | undefined {
@@ -115,6 +120,9 @@ class Writer {
       case 'target':
         return `(${node.attrs.label})=`;
 
+      case 'table':
+        return this.table(node);
+
       default:
         throw new Error(`Cannot serialize block node ${node.type.name}`);
     }
@@ -135,6 +143,43 @@ class Writer {
     if (body !== '' || node.type.name !== 'md_directive') parts.push(body);
     parts.push(fence.trimStart());
     return parts.join('\n');
+  }
+
+  // A GFM table. Merged cells are written with the span roles, and the cells they
+  // cover as empty cells; padded columns if the table had them.
+  private table(node: PMNode): string {
+    const grid: ({ cell: PMNode; start: boolean } | undefined)[][] = [];
+    node.forEach((row, _o, r) => {
+      grid[r] ??= [];
+      let c = 0;
+      row.forEach((cell) => {
+        while (grid[r][c]) c++;
+        for (let dr = 0; dr < cell.attrs.rowspan; dr++) {
+          for (let dc = 0; dc < cell.attrs.colspan; dc++) (grid[r + dr] ??= [])[c + dc] = { cell, start: !dr && !dc };
+        }
+        c += cell.attrs.colspan;
+      });
+    });
+    const ncols = Math.max(1, ...grid.map((row) => row.length));
+    const role = (name: string | undefined, n: number) => (name && n > 1 ? `{${name}}\`${n}\`` : '');
+    const text = (cell: PMNode) => {
+      const parts: string[] = [];
+      cell.forEach((p) => parts.push(inlineMarkdown(p, this.map.style, true).replace(/\n/g, ' ')));
+      const content = parts.filter(Boolean).join(' ').replace(/\|/g, '\\|');
+      return [role(this.tableSpans.colspan, cell.attrs.colspan), role(this.tableSpans.rowspan, cell.attrs.rowspan), content].filter(Boolean).join(' ');
+    };
+    const rows = grid.map((row) => Array.from({ length: ncols }, (_, c) => (row[c]?.start ? text(row[c]!.cell) : '')));
+    const aligns = Array.from({ length: ncols }, (_, c) => grid[0]?.[c]?.cell.attrs.align as keyof typeof ALIGN_RULE | null);
+    const { pretty, ruleSpaces } = node.attrs as { pretty: boolean; ruleSpaces: boolean };
+    // Padded tables: each column as wide as its widest cell. The delimiter row either
+    // has spaces like the cells (`| --- |`) or fills the whole cell (`|-----|`).
+    const content = aligns.map((_, c) => Math.max(...rows.map((row) => row[c].length)));
+    const textWidth = content.map((w) => (pretty ? (ruleSpaces ? Math.max(3, w) : Math.max(1, w)) : 0));
+    const ruleWidth = textWidth.map((w) => (pretty ? (ruleSpaces ? w : w + 2) : 3));
+    const rule = aligns.map((a, c) => (a ? ALIGN_RULE[a](ruleWidth[c]) : '-'.repeat(ruleWidth[c])));
+    const line = (cells: string[]) => `| ${cells.map((t, c) => t.padEnd(textWidth[c])).join(' | ')} |`;
+    const ruleLine = ruleSpaces ? line(rule) : `|${rule.join('|')}|`;
+    return [line(rows[0]), ruleLine, ...rows.slice(1).map(line)].join('\n');
   }
 
   private list(node: PMNode): string {
@@ -185,7 +230,11 @@ const tick = (value: string) => {
 // Serializer state that also escapes text starting a line after a soft break, and
 // MyST's own line-start syntax (comments, colon fences, block breaks, targets).
 class MystInlineState extends MarkdownSerializerState {
+  // In a table cell nothing starts a line, so line-start syntax needs no escaping.
+  inCell = false;
+
   esc(str: string, startOfLine = false): string {
+    if (this.inCell) startOfLine = false;
     let out = super.esc(str, startOfLine);
     if (startOfLine) out = out.replace(/^(%|\+\+\+|:::|\(.*\)=\s*$)/, '\\$&');
     return out;
@@ -196,12 +245,12 @@ type State = MystInlineState & { atBlockStart: boolean; out: string; inAutolink?
 type NodeFn = (state: State, node: PMNode, parent: PMNode, index: number) => void;
 
 const nodes: Record<string, NodeFn> = {
-  paragraph: (state, node) => state.renderInline(node),
+  paragraph: (state, node) => state.renderInline(node, !state.inCell),
   text: (state, node) => {
     // At the start of a line (after a soft break, or at the very start) the text
     // gets line-start escaping, and loses leading spaces, which Markdown would strip
     // or, with four of them, turn into a code block.
-    const atLineStart = state.out === '' || state.out.endsWith('\n');
+    const atLineStart = !state.inCell && (state.out === '' || state.out.endsWith('\n'));
     if (atLineStart) state.atBlockStart = true;
     const text = atLineStart ? node.text!.replace(/^[ \t]+/, '') : node.text!;
     if (text) state.text(text);
@@ -292,11 +341,12 @@ const inlineOptions = {
   escapeExtraCharacters: /\$|<(?=[A-Za-z/!?])|&(?=#?\w+;)/g,
 };
 
-function inlineMarkdown(textblock: PMNode, style: InlineStyle): string {
+function inlineMarkdown(textblock: PMNode, style: InlineStyle, inCell = false): string {
   const para = schema.node('doc', null, [schema.node('paragraph', null, textblock.content)]);
   // The state constructor and `out` are public at runtime but marked internal in the typings.
   const Ctor = MystInlineState as unknown as new (n: object, m: object, o: object) => MystInlineState & { out: string };
   const state = new Ctor(nodes, marksFor(style), inlineOptions);
+  state.inCell = inCell;
   state.renderContent(para);
   // Whitespace at line edges is insignificant in Markdown, except that trailing double
   // spaces make a hard break; an empty line would split the paragraph.

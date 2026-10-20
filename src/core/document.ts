@@ -19,23 +19,24 @@ export interface SaveResult {
 }
 
 export function loadDocument(text: string, config: MystConfig = DEFAULT_CONFIG): LoadedDocument {
-  const { directives, conditions } = config.editor;
+  const { directives, conditions, tables } = config.editor;
   return parseMyst(text, {
     extensions: parserExtensions(config),
     directives: Object.fromEntries(Object.entries(directives).map(([name, d]) => [name, d.body])),
     conditionKeywords: conditions?.block,
+    tableSpans: tables,
   });
 }
 
 export function saveDocument(doc: PMNode, map: SourceMap, config: MystConfig = DEFAULT_CONFIG): SaveResult {
-  const text = serializeMyst(doc, map);
+  const text = serializeMyst(doc, map, { tableSpans: config.editor.tables });
   const reparsed = loadDocument(text, config).doc;
   const problem = firstDifference(semanticForm(doc), semanticForm(reparsed), 'document');
   return problem ? { text, verified: false, problem } : { text, verified: true };
 }
 
 // Attributes that record how something was written rather than what it is.
-const BOOKKEEPING = new Set(['sid', 'header', 'headerKey', 'marker', 'pad']);
+const BOOKKEEPING = new Set(['sid', 'header', 'headerKey', 'marker', 'pad', 'pretty', 'colwidth']);
 
 type Json = { type: string; attrs?: Record<string, unknown>; content?: Json[]; text?: string; marks?: unknown[] };
 
@@ -48,13 +49,24 @@ export function semanticForm(node: PMNode): Json {
 function clean(node: Json): Json {
   const out: Json = { type: node.type };
   if (node.attrs) {
-    const attrs = Object.fromEntries(Object.entries(node.attrs).filter(([k]) => !BOOKKEEPING.has(k)));
+    // A Markdown table stores alignment per column, in its header row.
+    const skip = (k: string) => BOOKKEEPING.has(k) || (node.type === 'table_cell' && k === 'align');
+    const attrs = Object.fromEntries(Object.entries(node.attrs).filter(([k]) => !skip(k)));
     if (Object.keys(attrs).length) out.attrs = attrs;
   }
   if (node.text !== undefined) out.text = node.text;
   if (node.marks) out.marks = node.marks;
   if (node.content) {
     let content = node.content.map(clean);
+    // A table cell's paragraphs are written as one line, so they read back as one.
+    if ((node.type === 'table_cell' || node.type === 'table_header') && content.length > 1) {
+      const joined: Json[] = [];
+      content.forEach((p, i) => {
+        if (i > 0 && p.content?.length && joined.length) joined.push({ type: 'text', text: ' ' });
+        joined.push(...(p.content ?? []));
+      });
+      content = [{ type: 'paragraph', content: cleanInline(joined) }];
+    }
     if (['paragraph', 'heading'].includes(node.type)) content = cleanInline(content);
     content = content.filter((c) => !(c.type === 'paragraph' && !c.content?.length));
     if (content.length) out.content = content;

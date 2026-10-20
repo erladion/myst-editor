@@ -36,6 +36,8 @@ export interface ParseOptions {
   directives?: Record<string, 'markdown' | 'text' | 'none'>;
   // Keywords of block condition markers, e.g. ["if", "endif"].
   conditionKeywords?: [string, string];
+  // Roles the project's extension uses for merged table cells.
+  tableSpans?: { colspan?: string; rowspan?: string };
 }
 
 export interface ParseResult {
@@ -261,7 +263,7 @@ class Context {
       case 'comment':
         return this.raw('comment', src);
       case 'table':
-        return this.raw('table', src);
+        return this.table(md, src);
       case 'footnoteDefinition':
         return this.raw('footnote', src);
       case 'blockBreak':
@@ -315,6 +317,65 @@ class Context {
       );
     }
     return this.withSid('opaque_directive', { name: d.name, args: d.args, options: d.options, source: src }, null, src);
+  }
+
+  // A GFM table as an editable table. Leading span roles (e.g. {colspan}`2`) become
+  // colspan/rowspan and the cells they cover must be empty; anything that can't be
+  // represented exactly stays a raw block (the caller catches Unsupported).
+  private table(md: MdNode, src: string): PMNode {
+    const spans = this.opts.tableSpans ?? {};
+    const rows: MdNode[] = md.children ?? [];
+    const ncols = rows[0]?.children?.length ?? 0;
+    if (!ncols) throw new Unsupported();
+    const covered = new Set<string>();
+    const blank = (n: MdNode) => n.type === 'text' && !String(n.value).trim();
+    const pmRows = rows.map((row, r) => {
+      // GFM silently drops cells beyond the header's width; keep such tables as written.
+      if ((row.children?.length ?? 0) > ncols) throw new Unsupported();
+      const cells: PMNode[] = [];
+      for (let c = 0; c < ncols; c++) {
+        const cell: MdNode | undefined = row.children?.[c];
+        const children: MdNode[] = [...(cell?.children ?? [])];
+        if (covered.has(`${r},${c}`)) {
+          if (!children.every(blank)) throw new Unsupported();
+          continue;
+        }
+        let colspan = 1;
+        let rowspan = 1;
+        for (;;) {
+          const first = children[0];
+          const isSpan = first?.type === 'mystRole' && /^\d+$/.test(first.value) && (first.name === spans.colspan || first.name === spans.rowspan);
+          if (!isSpan) break;
+          if (first.name === spans.colspan) colspan = Number(first.value);
+          else rowspan = Number(first.value);
+          children.shift();
+          if (children[0]?.type === 'text') {
+            const rest = String(children[0].value).replace(/^\s+/, '');
+            if (rest) children[0] = { ...children[0], value: rest };
+            else children.shift();
+          }
+        }
+        if (colspan < 1 || rowspan < 1 || c + colspan > ncols || r + rowspan > rows.length) throw new Unsupported();
+        for (let dr = 0; dr < rowspan; dr++) {
+          for (let dc = 0; dc < colspan; dc++) {
+            if (!dr && !dc) continue;
+            const key = `${r + dr},${c + dc}`;
+            if (covered.has(key)) throw new Unsupported();
+            covered.add(key);
+          }
+        }
+        const align = cell?.align ?? rows[0].children[c]?.align ?? null;
+        cells.push(schema.node(r === 0 ? 'table_header' : 'table_cell', { colspan, rowspan, align }, [schema.node('paragraph', null, inline(children))]));
+      }
+      return schema.node('table_row', null, cells);
+    });
+    const lines = src.split('\n').filter((l) => l.trim());
+    // GFM drops cells beyond the header's width before we see them: count in the source.
+    const cellCount = (line: string) => line.trim().replace(/^\|/, '').replace(/\|$/, '').split(/(?<!\\)\|/).length;
+    if (lines.some((l) => cellCount(l) > cellCount(lines[0]))) throw new Unsupported();
+    const pretty = lines.length > 1 && lines.every((l) => l.trimEnd().length === lines[0].trimEnd().length);
+    const ruleSpaces = /\|\s+:?-/.test(lines[1] ?? '');
+    return this.withSid('table', { pretty, ruleSpaces }, pmRows, src);
   }
 
   private list(md: MdNode, src: string): PMNode {

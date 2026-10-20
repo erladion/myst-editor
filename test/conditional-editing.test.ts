@@ -92,7 +92,7 @@ describe('parsing', () => {
   it('keeps a table using a custom role such as {colspan} exactly as written', () => {
     const table = '| A | B |\n|---|---|\n| {colspan}`2` Wide cell | |\n';
     const { state, map } = load(table);
-    expect(state.doc.firstChild!.attrs.kind).toBe('table');
+    expect(state.doc.firstChild!.type.name).toBe('table');
     expect(saveDocument(state.doc, map, config).text).toBe(table);
   });
 });
