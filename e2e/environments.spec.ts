@@ -2,7 +2,7 @@
 import { expect, test } from '@playwright/test';
 import { venvPython } from '../src/main/sphinx/environment.js';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { launch, workDir, type App } from './helpers';
@@ -32,7 +32,7 @@ test('offers a Python environment found in the project and builds with it', asyn
   await page.getByRole('button', { name: 'Use Project .venv' }).click();
   await expect(page.locator('.chip-button', { hasText: /problem/ })).toBeVisible({ timeout: 120_000 });
   await page.locator('.chip-button', { hasText: /Built in/ }).click();
-  await expect(page.getByRole('dialog', { name: 'Sphinx' })).toContainText(venvPython(join(ctx.project, '.venv')));
+  await expect(page.getByRole('dialog', { name: 'Sphinx' })).toContainText(venvPython(join(realpathSync.native(ctx.project), '.venv'))) // the folder's real path;
 });
 
 test('without internet, says so and lets the writer pick an environment on the computer', async () => {

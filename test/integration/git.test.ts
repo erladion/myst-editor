@@ -1,7 +1,7 @@
 // The git service against real git and local repositories (no network needed).
 import { describe, expect, it } from 'vitest';
 import { execFileSync, spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Git, isCloneUrl, repoName, explain } from '../../src/main/git/git.js';
@@ -42,7 +42,8 @@ describe('Git', () => {
     const progress: string[] = [];
     const dest = await git.clone(remote, work, (l) => progress.push(l));
     expect(dest).toBe(join(work, 'docs'));
-    expect(await git.repoRoot(dest)).toBe(dest);
+    // Git reports the real path (on Windows, without 8.3 short names).
+    expect(await git.repoRoot(dest)).toBe(realpathSync.native(dest));
 
     await git.setIdentity(dest, 'Writer', 'writer@example.com', false);
     expect(await git.identity(dest)).toEqual({ name: 'Writer', email: 'writer@example.com' });

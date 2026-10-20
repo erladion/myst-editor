@@ -59,8 +59,8 @@ function manager(info: Awaited<ReturnType<typeof openProject>>, dataDir: string,
 
 describe('existing environments', () => {
   it('finds a project .venv with Sphinx and builds with it, without uv', async () => {
-    const { root, work, info } = await project(['sphinx', 'myst-parser', 'sphinx-design', 'furo']);
-    const python = venvPython(join(root, '.venv'));
+    const { work, info } = await project(['sphinx', 'myst-parser', 'sphinx-design', 'furo']);
+    const python = venvPython(join(info.root, '.venv')); // the real path of the folder
     const found = await findPythons(info.root, info.projects.map((x) => x.sourceDir));
     expect(found[0]).toMatchObject({ python, label: 'Project .venv' });
     expect(found[0].sphinx).toMatch(/^\d/);

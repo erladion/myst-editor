@@ -1,4 +1,8 @@
 // Sphinx project discovery and sandboxed file access for the main process.
+//
+// Real paths come from realpathSync.native, like fs.promises.realpath: on Windows the
+// non-native one keeps 8.3 short names (C:\Users\RUNNER~1\…), so paths that are the
+// same wouldn't compare equal.
 import { createHash } from 'node:crypto';
 import { promises as fs, readFileSync, realpathSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
@@ -40,7 +44,7 @@ const MAX_DEPTH = 6; // how deep conf.py files are looked for
 export type OpenProgress = (step: string, detail?: string) => void;
 
 export async function openProject(folder: string, progress: OpenProgress = () => {}): Promise<ProjectInfo> {
-  const root = realpathSync(resolve(folder));
+  const root = realpathSync.native(resolve(folder));
   const finding = 'Looking for pages and Sphinx projects';
   progress(finding);
   const { files, projects, defaultConfig, buildInputs } = await inspect(root, (n) => progress(finding, `${n} page${n === 1 ? '' : 's'} found`));
@@ -85,7 +89,7 @@ async function scanFolder(root: string, found: (pages: number) => void = () => {
   // Symlinked pages and folders count when they lead somewhere inside the folder: a
   // shared section linked into two guides is a page of each, under each one's path.
   // A link back up to a folder it's in would go round forever, so those are skipped.
-  const realRoot = realpathSync(root);
+  const realRoot = realpathSync.native(root);
   const walk = async (dir: string, depth: number, within: string[] = [realRoot]) => {
     let entries;
     try {
@@ -276,9 +280,10 @@ export const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'];
 // to it). One from outside the opened folder is copied into an images/ folder next to
 // the page first, under a name not already taken.
 export async function placeImage(root: string, page: string, picked: string): Promise<string> {
-  const pageDir = dirname(resolveInside(root, page));
-  const real = realpathSync(picked);
-  const realRoot = realpathSync(root);
+  // Real paths throughout, so the page's folder and the image compare as they are.
+  const pageDir = realpathSync.native(dirname(resolveInside(root, page)));
+  const real = realpathSync.native(picked);
+  const realRoot = realpathSync.native(root);
   let target = real;
   if (!isInside(realRoot, real)) {
     const dir = join(pageDir, 'images');
@@ -289,7 +294,7 @@ export async function placeImage(root: string, page: string, picked: string): Pr
     for (let n = 2; existsSync(target); n++) target = join(dir, `${stem}-${n}${ext}`);
     await fs.copyFile(real, target);
   }
-  return relative(realpathSync(pageDir), target).split(sep).join('/');
+  return relative(pageDir, target).split(sep).join('/');
 }
 
 // Whether `path` is `base` or inside it. Windows (and macOS) paths ignore case.
@@ -303,11 +308,11 @@ export function isInside(base: string, path: string, orSame = false): boolean {
 // symlinks). Used for every path that comes from the renderer.
 export function resolveInside(base: string, rel: string): string {
   const target = resolve(base, rel);
-  const realBase = realpathSync(base);
+  const realBase = realpathSync.native(base);
   // For files that don't exist yet, check the nearest existing parent instead.
   let probe = target;
   while (!existsSync(probe) && dirname(probe) !== probe) probe = dirname(probe);
-  const real = join(realpathSync(probe), relative(probe, target));
+  const real = join(realpathSync.native(probe), relative(probe, target));
   if (!isInside(realBase, real, true)) {
     throw new Error(`Path is outside the project: ${rel}`);
   }
@@ -351,7 +356,7 @@ async function replace(from: string, to: string) {
 
 function existsSync(path: string): boolean {
   try {
-    realpathSync(path);
+    realpathSync.native(path);
     return true;
   } catch {
     return false;
