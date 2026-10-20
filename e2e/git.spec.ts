@@ -5,16 +5,15 @@ import { expect, test } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { cpSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { launch, type App } from './helpers';
+import { launch, workDir, type App } from './helpers';
 
 const sh = (cwd: string, ...args: string[]) =>
   execFileSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_AUTHOR_NAME: 'Dev', GIT_AUTHOR_EMAIL: 'dev@x', GIT_COMMITTER_NAME: 'Dev', GIT_COMMITTER_EMAIL: 'dev@x' } });
 
 // A bare "server" repository holding the e2e fixture project.
 function serverRepo() {
-  const work = mkdtempSync(join(tmpdir(), 'mysteditor-git-e2e-'));
+  const work = mkdtempSync(join(workDir(), 'mysteditor-git-e2e-'));
   const seed = join(work, 'seed');
   cpSync(join(import.meta.dirname, 'fixture'), seed, { recursive: true });
   sh(seed, 'init', '-b', 'main');
@@ -111,7 +110,7 @@ test('asks for a username and password when the server wants them, and sends the
   });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   const port = (server.address() as { port: number }).port;
-  const work = mkdtempSync(join(tmpdir(), 'mysteditor-askpass-e2e-'));
+  const work = mkdtempSync(join(workDir(), 'mysteditor-askpass-e2e-'));
   try {
     ctx = await launch({ noProject: true, env: isolated(work) });
     const { page } = ctx;

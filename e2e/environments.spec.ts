@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { launch, type App } from './helpers';
+import { launch, workDir, type App } from './helpers';
 
 const repo = join(import.meta.dirname, '..');
 const shared = process.env.MYSTEDITOR_SPHINX_DATA ?? join(tmpdir(), 'mysteditor-e2e-sphinx');
@@ -36,7 +36,7 @@ test('offers a Python environment found in the project and builds with it', asyn
 
 test('without internet, says so and lets the writer pick an environment on the computer', async () => {
   // A fresh data folder, so the private environment would need downloading.
-  ctx = await launch({ prepare: addVenv, env: { UV_OFFLINE: '1', MYSTEDITOR_SPHINX_DATA: mkdtempSync(join(tmpdir(), 'mysteditor-offline-')) } });
+  ctx = await launch({ prepare: addVenv, env: { UV_OFFLINE: '1', MYSTEDITOR_SPHINX_DATA: mkdtempSync(join(workDir(), 'mysteditor-offline-')) } });
   const { page } = ctx;
   await page.getByRole('button', { name: 'Download packages' }).click();
   const chip = page.getByRole('button', { name: 'Offline — choose Python…' });
