@@ -144,8 +144,55 @@ e2e suite against a packaged build. The app takes a folder argument
 3. Sphinx integration: bundled `uv` manages a per-project Python environment from the
    project's requirements; background builds; real preview; cross-reference
    autocomplete and validation; toctree-based navigation; Sphinx warnings shown inline.
-4. Custom extensions: Sphinx-rendered previews of unknown directives, and per-project
-   option forms.
+4. Custom extensions, in tiers:
+   1. Never break what the editor doesn't understand: unknown syntax is kept
+      byte-for-byte, shown as a card and editable as source. *(Done.)*
+   2. A per-project editor config file committed in the repo (e.g. `.mysteditor.toml`)
+      that declares a project's extensions without code:
+      - custom directives with Markdown bodies (editable like callouts), with a
+        label, icon and colour
+      - option schemas, shown as forms with dropdowns
+      - labels for custom roles
+      - custom block markers
+   3. Sphinx-rendered previews for directives that can't be described
+      declaratively, using the HTML from the project's real build.
+   4. JavaScript plugins, only if tiers 2–3 aren't enough, since they mean trusting
+      code shipped in a repo.
+
+   **Conditional content** (the first tier-2 feature). The extension strips content
+   whose capabilities aren't configured:
+   - Syntax: `<!-- if: expr -->` … `<!-- endif -->` blocks, and
+     `<!-- if-inline: expr -->` … `<!-- endif-inline -->` within a paragraph.
+     Expressions use `and`, `or`, `not` and capability names. Conditions nest; there
+     is no `else` or `elif`. Available capabilities are listed in a separate `.json`
+     file.
+   - Today, block markers are generic HTML cards and the content between them edits
+     normally. The round-trip is safe, but the meaning isn't shown.
+   - Planned design:
+     - **Parsing:** markers become their own node types, kept byte-for-byte unless
+       their condition is edited. A small expression parser flags unknown
+       capabilities and malformed expressions.
+     - **Display:** a labelled band down the left of conditional blocks ("Only when
+       X or Y"). Nested conditions stack as several bands. Markers are paired by
+       nesting, so a condition can span a list item's boundary, and unmatched ones
+       get an error badge. Inline conditions highlight their words between two
+       small pills.
+     - **Editing:** "Make conditional…" wraps the selection, using the inline form
+       inside a paragraph. A condition editor offers a capability picker from the
+       JSON plus a validated expression field. "Remove condition" deletes both
+       markers together.
+     - **View as:** pick a capability set to dim or hide content it wouldn't see.
+       View only; the file isn't changed.
+     - **Config:** the JSON path and marker keywords go in the editor config, so
+       similar extensions can reuse it.
+   - Still to confirm:
+     - the JSON file's shape and location
+     - whether parentheses are allowed
+     - operator precedence
+     - case sensitivity
+     - whether stripping runs on the raw text before parsing, in which case markers
+       inside code blocks or directives still apply
+     - ideally, by reading the extension's source
 5. Tables: create and edit tables visually, including row and column spans.
    - Open question: GFM tables and `list-table` can't express spans. Options are reST
      grid tables in `{eval-rst}`, an extension directive such as `flat-table`, or raw
