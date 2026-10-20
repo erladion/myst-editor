@@ -8,6 +8,7 @@ import { SphinxManager } from './sphinx/manager.js';
 import { ASSET_SCHEME, BUILD_SCHEME, type MenuCommand, type ProjectInfo } from '../shared/api.js';
 import type { EnvironmentChoice, SphinxState } from '../shared/sphinx.js';
 import { probePython } from './sphinx/pythons.js';
+import { fragmentPage } from './sphinx/fragments.js';
 import { projectFor } from '../shared/projects.js';
 import { SETTINGS_FILE } from '../core/editor-config.js';
 
@@ -246,8 +247,17 @@ function registerProtocols() {
   // myst-asset://project/<path relative to the project root>: images in pages
   protocol.handle(ASSET_SCHEME, serveFrom(() => project?.root ?? null));
   // myst-build://<project id>/<path in its HTML output>: the Sphinx preview, one
-  // origin per project
-  protocol.handle(BUILD_SCHEME, serveFrom((url) => sphinx.get(url.hostname)?.outputDir ?? null));
+  // origin per project; _mysteditor/fragment.html previews a single block.
+  const files = serveFrom((url) => sphinx.get(url.hostname)?.outputDir ?? null);
+  protocol.handle(BUILD_SCHEME, async (request) => {
+    const url = new URL(request.url);
+    const outputDir = sphinx.get(url.hostname)?.outputDir;
+    if (outputDir && url.pathname === '/_mysteditor/fragment.html') {
+      const q = url.searchParams;
+      return fragmentPage(outputDir, q.get('doc') ?? '', Number(q.get('from')), Number(q.get('to')));
+    }
+    return files(request);
+  });
 }
 
 function send(cmd: MenuCommand) {

@@ -7,6 +7,7 @@ import type { EditorContext } from './context';
 import { nodeViews } from './nodeviews';
 import { locateProblems, setProblems } from './problems';
 import { setConditionView } from './conditions';
+import { locatePreviews, setPreviews, type PreviewBuild } from './previews';
 
 interface Props {
   state: EditorState;
@@ -22,10 +23,12 @@ interface Props {
   onRevealed: () => void;
   // Capabilities to preview the page with ("View as"); null shows everything.
   viewAs: string[] | null;
+  // The latest build of this page's project, for previews in cards.
+  build: PreviewBuild | null;
 }
 
 // Remount (via `key`) when switching pages, so node views never carry state across files.
-export function Editor({ state, ctx, onChange, viewRef, onView, problems, savedText, reveal, onRevealed, viewAs }: Props) {
+export function Editor({ state, ctx, onChange, viewRef, onView, problems, savedText, reveal, onRevealed, viewAs, build }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
@@ -60,6 +63,11 @@ export function Editor({ state, ctx, onChange, viewRef, onView, problems, savedT
     const view = viewRef.current;
     if (view && view.state !== state) view.updateState(state);
   }, [state, viewRef]);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (view) view.dispatch(setPreviews(view.state.tr, locatePreviews(view.state.doc, savedText, ctx.config, build)));
+  }, [build, savedText, ctx, viewRef]);
 
   const conditions = ctx.config.editor.conditions;
   useEffect(() => {

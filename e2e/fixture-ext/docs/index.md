@@ -19,3 +19,11 @@ Ask the platform team first.
 :::
 
 Closing words.
+
+:::{product-matrix}
+:products: Basic, Pro
+:::
+
+| Plan  | Price |
+|-------|-------|
+| Basic | Free  |

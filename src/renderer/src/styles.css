@@ -1544,3 +1544,23 @@ button.danger-text {
 .role-custom .role-name {
   font-weight: 600;
 }
+
+/* ---- previews from the Sphinx build ---- */
+
+/* A picture of the block: clicks go to the card (select, double-click to edit). */
+.card-preview {
+  display: block;
+  pointer-events: none;
+  width: 100%;
+  border: none;
+  background: var(--bg);
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+
+.card-badge {
+  font-size: 11px;
+  color: var(--tone-tip);
+  border: 1px solid color-mix(in srgb, var(--tone-tip) 40%, transparent);
+  border-radius: 999px;
+  padding: 0 6px;
+}

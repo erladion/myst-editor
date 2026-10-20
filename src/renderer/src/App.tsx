@@ -9,6 +9,7 @@ import { DEFAULT_CONFIG } from '../../core/project-config';
 import { Workspace } from './workspace';
 import { Editor } from './editor/Editor';
 import type { EditorContext } from './editor/context';
+import type { PreviewBuild } from './editor/previews';
 import { editLink } from './editor/commands';
 import { Sidebar } from './components/Sidebar';
 import { Toolbar } from './components/Toolbar';
@@ -41,6 +42,15 @@ function landingPage(info: ProjectInfo): string | null {
     files[0] ??
     null
   );
+}
+
+// Stable while the page and build are the same, so cards don't reload their previews.
+function usePreviewBuild(project: string | null, docname: string | null, builtAt: number | null): PreviewBuild | null {
+  return useMemo(() => {
+    if (!project || !docname || !builtAt) return null;
+    const base = api.buildUrl(project, '_mysteditor/fragment.html');
+    return { url: (from, to) => `${base}?doc=${encodeURIComponent(docname)}&from=${from}&to=${to}&built=${builtAt}` };
+  }, [project, docname, builtAt]);
 }
 
 export function App() {
@@ -279,6 +289,8 @@ export function App() {
   const onRevealed = useCallback(() => setReveal(null), []);
 
   const pageProblems = useMemo(() => problemsIn(info, session?.path ?? null), [info, session?.path]);
+  // Hooks stay above the welcome screen's early return.
+  const previewBuild = usePreviewBuild(pageProject?.id ?? null, info && session ? docnameOf(info, session.path) : null, info?.builtAt ?? null);
 
   if (!ws) {
     return (
@@ -370,6 +382,7 @@ export function App() {
                 reveal={reveal}
                 onRevealed={onRevealed}
                 viewAs={viewAs}
+                build={previewBuild}
               />
             )}
             {!session && <div className="empty-state muted">Choose a page on the left.</div>}

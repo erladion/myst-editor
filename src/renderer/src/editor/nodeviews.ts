@@ -214,20 +214,42 @@ class DirectiveView implements NodeView {
 
 // ---- opaque directives and raw blocks: cards with a preview ---------------------
 
+// Messages from preview iframes (see fragments.ts in the main process): their
+// height, or that the build produced nothing to show.
+const previewListeners = new Map<string, (msg: { height: number; empty: boolean }) => void>();
+let previewCounter = 0;
+window.addEventListener('message', (e) => {
+  if (!String(e.origin).startsWith('myst-build://')) return;
+  const data = e.data as { mysteditorFragment?: string; height?: number; empty?: boolean };
+  if (data?.mysteditorFragment) previewListeners.get(data.mysteditorFragment)?.({ height: Number(data.height) || 0, empty: !!data.empty });
+});
+
+const previewUrlOf = (decorations: readonly Decoration[]) =>
+  (decorations.find((d) => (d as Decoration & { spec: { previewUrl?: string } }).spec.previewUrl) as (Decoration & { spec: { previewUrl: string } }) | undefined)?.spec.previewUrl ?? null;
+
 abstract class CardView implements NodeView {
   dom: HTMLElement;
+  // The block as the project's Sphinx build renders it, when there is one.
+  protected previewUrl: string | null;
+  private previewId: string | null = null;
 
   constructor(
     protected node: PMNode,
     protected view: EditorView,
     protected getPos: GetPos,
     protected ctx: EditorContext,
+    decorations: readonly Decoration[] = [],
   ) {
+    this.previewUrl = previewUrlOf(decorations);
     this.dom = el('div', { contenteditable: 'false' });
     this.dom.addEventListener('dblclick', (e) => {
       if (!(e.target as HTMLElement).closest('a, button')) this.edit();
     });
     this.render();
+  }
+
+  destroy() {
+    if (this.previewId) previewListeners.delete(this.previewId);
   }
 
   protected abstract render(): void;
@@ -245,13 +267,40 @@ abstract class CardView implements NodeView {
   protected card(cls: string, title: Node[], body: Node[]) {
     this.dom.className = `card ${cls}`;
     const header = el('div', { class: 'card-header' }, ...title, el('span', { class: 'spacer' }), button('Edit…', 'Edit the source of this block', () => this.edit()));
-    this.dom.replaceChildren(header, ...body);
+    if (this.previewId) previewListeners.delete(this.previewId);
+    this.previewId = null;
+    if (!this.previewUrl) return this.dom.replaceChildren(header, ...body);
+
+    // The built HTML in a sandboxed frame on the build's own origin; the card's own
+    // preview stays as the fallback until the frame says it has something to show.
+    const id = `p${++previewCounter}`;
+    const frame = el('iframe', {
+      class: 'card-preview',
+      title: 'Preview from the Sphinx build',
+      sandbox: 'allow-scripts allow-same-origin',
+      src: `${this.previewUrl}&id=${id}`,
+    });
+    const fallback = el('div', { class: 'card-fallback' }, ...body);
+    const badge = el('span', { class: 'card-badge', title: 'Rendered by the project’s Sphinx build' }, 'as built');
+    header.insertBefore(badge, header.querySelector('.spacer'));
+    badge.hidden = true;
+    frame.hidden = true;
+    previewListeners.set(id, ({ height, empty }) => {
+      frame.hidden = empty;
+      fallback.hidden = !empty;
+      badge.hidden = empty;
+      frame.style.height = `${Math.min(height, 2000)}px`;
+    });
+    this.previewId = id;
+    this.dom.replaceChildren(header, frame, fallback);
   }
 
-  update(node: PMNode) {
+  update(node: PMNode, decorations: readonly Decoration[]) {
     if (node.type !== this.node.type) return false;
-    if (node.attrs !== this.node.attrs) {
+    const url = previewUrlOf(decorations);
+    if (node.attrs !== this.node.attrs || url !== this.previewUrl) {
       this.node = node;
+      this.previewUrl = url;
       this.render();
     }
     return true;
@@ -762,8 +811,8 @@ class TargetView extends InlineView {
 export function nodeViews(ctx: EditorContext): Record<string, NodeViewConstructor> {
   return {
     md_directive: (node, view, getPos) => new DirectiveView(node, view, getPos, ctx),
-    opaque_directive: (node, view, getPos) => new OpaqueDirectiveView(node, view, getPos, ctx),
-    raw_block: (node, view, getPos) => new RawBlockView(node, view, getPos, ctx),
+    opaque_directive: (node, view, getPos, decorations) => new OpaqueDirectiveView(node, view, getPos, ctx, decorations),
+    raw_block: (node, view, getPos, decorations) => new RawBlockView(node, view, getPos, ctx, decorations),
     code_block: (node, view, getPos) => new CodeBlockView(node, view, getPos, ctx),
     math_block: (node, view, getPos, decorations) => new MathBlockView(node, view, getPos, decorations),
     role: (node, view, getPos) => new RoleView(node, view, getPos, ctx),

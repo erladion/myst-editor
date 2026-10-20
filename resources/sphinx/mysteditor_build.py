@@ -79,6 +79,71 @@ def text_of(node):
     return node.astext() if node is not None else None
 
 
+# Blocks the editor shows itself; previews are rendered for everything else (custom
+# directives, tables, definition lists, ...).
+NO_PREVIEW = {
+    "paragraph", "bullet_list", "enumerated_list", "literal_block", "title", "target", "comment",
+    "transition", "section", "substitution_definition", "index", "block_quote", "math_block",
+    "system_message", "raw_text",
+}
+MAX_FRAGMENT = 300_000
+
+
+def line_of(node):
+    """The source line of a block, or of the first thing inside it that has one."""
+    if getattr(node, "line", None):
+        return node.line
+    walk = getattr(node, "findall", None) or node.traverse
+    for child in walk(include_self=False):
+        if getattr(child, "line", None):
+            return child.line
+    return None
+
+
+def export_fragments(app, doctree, docname, outdir):
+    """HTML for each previewable top-level block of a page, keyed by source line,
+    written to <outdir>/_mysteditor/fragments/<docname>.json for the editor's cards."""
+    from docutils import nodes
+
+    render = getattr(app.builder, "render_partial", None)
+    if render is None:
+        return  # not an HTML builder
+    own_source = str(app.env.doc2path(docname))
+    fragments = []
+
+    def walk(parent):
+        for node in parent.children:
+            if isinstance(node, nodes.section):
+                walk(node)
+                continue
+            if node.tagname in NO_PREVIEW or not isinstance(node, nodes.Element):
+                continue
+            source = getattr(node, "source", None)
+            if source and os.path.abspath(source) != os.path.abspath(own_source):
+                continue  # e.g. content pulled in by {include}
+            line = line_of(node)
+            if not line:
+                continue
+            try:
+                html = render(node.deepcopy())["fragment"]
+            except Exception:
+                continue
+            # Skip empty output and bare HTML comments (e.g. conditional-content markers).
+            bare = html.strip()
+            if bare and not re.fullmatch(r"(?:<!--.*?-->\s*)+", bare, re.S) and len(html) <= MAX_FRAGMENT:
+                fragments.append({"line": line, "html": html})
+
+    walk(doctree)
+    try:
+        uri = app.builder.get_target_uri(docname)
+    except Exception:
+        uri = None
+    path = os.path.join(outdir, "_mysteditor", "fragments", docname + ".json")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump({"uri": uri, "fragments": fragments}, f)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--srcdir", required=True)
@@ -124,9 +189,13 @@ def main():
         def write_started(_app, _builder):
             warnings.phase = "write"
 
-        def doctree_resolved(_app, _doctree, docname):
+        def doctree_resolved(_app, doctree, docname):
             warnings.phase = "write"  # for Sphinx < 7.3, which lacks write-started
             written_docs.add(docname)
+            try:
+                export_fragments(_app, doctree, docname, args.outdir)
+            except Exception:
+                traceback.print_exc()  # previews are optional; never fail the build
 
         app.connect("env-before-read-docs", before_read)
         app.connect("env-check-consistency", check_consistency)

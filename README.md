@@ -3,7 +3,7 @@
 A WYSIWYG editor for Sphinx + MyST Markdown, aimed at writers who shouldn't have to
 see Markdown syntax. An Electron app shipped as an AppImage.
 
-## Status: phase 4 — custom extensions (settings file and conditional content done)
+## Status: phase 4 — custom extensions (settings file, conditional content and build previews done)
 
 Open a documentation folder and edit its pages as formatted documents:
 
@@ -71,6 +71,13 @@ build per project:
   listed separately. A Files view is still available.
 - **Preview:** the page as Sphinx actually builds it, theme included, beside the
   editor and refreshed after each build.
+- **Block previews:** cards for blocks the editor can't render itself (custom
+  directives, tables, definition lists, raw HTML) show the build's output for that
+  block, marked "as built". This is the only way to see what a custom extension
+  generates, such as a directive that builds content from its options, or a table
+  with spans from a custom role. Each preview is a sandboxed frame on the build's own
+  origin, using the page's theme, so HTML from the build never runs in the editor.
+  Cards whose block produced no output keep their source view.
 
 ## Project settings
 
@@ -151,7 +158,9 @@ With `[conditions]` set:
   relative to the opened folder.
 - `resources/sphinx/mysteditor_build.py`: the build driver. It runs Sphinx through
   its Python API and exports the toctree, titles, every cross-reference target and
-  phase-tagged warnings as JSON. Sphinx only re-reports warnings for what an
+  phase-tagged warnings as JSON. It also exports HTML fragments of previewable
+  blocks per page, keyed by source line (`<output>/_mysteditor/fragments/`), which
+  `src/main/sphinx/fragments.ts` serves as per-block preview pages. Sphinx only re-reports warnings for what an
   incremental build touched, so `mergeWarnings` (in `src/shared/sphinx.ts`) keeps
   the rest.
 - `src/preload/`: a narrow typed API (`window.myst`) for the sandboxed renderer.
@@ -253,7 +262,10 @@ With an internal PyPI mirror instead, the private environment works too: uv read
   forms of `myst_enable_extensions`), not from the build. It could now be taken from
   the running Sphinx instead.
 - The preview shows the last *saved and built* state, about a second behind typing,
-  and doesn't scroll in step with the editor yet.
+  and doesn't scroll in step with the editor yet. The same goes for block previews.
+- Block previews are pictures: interactive output (tabs, toggles) can't be clicked
+  in them. Blocks whose output has no source line, and content pulled in by
+  `{include}`, have no preview. Rendering the fragments adds a little to each build.
 - Warning locations are mapped through the saved file's structure. Edits made after
   the save can shift markers slightly until the next build.
 - Only `{ref}`, `{doc}`, `{term}` and `[](target)` are checked for broken targets.
@@ -309,8 +321,9 @@ With an internal PyPI mirror instead, the private environment works too: uv read
    2. ~~A per-project editor config file (`.mysteditor.toml`)~~ ✅ Declared
       directives and roles, option forms, and conditional content (see [Project
       settings](#project-settings)).
-   3. Sphinx-rendered previews for directives that can't be described
-      declaratively, using the HTML from the project's real build. *(Next.)*
+   3. ~~Sphinx-rendered previews~~ ✅ Cards for blocks the editor can't render itself
+      (custom directives, tables, definition lists, raw HTML) show what the
+      project's own build makes of them.
    4. JavaScript plugins, only if tiers 2–3 aren't enough, since they mean trusting
       code shipped in a repo.
    5. Custom raw-text syntax (patterns an extension recognises in the source, not

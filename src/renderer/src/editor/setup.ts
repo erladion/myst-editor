@@ -13,6 +13,7 @@ import { schema } from '../../../core/schema';
 import { heading, paragraph, toggleCode, toggleEm, toggleStrike, toggleStrong } from './commands';
 import { problemsPlugin } from './problems';
 import { conditionsPlugin } from './conditions';
+import { previewsPlugin } from './previews';
 
 const { nodes, marks } = schema;
 
@@ -138,6 +139,7 @@ export function createEditorState(doc: PMNode): EditorState {
       followLinks,
       problemsPlugin,
       conditionsPlugin,
+      previewsPlugin,
     ],
   });
 }
