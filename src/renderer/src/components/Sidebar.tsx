@@ -1,11 +1,14 @@
 // Page tree for the project.
 import { useMemo, useState, type ReactElement } from 'react';
+import type { SphinxInfo } from '../../../shared/sphinx';
 import { basename } from '../paths';
+import { tocTree, type TocEntry } from '../sphinx';
 
 interface Props {
   projectName: string;
   files: string[];
   titles: Record<string, string>;
+  sphinx: SphinxInfo | null; // when built, pages are shown in table-of-contents order
   current: string | null;
   unsaved: Set<string>;
   onOpen: (path: string) => void;
@@ -43,8 +46,10 @@ function buildTree(files: string[]): Folder {
   return root;
 }
 
-export function Sidebar({ projectName, files, titles, current, unsaved, onOpen, onOpenFolder }: Props) {
+export function Sidebar({ projectName, files, titles, sphinx, current, unsaved, onOpen, onOpenFolder }: Props) {
   const tree = useMemo(() => buildTree(files), [files]);
+  const toc = useMemo(() => (sphinx ? tocTree(sphinx) : null), [sphinx]);
+  const [mode, setMode] = useState<'contents' | 'files'>('contents');
   const [filter, setFilter] = useState('');
   const matches = filter
     ? files.filter((f) => `${titles[f] ?? ''} ${f}`.toLowerCase().includes(filter.toLowerCase()))
@@ -75,16 +80,59 @@ export function Sidebar({ projectName, files, titles, current, unsaved, onOpen, 
           Open…
         </button>
       </div>
+      {toc && (
+        <div className="sidebar-modes" role="tablist" aria-label="Show pages as">
+          <button type="button" role="tab" aria-selected={mode === 'contents'} onClick={() => setMode('contents')}>
+            Contents
+          </button>
+          <button type="button" role="tab" aria-selected={mode === 'files'} onClick={() => setMode('files')}>
+            Files
+          </button>
+        </div>
+      )}
       <input className="filter" placeholder="Find a page" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Find a page" />
       <div className="tree">
         {matches ? (
           <ul>{matches.map(fileItem)}</ul>
+        ) : toc && mode === 'contents' ? (
+          <>
+            {toc.root && <ul>{tocItem(toc.root, files, current, unsaved, onOpen, 0)}</ul>}
+            {toc.orphans.length > 0 && (
+              <>
+                <div className="folder-name static" title="Pages that no table of contents links to">
+                  Not in the contents
+                </div>
+                <ul>{toc.orphans.map((o) => tocItem(o, files, current, unsaved, onOpen, 0))}</ul>
+              </>
+            )}
+          </>
         ) : (
           <FolderView folder={tree} depth={0} current={current} fileItem={fileItem} />
         )}
         {!files.length && <p className="muted pad">No Markdown pages found in this folder.</p>}
       </div>
     </nav>
+  );
+}
+
+function tocItem(entry: TocEntry, files: string[], current: string | null, unsaved: Set<string>, onOpen: (p: string) => void, depth: number): ReactElement {
+  const editable = files.includes(entry.source);
+  return (
+    <li key={entry.docname}>
+      <button
+        type="button"
+        className={`page${entry.source === current ? ' current' : ''}`}
+        style={{ paddingLeft: 14 + depth * 14 }}
+        title={editable ? entry.source : `${entry.source} isn’t a Markdown page`}
+        aria-current={entry.source === current ? 'page' : undefined}
+        disabled={!editable}
+        onClick={() => onOpen(entry.source)}
+      >
+        <span className="page-title">{entry.title}</span>
+        {unsaved.has(entry.source) && <span className="unsaved-dot" title="Unsaved changes" />}
+      </button>
+      {entry.children.length > 0 && <ul>{entry.children.map((c) => tocItem(c, files, current, unsaved, onOpen, depth + 1))}</ul>}
+    </li>
   );
 }
 

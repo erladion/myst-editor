@@ -141,7 +141,7 @@ test('refuses to silently save a change that would not read back', async () => {
   await page.keyboard.press('End');
   await page.keyboard.press('Shift+Enter');
   await page.keyboard.type('subtitle');
-  await expect(page.locator('.banner')).toContainText('can’t be saved safely');
+  await expect(page.locator('.banner.warning')).toContainText('can’t be saved safely');
   await page.waitForTimeout(1500);
   expect(file('guide/configure.md')).toBe(original('guide/configure.md'));
 });

@@ -132,7 +132,13 @@ export async function insertReference(ctx: EditorContext, run: (cmd: Command) =>
           { value: 'numref', label: 'A numbered figure or table' },
         ],
       },
-      { key: 'target', label: 'Target', value: '', placeholder: 'label-name or path/to/page' },
+      {
+        key: 'target',
+        label: 'Target',
+        value: '',
+        placeholder: 'label-name or path/to/page',
+        suggestions: (values) => ctx.suggest(values.name),
+      },
       { key: 'title', label: 'Link text', value: '', help: 'Optional; Sphinx uses the target’s title otherwise' },
     ],
   });

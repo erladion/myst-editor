@@ -1,9 +1,11 @@
 // Mounts a ProseMirror view for one open page.
 import { useEffect, useRef, type MutableRefObject } from 'react';
-import type { EditorState } from 'prosemirror-state';
+import { TextSelection, type EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
+import type { SphinxWarning } from '../../../shared/sphinx';
 import type { EditorContext } from './context';
 import { nodeViews } from './nodeviews';
+import { locateProblems, setProblems } from './problems';
 
 interface Props {
   state: EditorState;
@@ -11,10 +13,16 @@ interface Props {
   onChange: (state: EditorState, docChanged: boolean) => void;
   viewRef: MutableRefObject<EditorView | null>;
   onView: (view: EditorView | null) => void;
+  // Sphinx warnings for this page, located via the text as last saved.
+  problems: SphinxWarning[];
+  savedText: string;
+  // A source line to move the cursor to (e.g. from the problems list).
+  reveal: number | null;
+  onRevealed: () => void;
 }
 
 // Remount (via `key`) when switching pages, so node views never carry state across files.
-export function Editor({ state, ctx, onChange, viewRef, onView }: Props) {
+export function Editor({ state, ctx, onChange, viewRef, onView, problems, savedText, reveal, onRevealed }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
@@ -49,6 +57,26 @@ export function Editor({ state, ctx, onChange, viewRef, onView }: Props) {
     const view = viewRef.current;
     if (view && view.state !== state) view.updateState(state);
   }, [state, viewRef]);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch(setProblems(view.state.tr, locateProblems(view.state.doc, savedText, ctx.config, problems)));
+  }, [problems, savedText, ctx, viewRef]);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || reveal === null) return;
+    const [hit] = locateProblems(view.state.doc, savedText, ctx.config, [
+      { source: null, line: reveal, level: 'warning', message: '', type: null, phase: 'read' },
+    ]);
+    if (hit) {
+      const selection = TextSelection.near(view.state.doc.resolve(Math.min(hit.pos + 1, view.state.doc.content.size)));
+      view.dispatch(view.state.tr.setSelection(selection).scrollIntoView());
+      view.focus();
+    }
+    onRevealed();
+  }, [reveal, savedText, ctx, viewRef, onRevealed]);
 
   return <div className="editor-host" ref={host} />;
 }

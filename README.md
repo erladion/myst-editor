@@ -3,7 +3,7 @@
 A WYSIWYG editor for Sphinx + MyST Markdown, aimed at writers who shouldn't have to
 see Markdown syntax. An Electron app shipped as an AppImage.
 
-## Status: phase 2 — MVP desktop app
+## Status: phase 3 — Sphinx integration
 
 Open a documentation folder and edit its pages as formatted documents:
 
@@ -33,6 +33,27 @@ Open a documentation folder and edit its pages as formatted documents:
   - external changes reload, or are flagged if there are unsaved edits
 - **Markdown view:** toggle (Ctrl+/) to see or edit the raw source.
 
+With the project's permission, the real Sphinx build also runs in the background:
+
+- **Trust prompt:** building runs the project's `conf.py` (arbitrary Python) and
+  installs packages, so the app asks once per project and remembers the answer.
+- **No Python setup for writers:** a bundled `uv` creates a private environment per
+  project, outside the repo, with its own downloaded Python. The system Python is
+  never used, so RHEL 9's 3.9 doesn't matter. Requirements come from
+  `.readthedocs.yaml`, a docs `requirements*.txt`, a `pyproject.toml` docs extra, or,
+  as a fallback, are guessed from `conf.py`'s extensions and theme. The environment
+  is rebuilt when they change.
+- **Incremental builds** after every save, in about a second for small projects.
+- **Problems:** Sphinx warnings with page and line, in a panel and marked on the
+  offending blocks. Clicking one jumps there.
+- **Cross-references:** `{ref}` chips show the real section title, `{doc}` chips the
+  page title. Broken `{ref}`/`{doc}`/`{term}` targets are flagged. The Insert
+  cross-reference dialog autocompletes labels, pages and terms.
+- **Contents:** the sidebar follows the toctree hierarchy, with pages outside it
+  listed separately. A Files view is still available.
+- **Preview:** the page as Sphinx actually builds it, theme included, beside the
+  editor and refreshed after each build.
+
 ## How it works
 
 ```
@@ -52,6 +73,14 @@ Open a documentation folder and edit its pages as formatted documents:
 - `src/main/`: the Electron main process. It handles project discovery, file access
   sandboxed to the project (symlinks included), the `myst-asset://` protocol for
   images, file watching and the menu.
+  - `sphinx/`: requirements discovery, the uv-managed environment, and the build
+    manager (debounced incremental builds, merged warnings). The preview is served
+    over `myst-build://`.
+- `resources/sphinx/mysteditor_build.py`: the build driver. It runs Sphinx through
+  its Python API and exports the toctree, titles, every cross-reference target and
+  phase-tagged warnings as JSON. Sphinx only re-reports warnings for what an
+  incremental build touched, so `mergeWarnings` (in `src/shared/sphinx.ts`) keeps
+  the rest.
 - `src/preload/`: a narrow typed API (`window.myst`) for the sandboxed renderer.
 - `src/renderer/`:
   - React app chrome
@@ -85,11 +114,13 @@ paragraph, because the parse tree doesn't record some spellings:
 
 ```sh
 npm install
+npm run fetch-uv             # download the pinned, checksum-verified uv into resources/uv/
 npm run dev                  # app with hot reload
-npm test                     # unit tests: round-trip, edits, save verification, project access
+npm test                     # unit tests: round-trip, edits, save verification, project access, Sphinx plumbing
+npm run test:sphinx          # integration: real uv + Sphinx on the fixture (downloads packages once)
 npm run test:e2e             # build, then drive the real app with Playwright
 npm run typecheck
-npm run dist                 # release/MyST-Editor-<version>-x86_64.AppImage
+npm run dist                 # release/MyST-Editor-<version>-x86_64.AppImage (with uv bundled)
 ```
 
 Other tools:
@@ -104,8 +135,13 @@ npm run icon                                        # re-render build/icon.png f
 ```
 
 `MYSTEDITOR_EXECUTABLE=release/linux-unpacked/mysteditor npx playwright test` runs the
-e2e suite against a packaged build. The app takes a folder argument
+e2e suite against a packaged build. The e2e and integration tests share a Sphinx data
+folder (Python, uv cache) in the system temp dir, so downloads happen once; set
+`MYSTEDITOR_SPHINX_DATA` to use another. The app takes a folder argument
 (`mysteditor ~/src/project/docs`); otherwise it reopens the last project.
+
+In development the app uses `resources/uv/uv` if fetched, otherwise `uv` from `PATH`.
+Per-project environments, builds and logs live in `<userData>/sphinx/`.
 
 ### Linux / WSL notes
 
@@ -121,13 +157,23 @@ e2e suite against a packaged build. The app takes a folder argument
 
 - Shown as cards with source editing, not yet rich-editable: GFM tables,
   `list-table`, definition lists, footnote definitions, `{image}`, front matter.
-- `conf.py` is read with a regex for the common literal forms of
-  `myst_enable_extensions`; computed values need Sphinx itself (phase 3).
-- Cross-reference targets aren't checked yet; `{ref}` chips show the label, not the
-  section title.
-- Pages are listed from the file system, not from the toctree hierarchy.
+- The editor's MyST dialect comes from a regex over `conf.py` (the common literal
+  forms of `myst_enable_extensions`), not from the build. It could now be taken from
+  the running Sphinx instead.
+- The preview shows the last *saved and built* state, about a second behind typing,
+  and doesn't scroll in step with the editor yet.
+- Warning locations are mapped through the saved file's structure. Edits made after
+  the save can shift markers slightly until the next build.
+- Only `{ref}`, `{doc}`, `{term}` and `[](target)` are checked for broken targets.
+  Domain roles like `{py:func}` often point at other projects through intersphinx,
+  so they aren't flagged.
+- Each project's environment takes disk space in `<userData>/sphinx/`, and there's no
+  cleanup UI yet.
+- Installing the project itself (`pip install -e .` from `.readthedocs.yaml` or a
+  pyproject docs extra) can fail for projects with compiled code. Details are in the
+  build log.
 - No find/replace yet, and no image picker. Figures take a typed path.
-- One e2e failure (a `toHaveText` assertion) was seen once in 8 runs and not
+- One e2e failure (a `toHaveText` assertion) was seen once early in phase 2 and not
   reproduced since.
 - `npm audit` reports DoS-class advisories in markdown-it 13 / linkify-it 4, which
   myst-parser pins. Low risk for a local editor opening the user's own files (the
@@ -141,9 +187,9 @@ e2e suite against a packaged build. The app takes a folder argument
 1. ~~Round-trip spike~~ ✅
 2. ~~MVP: Electron shell, project folder, page tree, rich editor for MyST, Markdown
    view, verified autosave, AppImage~~ ✅
-3. Sphinx integration: bundled `uv` manages a per-project Python environment from the
-   project's requirements; background builds; real preview; cross-reference
-   autocomplete and validation; toctree-based navigation; Sphinx warnings shown inline.
+3. ~~Sphinx integration: bundled uv and per-project environments, background builds,
+   real preview, cross-reference autocomplete and validation, toctree navigation,
+   warnings shown inline~~ ✅
 4. Custom extensions, in tiers:
    1. Never break what the editor doesn't understand: unknown syntax is kept
       byte-for-byte, shown as a card and editable as source. *(Done.)*

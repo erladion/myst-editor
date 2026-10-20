@@ -16,9 +16,12 @@ interface Props {
   ctx: EditorContext;
   sourceMode: boolean;
   onToggleSource: () => void;
+  previewAvailable: boolean;
+  previewOpen: boolean;
+  onTogglePreview: () => void;
 }
 
-export function Toolbar({ view, ctx, sourceMode, onToggleSource }: Props) {
+export function Toolbar({ view, ctx, sourceMode, onToggleSource, previewAvailable, previewOpen, onTogglePreview }: Props) {
   const state = view?.state;
   const run = (cmd: Command) => {
     if (!view) return;
@@ -95,6 +98,16 @@ export function Toolbar({ view, ctx, sourceMode, onToggleSource }: Props) {
       <span className="tb-sep" />
       <InsertMenu disabled={disabled} ctx={ctx} run={run} />
       <span className="spacer" />
+      <button
+        type="button"
+        className={`tb wide${previewOpen ? ' active' : ''}`}
+        title={previewAvailable ? 'Show the page as Sphinx builds it' : 'The preview is available once Sphinx has built the project'}
+        aria-pressed={previewOpen}
+        disabled={!previewAvailable}
+        onClick={onTogglePreview}
+      >
+        Preview
+      </button>
       <button type="button" className={`tb wide${sourceMode ? ' active' : ''}`} title="Show the Markdown source (Ctrl+/)" aria-pressed={sourceMode} onClick={onToggleSource}>
         {sourceMode ? 'Back to editing' : 'Markdown'}
       </button>

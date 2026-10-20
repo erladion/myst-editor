@@ -21,7 +21,11 @@ export async function launch(): Promise<App> {
   const app = await electron.launch({
     ...(packaged ? { executablePath: packaged } : {}),
     args: packaged ? [project] : [join(import.meta.dirname, '..', 'out', 'main', 'index.js'), project],
-    env: { ...env, MYSTEDITOR_USER_DATA: join(work, 'user-data') } as Record<string, string>,
+    env: {
+      ...env,
+      MYSTEDITOR_USER_DATA: join(work, 'user-data'),
+      MYSTEDITOR_SPHINX_DATA: process.env.MYSTEDITOR_SPHINX_DATA ?? join(tmpdir(), 'mysteditor-e2e-sphinx'),
+    } as Record<string, string>,
   });
   const page = await app.firstWindow();
   await page.waitForSelector('.prose');

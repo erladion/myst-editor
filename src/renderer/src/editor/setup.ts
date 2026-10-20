@@ -11,6 +11,7 @@ import { dropCursor } from 'prosemirror-dropcursor';
 import { gapCursor } from 'prosemirror-gapcursor';
 import { schema } from '../../../core/schema';
 import { heading, paragraph, toggleCode, toggleEm, toggleStrike, toggleStrong } from './commands';
+import { problemsPlugin } from './problems';
 
 const { nodes, marks } = schema;
 
@@ -134,6 +135,7 @@ export function createEditorState(doc: PMNode): EditorState {
       mathEditing,
       placeholder,
       followLinks,
+      problemsPlugin,
     ],
   });
 }

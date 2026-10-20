@@ -1,6 +1,6 @@
 // Exposes a narrow, typed API to the sandboxed renderer.
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
-import { ASSET_SCHEME, type MystApi } from '../shared/api.js';
+import { ASSET_SCHEME, BUILD_SCHEME, type MystApi } from '../shared/api.js';
 
 function on<T>(channel: string, cb: (value: T) => void): () => void {
   const listener = (_e: IpcRendererEvent, value: T) => cb(value);
@@ -20,6 +20,13 @@ const api: MystApi = {
   onFilesChanged: (cb) => on('files-changed', cb),
   onMenu: (cb) => on('menu', cb),
   onCloseRequested: (cb) => on('close-requested', () => cb()),
+  sphinxState: () => ipcRenderer.invoke('sphinx-state'),
+  onSphinxState: (cb) => on('sphinx-state', cb),
+  trustSphinx: () => ipcRenderer.invoke('sphinx-trust'),
+  declineSphinx: () => ipcRenderer.invoke('sphinx-decline'),
+  rebuild: () => ipcRenderer.invoke('sphinx-rebuild'),
+  sphinxLog: () => ipcRenderer.invoke('sphinx-log'),
+  buildUrl: (uri) => `${BUILD_SCHEME}://project/${uri.split('/').map(encodeURIComponent).join('/')}`,
 };
 
 contextBridge.exposeInMainWorld('myst', api);

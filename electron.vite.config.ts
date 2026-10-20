@@ -3,7 +3,8 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   main: {
-    build: { rollupOptions: { input: 'src/main/index.ts' } },
+    // Bundle dependencies: the packaged app ships without node_modules.
+    build: { externalizeDeps: false, rollupOptions: { input: 'src/main/index.ts' } },
   },
   preload: {
     // Sandboxed preload scripts must be CommonJS.

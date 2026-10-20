@@ -149,7 +149,8 @@ class DirectiveView implements NodeView {
       parts.push(input);
     }
 
-    parts.push(el('span', { class: 'spacer' }));
+    // The argument field stretches; without one, push the buttons right.
+    if (!this.argInput) parts.push(el('span', { class: 'spacer' }));
     parts.push(
       button(optionCount(options), 'Edit the options of this block', async () => {
         const next = await this.ctx.ui.editOptions({ title: `${info.label} options`, options });
@@ -451,6 +452,7 @@ class MathBlockView implements NodeView {
 
 abstract class InlineView implements NodeView {
   dom: HTMLElement;
+  private unsubscribe: () => void;
 
   constructor(
     protected node: PMNode,
@@ -464,6 +466,12 @@ abstract class InlineView implements NodeView {
       this.edit();
     });
     this.render();
+    // Cross-reference titles and broken-link marks come from the build.
+    this.unsubscribe = ctx.subscribe(() => this.render());
+  }
+
+  destroy() {
+    this.unsubscribe();
   }
 
   protected abstract render(): void;
@@ -516,9 +524,13 @@ class RoleView extends InlineView {
       // Cross-references and domain roles such as {py:func}.
       d.classList.add('role-ref');
       if (/:/.test(name) && !REFERENCE_ROLES[name]) d.classList.add('role-code');
-      d.title = `${REFERENCE_ROLES[name] ?? name}: ${target}${name === 'doc' ? ' (Ctrl+click to open)' : ''}`;
-      const shown = title ?? (name === 'doc' ? this.ctx.pageTitle(target) : null) ?? target;
-      d.replaceChildren(el('span', { class: 'role-arrow' }, '↗'), shown);
+      const resolved = this.ctx.resolveRole(name, target);
+      d.classList.toggle('role-broken', resolved.broken);
+      d.title = resolved.broken
+        ? `${REFERENCE_ROLES[name] ?? name} not found: ${target}`
+        : `${REFERENCE_ROLES[name] ?? name}: ${target}${name === 'doc' ? ' (Ctrl+click to open)' : ''}`;
+      const shown = title ?? resolved.title ?? (name === 'doc' ? this.ctx.pageTitle(target) : null) ?? target;
+      d.replaceChildren(el('span', { class: 'role-arrow' }, resolved.broken ? '⚠' : '↗'), shown);
       return;
     }
     d.classList.add('role-unknown');
@@ -531,7 +543,13 @@ class RoleView extends InlineView {
       title: 'Edit role',
       fields: [
         { key: 'name', label: 'Role', value: this.node.attrs.name, help: 'For example ref, doc, term or py:func' },
-        { key: 'value', label: 'Content', value: this.node.attrs.value, help: 'A target, or "title <target>"' },
+        {
+          key: 'value',
+          label: 'Content',
+          value: this.node.attrs.value,
+          help: 'A target, or "title <target>"',
+          suggestions: (values) => this.ctx.suggest(values.name),
+        },
       ],
     });
     if (next && next.name.trim()) setAttrs(this.view, this.getPos, this.node, { name: next.name.trim(), value: next.value });
@@ -565,9 +583,11 @@ class InlineMathView extends InlineView {
 
 class RefLinkView extends InlineView {
   protected render() {
-    this.dom.className = 'role role-ref';
-    this.dom.title = `Link to ${this.node.attrs.href} (title filled in by Sphinx)`;
-    this.dom.replaceChildren(el('span', { class: 'role-arrow' }, '↗'), this.node.attrs.href.replace(/^#/, ''));
+    const { href } = this.node.attrs;
+    const resolved = this.ctx.resolveLink(href);
+    this.dom.className = `role role-ref${resolved.broken ? ' role-broken' : ''}`;
+    this.dom.title = resolved.broken ? `Link target not found: ${href}` : `Link to ${href} (title filled in by Sphinx)`;
+    this.dom.replaceChildren(el('span', { class: 'role-arrow' }, resolved.broken ? '⚠' : '↗'), resolved.title ?? href.replace(/^#/, ''));
   }
 
   protected async edit() {

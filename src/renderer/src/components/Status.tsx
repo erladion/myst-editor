@@ -1,8 +1,16 @@
 // Save status: the status bar line and the banner for problems that need a decision.
+import type { ReactNode } from 'react';
 import type { MystConfig } from '../../../core/project-config';
 import type { Session } from '../workspace';
 
-export function StatusBar({ session, config, confPy }: { session: Session | undefined; config: MystConfig; confPy: string | null }) {
+interface StatusProps {
+  session: Session | undefined;
+  config: MystConfig;
+  confPy: string | null;
+  children?: ReactNode; // build status
+}
+
+export function StatusBar({ session, config, confPy, children }: StatusProps) {
   const words = session ? session.state.doc.textBetween(0, session.state.doc.content.size, ' ', ' ').split(/\s+/).filter(Boolean).length : 0;
   const status = session?.status;
   const label =
@@ -23,6 +31,7 @@ export function StatusBar({ session, config, confPy }: { session: Session | unde
       </span>
       {session && <span className="muted">{session.path}</span>}
       <span className="spacer" />
+      {children}
       {session && <span className="muted">{words.toLocaleString()} words</span>}
       <span className="muted dialect" title={dialect}>
         {confPy ? 'Sphinx project' : 'Markdown folder'}

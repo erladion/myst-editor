@@ -6,10 +6,12 @@ type Request =
   | { kind: 'source'; title: string; source: string; help?: string; resolve: (v: string | null) => void }
   | { kind: 'fields'; title: string; fields: Field[]; submit?: string; resolve: (v: Record<string, string> | null) => void }
   | { kind: 'options'; title: string; options: [string, string][]; resolve: (v: [string, string][] | null) => void }
-  | { kind: 'confirm'; title: string; message: string; confirm: string; resolve: (v: boolean) => void };
+  | { kind: 'confirm'; title: string; message: string; confirm: string; resolve: (v: boolean) => void }
+  | { kind: 'text'; title: string; text: string; resolve: (v: null) => void };
 
 export interface DialogApi extends EditorUi {
   confirm(opts: { title: string; message: string; confirm: string }): Promise<boolean>;
+  showText(opts: { title: string; text: string }): Promise<null>;
 }
 
 export const DialogHost = forwardRef<DialogApi>(function DialogHost(_props, ref) {
@@ -28,6 +30,7 @@ export const DialogHost = forwardRef<DialogApi>(function DialogHost(_props, ref)
       editFields: (o) => ask((resolve) => ({ kind: 'fields', ...o, resolve })),
       editOptions: (o) => ask((resolve) => ({ kind: 'options', ...o, resolve })),
       confirm: (o) => ask((resolve) => ({ kind: 'confirm', ...o, resolve })),
+      showText: (o) => ask((resolve) => ({ kind: 'text', ...o, resolve })),
       notify: (message) => {
         setToast(message);
         clearTimeout(toastTimer.current);
@@ -62,6 +65,16 @@ function Modal({ request }: { request: Request }) {
         {request.kind === 'source' && <SourceForm request={request} cancel={cancel} />}
         {request.kind === 'fields' && <FieldsForm request={request} cancel={cancel} />}
         {request.kind === 'options' && <OptionsForm request={request} cancel={cancel} />}
+        {request.kind === 'text' && (
+          <>
+            <pre className="log-text">{request.text}</pre>
+            <div className="modal-actions">
+              <button type="button" className="primary" autoFocus onClick={cancel}>
+                Close
+              </button>
+            </div>
+          </>
+        )}
         {request.kind === 'confirm' && (
           <>
             <p className="modal-message">{request.message}</p>
@@ -129,10 +142,16 @@ function FieldsForm({ request, cancel }: { request: Extract<Request, { kind: 'fi
       }}
     >
       {request.fields.map((f, i) => (
-        <label key={f.key} className="field">
-          <span>{f.label}</span>
+        <div key={f.key} className="field">
+          <label htmlFor={`field-${f.key}`}>{f.label}</label>
           {f.choices ? (
-            <select value={values[f.key]} onChange={(e) => set(f.key, e.target.value)} autoFocus={i === 0}>
+            <select
+              id={`field-${f.key}`}
+              value={values[f.key]}
+              aria-describedby={f.help ? `help-${f.key}` : undefined}
+              onChange={(e) => set(f.key, e.target.value)}
+              autoFocus={i === 0}
+            >
               {f.choices.map((c) => (
                 <option key={c.value} value={c.value}>
                   {c.label}
@@ -140,10 +159,29 @@ function FieldsForm({ request, cancel }: { request: Extract<Request, { kind: 'fi
               ))}
             </select>
           ) : (
-            <input value={values[f.key]} placeholder={f.placeholder} autoFocus={i === 0} onChange={(e) => set(f.key, e.target.value)} />
+            <>
+              <input
+                id={`field-${f.key}`}
+                value={values[f.key]}
+                placeholder={f.placeholder}
+                autoFocus={i === 0}
+                aria-describedby={f.help ? `help-${f.key}` : undefined}
+                list={f.suggestions ? `suggest-${f.key}` : undefined}
+                onChange={(e) => set(f.key, e.target.value)}
+              />
+              {f.suggestions && (
+                <datalist id={`suggest-${f.key}`}>
+                  {(typeof f.suggestions === 'function' ? f.suggestions(values) : f.suggestions).slice(0, 500).map((s) => (
+                    <option key={s.value} value={s.value}>
+                      {s.label}
+                    </option>
+                  ))}
+                </datalist>
+              )}
+            </>
           )}
-          {f.help && <small>{f.help}</small>}
-        </label>
+          {f.help && <small id={`help-${f.key}`}>{f.help}</small>}
+        </div>
       ))}
       <Actions cancel={cancel} submit={request.submit} />
     </form>

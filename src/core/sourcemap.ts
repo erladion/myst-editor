@@ -10,6 +10,7 @@ export interface SourceEntry {
   node: PMNode; // the node as originally parsed
   text: string; // its exact original source
   container?: ContainerEntry; // set for nodes whose children were parsed from inner text
+  line: number; // absolute 1-based line where the source starts
   next?: string; // sid of the sibling that originally followed this node
   gap?: string; // original text between this node and `next`
 }
@@ -39,8 +40,8 @@ export class SourceMap {
     for (const [sid, entry] of other.entries) this.entries.set(sid, entry);
   }
 
-  record(sid: string, node: PMNode, text: string, container?: ContainerEntry) {
-    this.entries.set(sid, { ...this.entries.get(sid), node, text, container });
+  record(sid: string, node: PMNode, text: string, container: ContainerEntry | undefined, line: number) {
+    this.entries.set(sid, { ...this.entries.get(sid), node, text, container, line });
   }
 
   newContainer(lead: string, trail: string): ContainerEntry {

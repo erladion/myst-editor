@@ -4,18 +4,22 @@ import { watch, promises as fs, statSync, type FSWatcher } from 'node:fs';
 import { join, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { openProject, listDocuments, readDocument, readTitles, resolveInside, writeDocument } from './project.js';
-import { ASSET_SCHEME, type MenuCommand, type ProjectInfo } from '../shared/api.js';
+import { SphinxManager } from './sphinx/manager.js';
+import { ASSET_SCHEME, BUILD_SCHEME, type MenuCommand, type ProjectInfo } from '../shared/api.js';
+import type { SphinxState } from '../shared/sphinx.js';
 
 // Lets tests (and portable setups) keep settings out of the real profile.
 if (process.env.MYSTEDITOR_USER_DATA) app.setPath('userData', process.env.MYSTEDITOR_USER_DATA);
 
 protocol.registerSchemesAsPrivileged([
   { scheme: ASSET_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+  { scheme: BUILD_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
 ]);
 
 let win: BrowserWindow | null = null;
 let project: ProjectInfo | null = null;
 let watcher: FSWatcher | null = null;
+let sphinx: SphinxManager | null = null;
 let unsaved = false;
 let closing = false;
 // What we last wrote to each file, so our own saves aren't reported as external changes.
@@ -23,7 +27,13 @@ const written = new Map<string, string>();
 
 const settingsPath = () => join(app.getPath('userData'), 'settings.json');
 
-async function loadSettings(): Promise<{ lastProject?: string }> {
+interface Settings {
+  lastProject?: string;
+  // Projects the writer allowed to run Sphinx (which executes their conf.py).
+  trusted?: string[];
+}
+
+async function loadSettings(): Promise<Settings> {
   try {
     return JSON.parse(await fs.readFile(settingsPath(), 'utf8'));
   } catch {
@@ -31,9 +41,10 @@ async function loadSettings(): Promise<{ lastProject?: string }> {
   }
 }
 
-async function saveSettings(settings: { lastProject?: string }) {
+async function updateSettings(patch: (s: Settings) => Settings) {
+  const next = patch(await loadSettings());
   await fs.mkdir(app.getPath('userData'), { recursive: true });
-  await fs.writeFile(settingsPath(), JSON.stringify(settings, null, 2));
+  await fs.writeFile(settingsPath(), JSON.stringify(next, null, 2));
 }
 
 async function useProject(folder: string): Promise<ProjectInfo> {
@@ -41,8 +52,24 @@ async function useProject(folder: string): Promise<ProjectInfo> {
   written.clear();
   startWatching(project);
   win?.setTitle(`${project.name} — MyST Editor`);
-  await saveSettings({ lastProject: project.root });
+  await updateSettings((s) => ({ ...s, lastProject: project!.root }));
+  await startSphinx(project);
   return project;
+}
+
+async function startSphinx(p: ProjectInfo) {
+  sphinx?.dispose();
+  const settings = await loadSettings();
+  sphinx = new SphinxManager(p, {
+    // Tests share one data dir so Python and packages are only downloaded once.
+    dataDir: process.env.MYSTEDITOR_SPHINX_DATA ?? join(app.getPath('userData'), 'sphinx'),
+    // out/main/index.js → the repository, where resources/ lives in development.
+    appRoot: join(import.meta.dirname, '..', '..'),
+    resourcesPath: app.isPackaged ? process.resourcesPath : null,
+    trusted: !!settings.trusted?.includes(p.root),
+    emit: (state: SphinxState) => win?.webContents.send('sphinx-state', state),
+  });
+  sphinx.start();
 }
 
 function startWatching(p: ProjectInfo) {
@@ -60,10 +87,15 @@ function startWatching(p: ProjectInfo) {
         // deleted or unreadable: the file list update covers it
       }
     }
+    const others = [...pending].filter((rel) => !rel.endsWith('.md'));
     pending.clear();
     p.files = await listDocuments(p.sourceDir);
     p.titles = await readTitles(p.sourceDir, p.files);
     win?.webContents.send('files-changed', { files: p.files, titles: p.titles, changed });
+    // Our own saves request builds directly; here it's changes made outside the app.
+    // Configuration, extensions and templates can affect every page.
+    const config = others.some((rel) => /\.(py|html|jinja2?|toml|ya?ml|txt|json)$/.test(rel));
+    if (changed.length || others.length) sphinx?.requestBuild({ fresh: config });
   };
   try {
     watcher = watch(p.sourceDir, { recursive: true }, (_event, filename) => {
@@ -118,7 +150,17 @@ function registerIpc() {
   ipcMain.handle('write-file', async (_e, rel: string, text: string) => {
     written.set(rel, text);
     await writeDocument(requireProject(), rel, text);
+    sphinx?.requestBuild();
   });
+  ipcMain.handle('sphinx-state', () => sphinx?.getState() ?? { status: { kind: 'off' }, info: null });
+  ipcMain.handle('sphinx-trust', async () => {
+    const root = requireProject().root;
+    await updateSettings((s) => ({ ...s, trusted: [...new Set([...(s.trusted ?? []), root])] }));
+    sphinx?.trust();
+  });
+  ipcMain.handle('sphinx-decline', () => sphinx?.decline());
+  ipcMain.handle('sphinx-rebuild', () => sphinx?.requestBuild({ fresh: true }));
+  ipcMain.handle('sphinx-log', () => sphinx?.getLog() ?? '');
   ipcMain.on('set-unsaved', (_e, value: boolean) => {
     unsaved = value;
   });
@@ -128,17 +170,25 @@ function registerIpc() {
   });
 }
 
-function registerAssetProtocol() {
-  // myst-asset://project/<path relative to the project root>
-  protocol.handle(ASSET_SCHEME, async (request) => {
-    if (!project) return new Response('No project', { status: 404 });
+function serveFrom(base: () => string | null) {
+  return async (request: Request) => {
+    const dir = base();
+    if (!dir) return new Response('Not available', { status: 404 });
     try {
-      const rel = decodeURIComponent(new URL(request.url).pathname.replace(/^\//, ''));
-      return net.fetch(pathToFileURL(resolveInside(project.root, rel)).toString());
+      let rel = decodeURIComponent(new URL(request.url).pathname.replace(/^\//, ''));
+      if (rel === '' || rel.endsWith('/')) rel += 'index.html';
+      return await net.fetch(pathToFileURL(resolveInside(dir, rel)).toString());
     } catch {
       return new Response('Not found', { status: 404 });
     }
-  });
+  };
+}
+
+function registerProtocols() {
+  // myst-asset://project/<path relative to the project root>: images in pages
+  protocol.handle(ASSET_SCHEME, serveFrom(() => project?.root ?? null));
+  // myst-build://project/<path in the HTML output>: the Sphinx preview
+  protocol.handle(BUILD_SCHEME, serveFrom(() => sphinx?.outputDir ?? null));
 }
 
 function send(cmd: MenuCommand) {
@@ -219,13 +269,14 @@ function createWindow() {
 
 app.whenReady().then(() => {
   registerIpc();
-  registerAssetProtocol();
+  registerProtocols();
   buildMenu();
   createWindow();
 });
 
 app.on('window-all-closed', () => {
   watcher?.close();
+  sphinx?.dispose();
   app.quit();
 });
 

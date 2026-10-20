@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import type { EditorView } from 'prosemirror-view';
 import type { EditorState } from 'prosemirror-state';
 import type { ProjectInfo } from '../../shared/api';
+import type { SphinxState } from '../../shared/sphinx';
 import type { SourceMap } from '../../core/sourcemap';
 import { DEFAULT_CONFIG } from '../../core/project-config';
 import { Workspace } from './workspace';
@@ -12,11 +13,14 @@ import { Sidebar } from './components/Sidebar';
 import { Toolbar } from './components/Toolbar';
 import { Banner, StatusBar } from './components/Status';
 import { DialogHost, type DialogApi } from './components/Dialogs';
+import { Preview, ProblemsPanel, SphinxChip, TrustBanner } from './components/SphinxUi';
 import { join, resolveRef } from './paths';
+import { docnameOf, problemsIn, resolveLink, resolveRole, suggestTargets } from './sphinx';
 
 const api = window.myst;
 const noop = () => () => {};
 const zero = () => 0;
+const NO_SPHINX: SphinxState = { status: { kind: 'off' }, info: null };
 
 // The Markdown page a {doc} role or toctree entry refers to, if it exists.
 function findPage(files: string[], from: string | null, ref: string): string | null {
@@ -35,12 +39,17 @@ export function App() {
   const [starting, setStarting] = useState(true);
   const [sourceMode, setSourceMode] = useState(false);
   const [source, setSource] = useState('');
+  const [sphinx, setSphinx] = useState<SphinxState>(NO_SPHINX);
+  const [showProblems, setShowProblems] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [reveal, setReveal] = useState<number | null>(null);
   const dialogs = useRef<DialogApi>(null);
   const viewRef = useRef<EditorView | null>(null);
   const [view, setView] = useState<EditorView | null>(null);
   useSyncExternalStore(ws?.subscribe ?? noop, ws?.getVersion ?? zero);
 
   const session = ws?.get(ws.current);
+  const info = sphinx.info;
 
   const openPage = useCallback(
     async (path: string) => {
@@ -56,10 +65,12 @@ export function App() {
   );
 
   // One context object for the lifetime of the app; node views read it lazily.
-  const ctxRef = useRef<{ ws: Workspace | null; openPage: (p: string) => void }>({ ws: null, openPage: () => {} });
-  ctxRef.current = { ws, openPage };
+  const ctxRef = useRef({ ws: null as Workspace | null, openPage: (_p: string) => {}, sphinx: NO_SPHINX });
+  ctxRef.current = { ws, openPage, sphinx };
+  const listeners = useRef(new Set<() => void>());
   const ctx = useMemo<EditorContext>(() => {
     const current = () => ctxRef.current.ws;
+    const build = () => ctxRef.current.sphinx.info;
     return {
       ui: {
         editSource: (o) => dialogs.current!.editSource(o),
@@ -96,7 +107,26 @@ export function App() {
         const w = current();
         if (w?.current) w.absorb(w.current, map);
       },
+      resolveRole: (role, target) => resolveRole(build(), current()?.current ?? null, role, target),
+      resolveLink: (href) => resolveLink(build(), current()?.current ?? null, href),
+      suggest: (role) => suggestTargets(build(), current()?.current ?? null, role),
+      subscribe(listener) {
+        listeners.current.add(listener);
+        return () => listeners.current.delete(listener);
+      },
     };
+  }, []);
+
+  // Build results: keep them, and let node views refresh their cross-references.
+  useEffect(() => {
+    const apply = (state: SphinxState) => {
+      ctxRef.current.sphinx = state;
+      setSphinx(state);
+      listeners.current.forEach((fn) => fn());
+    };
+    const off = api.onSphinxState(apply);
+    void api.sphinxState().then(apply);
+    return off;
   }, []);
 
   const useProject = useCallback(async (project: ProjectInfo | null) => {
@@ -104,6 +134,10 @@ export function App() {
     setWs((old) => {
       old?.dispose();
       return new Workspace(api, project);
+    });
+    void api.sphinxState().then((s) => {
+      ctxRef.current.sphinx = s;
+      setSphinx(s);
     });
   }, []);
 
@@ -145,6 +179,21 @@ export function App() {
       setSourceMode(true);
     }
   }, [ws, sourceMode, source]);
+
+  const showLog = useCallback(async () => {
+    const status = sphinx.status;
+    const log = await api.sphinxLog();
+    const summary = status.kind === 'error' ? `${status.message}\n\n` : '';
+    await dialogs.current?.showText({ title: 'Sphinx build', text: `${summary}${log.trim() || 'Nothing logged yet.'}` });
+  }, [sphinx]);
+
+  const openProblem = useCallback(
+    async (path: string, line: number | null) => {
+      await openPage(path);
+      setReveal(line);
+    },
+    [openPage],
+  );
 
   // Menu commands, external file changes and window closing.
   useEffect(() => {
@@ -192,6 +241,9 @@ export function App() {
     },
     [ws],
   );
+  const onRevealed = useCallback(() => setReveal(null), []);
+
+  const pageProblems = useMemo(() => problemsIn(info, session?.path ?? null), [info, session?.path]);
 
   if (!ws) {
     return (
@@ -211,6 +263,9 @@ export function App() {
   }
 
   const unsaved = new Set(ws.unsavedPaths());
+  const docname = info && session ? docnameOf(info, session.path) : null;
+  const uri = docname ? info?.docs[docname]?.uri : null;
+  const previewUrl = uri && info ? `${api.buildUrl(uri)}?built=${info.builtAt}` : null;
 
   return (
     <div className="app">
@@ -218,13 +273,27 @@ export function App() {
         projectName={ws.project.name}
         files={ws.project.files}
         titles={ws.project.titles}
+        sphinx={info}
         current={ws.current}
         unsaved={unsaved}
         onOpen={openPage}
         onOpenFolder={chooseFolder}
       />
       <main className="main">
-        <Toolbar view={session && !sourceMode ? view : null} ctx={ctx} sourceMode={sourceMode} onToggleSource={toggleSource} />
+        <Toolbar
+          view={session && !sourceMode ? view : null}
+          ctx={ctx}
+          sourceMode={sourceMode}
+          onToggleSource={toggleSource}
+          previewAvailable={!!info}
+          previewOpen={showPreview}
+          onTogglePreview={() => setShowPreview(!showPreview)}
+        />
+        <TrustBanner
+          state={sphinx}
+          onAllow={() => void api.trustSphinx()}
+          onDecline={() => void api.declineSphinx()}
+        />
         {session && (
           <Banner
             session={session}
@@ -235,14 +304,47 @@ export function App() {
             onRetry={() => void ws.save(session.path, { force: true })}
           />
         )}
-        <div className="scroll">
-          {session && sourceMode && (
-            <textarea className="source-view" value={source} spellCheck={false} aria-label="Markdown source" onChange={(e) => setSource(e.target.value)} />
-          )}
-          {session && !sourceMode && <Editor key={session.path} state={session.state} ctx={ctx} onChange={onChange} viewRef={viewRef} onView={setView} />}
-          {!session && <div className="empty-state muted">Choose a page on the left.</div>}
+        <div className={`workarea${showPreview && info ? ' with-preview' : ''}`}>
+          <div className="scroll">
+            {session && sourceMode && (
+              <textarea className="source-view" value={source} spellCheck={false} aria-label="Markdown source" onChange={(e) => setSource(e.target.value)} />
+            )}
+            {session && !sourceMode && (
+              <Editor
+                key={session.path}
+                state={session.state}
+                ctx={ctx}
+                onChange={onChange}
+                viewRef={viewRef}
+                onView={setView}
+                problems={pageProblems}
+                savedText={session.savedText}
+                reveal={reveal}
+                onRevealed={onRevealed}
+              />
+            )}
+            {!session && <div className="empty-state muted">Choose a page on the left.</div>}
+          </div>
+          {showPreview && info && <Preview url={previewUrl} building={sphinx.status.kind === 'building'} />}
         </div>
-        <StatusBar session={session} config={ws.project.config} confPy={ws.project.confPy} />
+        {showProblems && info && (
+          <ProblemsPanel
+            warnings={info.warnings}
+            titles={ws.project.titles}
+            current={ws.current}
+            onOpen={(path, line) => void openProblem(path, line)}
+            onClose={() => setShowProblems(false)}
+          />
+        )}
+        <StatusBar session={session} config={ws.project.config} confPy={ws.project.confPy}>
+          <SphinxChip
+            state={sphinx}
+            problems={info?.warnings.length ?? 0}
+            onShowProblems={() => setShowProblems(!showProblems)}
+            onShowLog={() => void showLog()}
+            onEnable={() => void api.trustSphinx()}
+          />
+        </StatusBar>
       </main>
       <DialogHost ref={dialogs} />
     </div>

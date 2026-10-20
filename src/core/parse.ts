@@ -76,7 +76,11 @@ class Context {
 
   // Parse `text` as a sequence of blocks. Returns PM nodes plus the source entry
   // holding lead/trail/gaps so the container can be reassembled.
-  container(text: string, isDoc = false) {
+  // Absolute (1-based) line where the block being converted starts.
+  private line = 1;
+
+  // `base` is the absolute line of the container text's first line.
+  container(text: string, isDoc = false, base = 1) {
     const lines = text.split('\n');
     const lineStart: number[] = [];
     let off = 0;
@@ -167,6 +171,7 @@ class Context {
     let prevSid: string | null = null;
     pieces.forEach((p, i) => {
       const segText = text.slice(p.from, p.to);
+      this.line = base + p.start;
       const node = this.block(p.node, segText, isDoc && i === 0);
       nodes.push(node);
       const sid = node.attrs.sid as string;
@@ -191,7 +196,7 @@ class Context {
   private withSid(type: string, attrs: Record<string, any>, content: PMNode[] | null, src: string): PMNode {
     const sid = this.map.nextSid();
     const node = schema.node(type, { ...attrs, sid }, content ?? undefined);
-    this.map.record(sid, node, src);
+    this.map.record(sid, node, src, undefined, this.line);
     return node;
   }
 
@@ -259,13 +264,17 @@ class Context {
   }
 
   // A node whose children come from parsing `inner` as its own container.
-  private containerNode(type: string, attrs: Record<string, any>, inner: string, src: string): PMNode {
-    const { nodes, entry } = this.container(inner);
+  // `innerOffset`: lines between the node's first line and its inner text (e.g. a
+  // directive's header).
+  private containerNode(type: string, attrs: Record<string, any>, inner: string, src: string, innerOffset = 0): PMNode {
+    const line = this.line;
+    const { nodes, entry } = this.container(inner, false, line + innerOffset);
+    this.line = line;
     const sid = this.map.nextSid();
     const content = nodes.length || type === 'md_directive' ? nodes : [schema.node('paragraph')];
     const node = schema.node(type, { ...attrs, sid }, content);
     node.check();
-    this.map.record(sid, node, src, entry);
+    this.map.record(sid, node, src, entry, line);
     return node;
   }
 
@@ -280,7 +289,7 @@ class Context {
       headerKey: headerKey(d.name, d.args, d.options, d.fence),
     };
     if (MARKDOWN_DIRECTIVES.has(d.name) && d.closing) {
-      return this.containerNode('md_directive', { ...common, fence: d.fence }, d.body ?? '', src);
+      return this.containerNode('md_directive', { ...common, fence: d.fence }, d.body ?? '', src, d.header.split('\n').length);
     }
     if (d.name === 'math' && d.closing) {
       const label = d.options.find(([k]) => k === 'label')?.[1] ?? '';
@@ -319,7 +328,9 @@ class Context {
     let prevSid: string | null = null;
     let prevEnd = -1;
     const lineOffsets = offsets(lines);
+    const listLine = this.line;
     for (const { start, end } of items) {
+      this.line = listLine + start;
       const itemText = lines.slice(start, end + 1).join('\n');
       const m = /^(\s*)([-*+]|\d+[.)])([ \t]*)/.exec(itemText)!;
       const pad = m[3].length >= 1 && m[3].length <= 4 ? m[3].length : 1;
@@ -338,6 +349,7 @@ class Context {
       prevSid = sid;
       prevEnd = end;
     }
+    this.line = listLine;
     return this.withSid(md.ordered ? 'ordered_list' : 'bullet_list', listAttrs, children, src);
   }
 }

@@ -1,5 +1,6 @@
 // The API the preload script exposes to the renderer as `window.myst`.
 import type { MystConfig } from '../core/project-config.js';
+import type { SphinxState } from './sphinx.js';
 
 export interface ProjectInfo {
   root: string; // the folder the writer opened
@@ -35,6 +36,18 @@ export interface MystApi {
   onFilesChanged(cb: (e: FilesChanged) => void): () => void;
   onMenu(cb: (cmd: MenuCommand) => void): () => void;
   onCloseRequested(cb: () => void): () => void;
+
+  // Background Sphinx builds.
+  sphinxState(): Promise<SphinxState>;
+  onSphinxState(cb: (state: SphinxState) => void): () => void;
+  // Allow this project to run Sphinx (remembered), or not for now.
+  trustSphinx(): Promise<void>;
+  declineSphinx(): Promise<void>;
+  rebuild(): Promise<void>;
+  sphinxLog(): Promise<string>;
+  // URL of a page in the HTML output, for the preview; `uri` as in SphinxDoc.
+  buildUrl(uri: string): string;
 }
 
 export const ASSET_SCHEME = 'myst-asset';
+export const BUILD_SCHEME = 'myst-build';
