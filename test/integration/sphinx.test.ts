@@ -11,7 +11,7 @@ import type { SphinxState } from '../../src/shared/sphinx.js';
 const repo = join(import.meta.dirname, '..', '..');
 
 // `work`: reopen a project set up earlier, as a new session would.
-async function setUp(work = mkdtempSync(join(tmpdir(), 'mysteditor-sphinx-'))) {
+async function setUp(work = mkdtempSync(join(tmpdir(), 'mysteditor-sphinx-')), extraEnv: Record<string, string> = {}) {
   if (!existsSync(join(work, 'project'))) cpSync(join(repo, 'e2e', 'fixture'), join(work, 'project'), { recursive: true });
   const project = await openProject(join(work, 'project'));
   const states: SphinxState[] = [];
@@ -20,6 +20,7 @@ async function setUp(work = mkdtempSync(join(tmpdir(), 'mysteditor-sphinx-'))) {
     root: project.root,
     searchDirs: project.projects.map((x) => x.sourceDir),
     buildInputs: () => project.buildInputs,
+    extraEnv: () => extraEnv,
     // A shared data dir keeps the downloaded Python and packages between runs.
     dataDir: process.env.MYSTEDITOR_TEST_DATA ?? join(tmpdir(), 'mysteditor-sphinx-data'),
     appRoot: repo,
@@ -96,12 +97,24 @@ describe('SphinxManager', () => {
     changed.manager.dispose();
   });
 
+  it('gives builds the environment variables conf.py reads', async () => {
+    const work = mkdtempSync(join(tmpdir(), 'mysteditor-sphinx-'));
+    cpSync(join(repo, 'e2e', 'fixture'), join(work, 'project'), { recursive: true });
+    appendFileSync(join(work, 'project', 'docs', 'conf.py'), '\nimport os\nif os.environ.get("HIDE_CONFIGURE"):\n    exclude_patterns = ["guide/configure.md"]\n');
+    const { manager, until } = await setUp(work, { HIDE_CONFIGURE: '1' });
+    manager.start();
+    const ready = await until((s) => s.status.kind === 'ready');
+    expect(Object.keys(ready.info!.docs)).not.toContain('guide/configure');
+    expect(Object.keys(ready.info!.docs)).toContain('guide/install');
+    manager.dispose();
+  });
+
   it('asks before running anything for an untrusted project', async () => {
     const { project } = await setUp();
     let state: SphinxState | null = null;
     const manager = new SphinxManager(project.projects[0], {
     root: project.root,
-    searchDirs: project.projects.map((x) => x.sourceDir), buildInputs: () => project.buildInputs, dataDir: join(tmpdir(), 'unused'), appRoot: repo, resourcesPath: null, trusted: false, environment: null, emit: (s) => (state = s) });
+    searchDirs: project.projects.map((x) => x.sourceDir), buildInputs: () => project.buildInputs, extraEnv: () => ({}), dataDir: join(tmpdir(), 'unused'), appRoot: repo, resourcesPath: null, trusted: false, environment: null, emit: (s) => (state = s) });
     manager.start();
     await new Promise((r) => setTimeout(r, 3000)); // finding Pythons on this computer
     expect(state).toMatchObject({ status: { kind: 'needs-trust', requirements: 'docs/requirements.txt' }, info: null });

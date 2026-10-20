@@ -100,6 +100,11 @@ build per project:
 - **Files a build writes itself** (an extension that generates pages or data) don't
   set off build after build: rewrites with the same content are ignored, and a file
   that changes during two builds in a row is taken to be build output.
+- **Environment variables:** builds get the projects' `[sphinx.env]` (see Project
+  settings) and the writer's own, set in the Sphinx dialog (click the build status)
+  and kept by the app per folder, not in the repository. The writer's win. Changing
+  either builds again from scratch. They're stored as plain text in the app's
+  settings, so they're no place for passwords.
 - **Problems:** Sphinx warnings with page and line, in a panel and marked on the
   offending blocks. Clicking one jumps there.
 - **Cross-references:** `{ref}` chips show the real section title, `{doc}` chips the
@@ -180,6 +185,10 @@ key = "product.capabilities"         # where the names are in the JSON (optional
 block = ["if", "endif"]              # the defaults
 inline = ["if-inline", "endif-inline"]
 case_sensitive = true
+
+# Environment variables for Sphinx builds, for a conf.py that reads os.environ.
+[sphinx.env]
+PRODUCT = "enterprise"
 
 # Optional colours, by condition as written: purple, orange, teal, magenta, blue,
 # olive, green, slate, or "#rrggbb".

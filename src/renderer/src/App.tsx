@@ -565,6 +565,7 @@ export function App() {
           state={sphinx}
           onChangeEnvironment={() => setSphinxDialog('environment')}
           project={projects.length > 1 ? activeProject?.name : undefined}
+          projectId={activeProject?.id ?? null}
           onRebuild={() => {
             if (activeProject) void api.rebuild(activeProject.id);
             setSphinxDialog(null);

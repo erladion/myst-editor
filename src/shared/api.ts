@@ -50,6 +50,10 @@ export interface MystApi {
   initialProject(): Promise<ProjectInfo | null>;
   chooseProject(): Promise<ProjectInfo | null>;
   openProject(folder: string): Promise<ProjectInfo>;
+  // Environment variables for a project's Sphinx builds: from its .mysteditor.toml,
+  // and the writer's own for the opened folder (which win). Setting them rebuilds.
+  sphinxEnv(project: string): Promise<{ project: Record<string, string>; yours: Record<string, string> }>;
+  setSphinxEnv(vars: Record<string, string>): Promise<void>;
   // Pick an image for a page: its path relative to the page, or null if cancelled.
   // Images from outside the opened folder are copied into one.
   chooseImage(page: string): Promise<string | null>;

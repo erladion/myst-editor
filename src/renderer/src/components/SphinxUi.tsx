@@ -147,6 +147,7 @@ export function EnvironmentDialog({ state, projects, onUse, onClose }: Environme
 interface SphinxDialogProps {
   state: SphinxState;
   project?: string; // named when the folder has several projects
+  projectId: string | null;
   onChangeEnvironment: () => void;
   onRebuild: () => void;
   onShowLog: () => void;
@@ -154,8 +155,9 @@ interface SphinxDialogProps {
 }
 
 // Build status and the environment in use, from the status bar.
-export function SphinxDialog({ state, project, onChangeEnvironment, onRebuild, onShowLog, onClose }: SphinxDialogProps) {
+export function SphinxDialog({ state, project, projectId, onChangeEnvironment, onRebuild, onShowLog, onClose }: SphinxDialogProps) {
   const { status, info, environment } = state;
+  const [editingEnv, setEditingEnv] = useState(false);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
@@ -188,22 +190,133 @@ export function SphinxDialog({ state, project, onChangeEnvironment, onRebuild, o
             )}
           </dd>
         </dl>
-        <div className="modal-actions">
-          <button type="button" onClick={onShowLog}>
-            Build log
-          </button>
-          <button type="button" onClick={onRebuild} disabled={!environment || status.kind === 'error'}>
-            Rebuild everything
-          </button>
-          <button type="button" className={status.kind === 'error' ? 'primary' : ''} onClick={onChangeEnvironment}>
-            Change Python environment…
-          </button>
-          <button type="button" className={status.kind === 'error' ? '' : 'primary'} onClick={onClose}>
-            Close
-          </button>
-        </div>
+        {projectId && <EnvVars projectId={projectId} editing={editingEnv} onEditing={setEditingEnv} />}
+        {!editingEnv && (
+          <div className="modal-actions">
+            <button type="button" onClick={onShowLog}>
+              Build log
+            </button>
+            <button type="button" onClick={onRebuild} disabled={!environment || status.kind === 'error'}>
+              Rebuild everything
+            </button>
+            <button type="button" className={status.kind === 'error' ? 'primary' : ''} onClick={onChangeEnvironment}>
+              Change Python environment…
+            </button>
+            <button type="button" className={status.kind === 'error' ? '' : 'primary'} onClick={onClose}>
+              Close
+            </button>
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+
+const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+// Environment variables the build gets: the project's (from .mysteditor.toml, shared
+// with everyone) and the writer's own (kept in the app, for this folder), which win.
+function EnvVars({ projectId, editing, onEditing }: { projectId: string; editing: boolean; onEditing: (e: boolean) => void }) {
+  const [vars, setVars] = useState<{ project: Record<string, string>; yours: Record<string, string> } | null>(null);
+  const [rows, setRows] = useState<[string, string][]>([]);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    void window.myst.sphinxEnv(projectId).then(setVars);
+  }, [projectId]);
+  if (!vars) return null;
+  const projectOnly = Object.entries(vars.project).filter(([name]) => !(name in vars.yours));
+  const all: [string, string, 'project' | 'yours'][] = [...projectOnly.map(([n, v]) => [n, v, 'project'] as [string, string, 'project']), ...Object.entries(vars.yours).map(([n, v]) => [n, v, 'yours'] as [string, string, 'yours'])];
+
+  if (!editing) {
+    return (
+      <section className="env-vars" aria-label="Environment variables">
+        <h3>Environment variables</h3>
+        {all.length ? (
+          <dl className="facts">
+            {all.map(([name, value, from]) => (
+              <div key={name} className="env-row">
+                <dt>
+                  <code>{name}</code>
+                </dt>
+                <dd>
+                  <code>{value}</code>{' '}
+                  <span className="muted">{from === 'project' ? '(from .mysteditor.toml)' : name in vars.project ? '(yours, instead of the project’s)' : '(yours)'}</span>
+                </dd>
+              </div>
+            ))}
+          </dl>
+        ) : (
+          <p className="muted">None. Add some if the project’s conf.py reads them.</p>
+        )}
+        <button
+          type="button"
+          onClick={() => {
+            setRows(Object.entries(vars.yours));
+            onEditing(true);
+          }}
+        >
+          Edit variables…
+        </button>
+      </section>
+    );
+  }
+
+  const names = rows.map(([n]) => n.trim());
+  const bad = names.find((n, i) => !ENV_NAME.test(n) || names.indexOf(n) !== i);
+  const set = (i: number, at: 0 | 1, value: string) => setRows((r) => r.map((row, j) => (j === i ? ((at ? [row[0], value] : [value, row[1]]) as [string, string]) : row)));
+  const save = async () => {
+    setSaving(true);
+    await window.myst.setSphinxEnv(Object.fromEntries(rows.map(([n, v]) => [n.trim(), v])));
+    setVars(await window.myst.sphinxEnv(projectId));
+    setSaving(false);
+    onEditing(false);
+  };
+  return (
+    <section className="env-vars" aria-label="Edit environment variables">
+      <h3>Environment variables</h3>
+      <p className="modal-help">
+        Yours apply to every project in this folder and are kept by the app (not in the repository). A name the project also sets uses your value. Saving builds
+        everything again.
+      </p>
+      {projectOnly.length > 0 && (
+        <ul className="env-project">
+          {projectOnly.map(([name, value]) => (
+            <li key={name}>
+              <code>
+                {name}={value}
+              </code>{' '}
+              <span className="muted">from .mysteditor.toml</span>{' '}
+              {!names.includes(name) && (
+                <button type="button" className="link-button" onClick={() => setRows((r) => [...r, [name, value]])}>
+                  Use another value
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {rows.map(([name, value], i) => (
+        <div key={i} className="env-edit row">
+          <input aria-label="Name" placeholder="NAME" value={name} spellCheck={false} onChange={(e) => set(i, 0, e.target.value)} />
+          <input aria-label="Value" placeholder="value" value={value} spellCheck={false} onChange={(e) => set(i, 1, e.target.value)} />
+          <button type="button" aria-label={`Remove ${name || 'this variable'}`} onClick={() => setRows((r) => r.filter((_, j) => j !== i))}>
+            Remove
+          </button>
+        </div>
+      ))}
+      <button type="button" className="link-button" onClick={() => setRows((r) => [...r, ['', '']])}>
+        + Add a variable
+      </button>
+      {bad !== undefined && <p className="sphinx-error">“{bad || '(empty)'}” can’t be a variable name: use letters, digits and _, not starting with a digit, each name once.</p>}
+      <div className="modal-actions">
+        <button type="button" onClick={() => onEditing(false)} disabled={saving}>
+          Cancel
+        </button>
+        <button type="button" className="primary" disabled={saving || bad !== undefined} onClick={() => void save()}>
+          {saving ? 'Saving…' : 'Save and rebuild'}
+        </button>
+      </div>
+    </section>
   );
 }
 

@@ -97,7 +97,9 @@ export async function ensureEnvironment(
   const markerPath = join(paths.envDir, MARKER);
   if (await environmentIsCurrent(plan, paths)) return { python, plan };
 
-  const env = uvEnv(paths);
+  // opts.env: extra variables (the project's [sphinx.env] and the writer's own), which
+  // may matter while installing too (a private package index, say).
+  const env = { ...uvEnv(paths), ...opts.env };
   const runOpts = { ...opts, cwd: root, env };
   onStep(`Preparing Python ${plan.python}`);
   await runChecked(uv, ['venv', '--clear', '--python', plan.python, paths.envDir], runOpts);

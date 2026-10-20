@@ -30,6 +30,8 @@ export interface ManagerOptions {
   trusted: boolean;
   // See ProjectInfo.buildInputs: when it changes, the next build starts afresh.
   buildInputs: () => string;
+  // Environment variables for setup and builds, on top of the app's own.
+  extraEnv: () => Record<string, string>;
   // The writer's saved choice for this project; managed if none.
   environment: EnvironmentChoice | null;
   emit: (state: SphinxState) => void;
@@ -125,7 +127,8 @@ export class SphinxManager {
     } catch {
       // reported when the build runs
     }
-    return createHash('sha256').update(`${this.python}\0${this.opts.buildInputs()}\0${driver}`).digest('hex').slice(0, 24);
+    const env = JSON.stringify(Object.entries(this.opts.extraEnv()).sort(([a], [b]) => a.localeCompare(b)));
+    return createHash('sha256').update(`${this.python}\0${this.opts.buildInputs()}\0${env}\0${driver}`).digest('hex').slice(0, 24);
   }
 
   // Pythons on this computer that could build the project (for choosing one).
@@ -235,7 +238,7 @@ export class SphinxManager {
       this.project.sourceDir,
       this.paths,
       (step) => this.setStatus({ kind: 'setting-up', step }),
-      { log: (t) => this.write(t), signal: this.abort.signal },
+      { log: (t) => this.write(t), signal: this.abort.signal, env: this.opts.extraEnv() },
     );
     this.python = python;
   }
@@ -268,10 +271,12 @@ export class SphinxManager {
       if (fresh) args.push('--fresh');
       const { output } = await run(this.python, args, {
         cwd: this.project.sourceDir, // like Read the Docs; conf.py paths are often relative to it
-        env:
-          this.state.environment?.kind === 'existing'
+        env: {
+          ...(this.state.environment?.kind === 'existing'
             ? existingEnv()
-            : { ...uvEnv(this.paths), PYTHONUNBUFFERED: '1', PYTHONDONTWRITEBYTECODE: '1', ELECTRON_RUN_AS_NODE: undefined },
+            : { ...uvEnv(this.paths), PYTHONUNBUFFERED: '1', PYTHONDONTWRITEBYTECODE: '1', ELECTRON_RUN_AS_NODE: undefined }),
+          ...this.opts.extraEnv(),
+        },
         log: (t) => this.write(t),
         signal: this.abort.signal,
         timeoutMs: BUILD_TIMEOUT_MS,

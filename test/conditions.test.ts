@@ -125,7 +125,7 @@ describe('loadEditorConfig', () => {
       source('guide/.mysteditor.toml', 'this is not toml'),
     ]);
     expect(config.problems.map((p) => `${p.file}: ${p.message}`)).toEqual([
-      '.mysteditor.toml: Unknown section [extras] (expected directives, roles, tables or conditions)',
+      '.mysteditor.toml: Unknown section [extras] (expected directives, roles, tables, conditions or sphinx)',
       '.mysteditor.toml: [directives.a] body must be "markdown", "text" or "none"',
       '.mysteditor.toml: [roles.x] url must start with http:// or https://',
       '.mysteditor.toml: [conditions] block must be two keywords, like ["if","endif"]',
@@ -168,5 +168,26 @@ describe('condition colours', () => {
     ]);
     expect(config.conditions?.colors).toEqual({ CapabilityX: 'teal', 'X or Y': '#abc' });
     expect(config.problems.map((p) => p.message)).toEqual([expect.stringMatching(/^\[conditions\.colors\] "Bad": use one of purple, orange/)]);
+  });
+});
+
+describe('[sphinx.env]', () => {
+  const load = (...texts: string[]) => loadEditorConfig(texts.map((text, i) => ({ file: i ? 'guide/.mysteditor.toml' : '.mysteditor.toml', readCapabilities: () => '[]', text })));
+
+  it('reads environment variables for builds, inner files winning', () => {
+    const config = load('[sphinx.env]\nPRODUCT = "enterprise"\nYEAR = 2026\nDRAFT = true\n', '[sphinx.env]\nPRODUCT = "community"\n');
+    expect(config.sphinxEnv).toEqual({ PRODUCT: 'community', YEAR: '2026', DRAFT: 'true' });
+    expect(config.problems).toEqual([]);
+  });
+
+  it('refuses names a process environment can’t hold', () => {
+    const config = load('[sphinx.env]\n"1BAD" = "x"\n"WITH SPACE" = "x"\nLIST = ["a"]\nOK = "y"\n[sphinx]\nother = 1\n');
+    expect(config.sphinxEnv).toEqual({ OK: 'y' });
+    expect(config.problems.map((p) => p.message)).toEqual([
+      '[sphinx] unknown setting "other"',
+      '[sphinx.env] "1BAD" isn’t a valid variable name',
+      '[sphinx.env] "WITH SPACE" isn’t a valid variable name',
+      '[sphinx.env] LIST must be text, a number or true/false',
+    ]);
   });
 });

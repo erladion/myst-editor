@@ -23,6 +23,9 @@
 //   block = ["if", "endif"]
 //   inline = ["if-inline", "endif-inline"]
 //
+//   [sphinx.env]                         # environment variables for Sphinx builds
+//   PRODUCT = "enterprise"               # (conf.py may read os.environ)
+//
 //   [conditions.colors]                  # optional; otherwise chosen automatically
 //   CapabilityX = "teal"                 # a palette colour, or "#0a7f6f"
 //   "CapabilityX or CapabilityY" = "orange"
@@ -86,10 +89,15 @@ export interface EditorConfig {
   roles: Record<string, RoleDef>;
   tables: TableSpans;
   conditions: ConditionsDef | null;
+  // Environment variables for the project's Sphinx builds.
+  sphinxEnv: Record<string, string>;
   problems: SettingsProblem[];
 }
 
-export const EMPTY_EDITOR_CONFIG: EditorConfig = { directives: {}, roles: {}, tables: {}, conditions: null, problems: [] };
+// A name a process environment can hold (and a shell would accept).
+export const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+export const EMPTY_EDITOR_CONFIG: EditorConfig = { directives: {}, roles: {}, tables: {}, conditions: null, sphinxEnv: {}, problems: [] };
 
 const DEFAULT_CONDITIONS: Omit<ConditionsDef, 'capabilities' | 'capabilitiesFile' | 'colors'> = {
   block: ['if', 'endif'],
@@ -111,7 +119,7 @@ export interface SettingsSource {
 // Merge the settings files that apply to a project, outermost first: later files
 // override earlier ones per directive, per role and per conditions setting.
 export function loadEditorConfig(sources: SettingsSource[]): EditorConfig {
-  const config: EditorConfig = { directives: {}, roles: {}, tables: {}, conditions: null, problems: [] };
+  const config: EditorConfig = { directives: {}, roles: {}, tables: {}, conditions: null, sphinxEnv: {}, problems: [] };
   for (const source of sources) applySettings(config, source);
   return config;
 }
@@ -126,7 +134,23 @@ function applySettings(config: EditorConfig, { file, text, readCapabilities }: S
     return;
   }
   for (const key of Object.keys(raw)) {
-    if (!['directives', 'roles', 'tables', 'conditions'].includes(key)) problem(`Unknown section [${key}] (expected directives, roles, tables or conditions)`);
+    if (!['directives', 'roles', 'tables', 'conditions', 'sphinx'].includes(key)) problem(`Unknown section [${key}] (expected directives, roles, tables, conditions or sphinx)`);
+  }
+
+  if (raw.sphinx !== undefined) {
+    const sx = raw.sphinx;
+    if (!isTable(sx)) problem('[sphinx] must be a table');
+    else {
+      for (const key of Object.keys(sx)) if (key !== 'env') problem(`[sphinx] unknown setting "${key}"`);
+      if (sx.env !== undefined && !isTable(sx.env)) problem('[sphinx.env] must be a table, like PRODUCT = "enterprise"');
+      else if (sx.env) {
+        for (const [name, value] of Object.entries(sx.env)) {
+          if (!ENV_NAME.test(name)) problem(`[sphinx.env] "${name}" isn’t a valid variable name`);
+          else if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') config.sphinxEnv[name] = String(value);
+          else problem(`[sphinx.env] ${name} must be text, a number or true/false`);
+        }
+      }
+    }
   }
 
   if (raw.tables !== undefined) {

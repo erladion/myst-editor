@@ -15,7 +15,7 @@ import { Git, GitError } from './git/git.js';
 import { AskPass } from './git/askpass.js';
 import type { GitInfo } from '../shared/git.js';
 import { projectFor } from '../shared/projects.js';
-import { SETTINGS_FILE } from '../core/editor-config.js';
+import { ENV_NAME, SETTINGS_FILE } from '../core/editor-config.js';
 
 // Lets tests (and portable setups) keep settings out of the real profile.
 if (process.env.MYSTEDITOR_USER_DATA) app.setPath('userData', process.env.MYSTEDITOR_USER_DATA);
@@ -98,6 +98,18 @@ interface Settings {
   environments?: Record<string, EnvironmentChoice>;
   // Light or dark, or as the system is.
   theme?: Theme;
+  // Per project root: the writer's own environment variables for Sphinx builds, on
+  // top of (and overriding) the projects' [sphinx.env].
+  sphinxEnv?: Record<string, Record<string, string>>;
+}
+
+// The writer's variables for the open folder (see Settings.sphinxEnv).
+let userEnv: Record<string, string> = {};
+
+// A project's variables for its builds: its settings file's, then the writer's.
+function envFor(p: ProjectInfo, id: string): Record<string, string> {
+  const project = p.projects.find((x) => x.id === id);
+  return { ...project?.config.editor.sphinxEnv, ...userEnv };
 }
 
 type Theme = 'system' | 'light' | 'dark';
@@ -166,6 +178,7 @@ async function startSphinx(p: ProjectInfo) {
   sphinx.forEach((m) => m.dispose());
   sphinx.clear();
   const settings = await loadSettings();
+  userEnv = settings.sphinxEnv?.[p.root] ?? {};
   for (const sp of p.projects) {
     const manager = new SphinxManager(sp, {
       root: p.root,
@@ -177,6 +190,7 @@ async function startSphinx(p: ProjectInfo) {
       resourcesPath: app.isPackaged ? process.resourcesPath : null,
       trusted: !!settings.trusted?.includes(p.root),
       buildInputs: () => p.buildInputs,
+      extraEnv: () => envFor(p, sp.id),
       environment: settings.environments?.[p.root] ?? null,
       emit: (state: SphinxState) => {
         win?.webContents.send('sphinx-state', { project: sp.id, state });
@@ -235,9 +249,12 @@ async function refreshProject(p: ProjectInfo) {
   const same = (a: ProjectInfo, b: ProjectInfo) => JSON.stringify([a.projects, a.defaultConfig]) === JSON.stringify([b.projects, b.defaultConfig]);
   if (same(next, p)) return;
   const restart = JSON.stringify(next.projects.map((x) => x.id)) !== JSON.stringify(p.projects.map((x) => x.id));
+  // Projects whose [sphinx.env] changed build again from scratch (conf.py may read it).
+  const envChanged = next.projects.filter((x) => JSON.stringify(x.config.editor.sphinxEnv) !== JSON.stringify(p.projects.find((y) => y.id === x.id)?.config.editor.sphinxEnv));
   Object.assign(p, { projects: next.projects, defaultConfig: next.defaultConfig, buildInputs: next.buildInputs });
   win?.webContents.send('project-changed', { project: p });
   if (restart) await startSphinx(p);
+  else envChanged.forEach((x) => sphinx.get(x.id)?.requestBuild({ fresh: true }));
 }
 
 // Files that changed while their project was building, in how many builds in a row.
@@ -454,6 +471,14 @@ function registerIpc() {
     return result.canceled ? null : probePython(result.filePaths[0], 'Chosen');
   });
   ipcMain.handle('sphinx-decline', () => sphinx.forEach((m) => m.decline()));
+  ipcMain.handle('sphinx-env', (_e, id: string) => ({ project: requireProject().projects.find((x) => x.id === id)?.config.editor.sphinxEnv ?? {}, yours: userEnv }));
+  ipcMain.handle('sphinx-set-env', async (_e, vars: Record<string, string>) => {
+    const root = requireProject().root;
+    const clean = Object.fromEntries(Object.entries(vars).filter(([name, value]) => ENV_NAME.test(name) && typeof value === 'string'));
+    await updateSettings((s) => ({ ...s, sphinxEnv: { ...s.sphinxEnv, [root]: clean } }));
+    userEnv = clean;
+    sphinx.forEach((m) => m.requestBuild({ fresh: true }));
+  });
   ipcMain.handle('sphinx-rebuild', (_e, id: string) => sphinx.get(id)?.requestBuild({ fresh: true }));
   ipcMain.handle('sphinx-log', (_e, id: string) => sphinx.get(id)?.getLog() ?? '');
   ipcMain.on('set-unsaved', (_e, value: boolean) => {
