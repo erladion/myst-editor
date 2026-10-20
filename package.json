@@ -17,9 +17,10 @@
     "typecheck": "tsc -p .",
     "roundtrip": "tsx scripts/roundtrip-report.ts",
     "icon": "electron scripts/make-icon.cjs",
-    "dist": "node scripts/fetch-uv.mjs && electron-vite build && electron-builder --linux AppImage",
+    "dist": "node scripts/fetch-uv.mjs && electron-vite build && electron-builder --linux AppImage rpm",
     "test:sphinx": "vitest run --config vitest.integration.config.ts",
-    "fetch-uv": "node scripts/fetch-uv.mjs"
+    "fetch-uv": "node scripts/fetch-uv.mjs",
+    "dist:appimage": "node scripts/fetch-uv.mjs && electron-vite build && electron-builder --linux AppImage"
   },
   "devDependencies": {
     "@codemirror/commands": "6.11.1",
@@ -66,5 +67,6 @@
   "allowScripts": {
     "electron-winstaller": false
   },
-  "desktopName": "mysteditor.desktop"
+  "desktopName": "mysteditor.desktop",
+  "homepage": "https://github.com/erladion/myst-editor"
 }

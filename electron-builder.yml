@@ -18,9 +18,47 @@ extraResources:
     to: sphinx
     filter: ['*.py']
 linux:
-  target: AppImage
+  target: [AppImage, rpm]
+  maintainer: erladion
+  vendor: erladion
   category: Office
   syncDesktopName: true
   icon: build/icon.png
   synopsis: WYSIWYG editor for Sphinx + MyST Markdown
   description: Edit Sphinx documentation written in MyST Markdown as formatted pages, saving only what you change.
+rpm:
+  # Libraries the Electron binary links against (readelf -d), as RPM sonames so any
+  # distribution's packages can satisfy them (RHEL 9, Rocky/Alma, Fedora, openSUSE).
+  # xdg-utils opens links in the browser.
+  depends:
+    - 'libglib-2.0.so.0()(64bit)'
+    - 'libgobject-2.0.so.0()(64bit)'
+    - 'libgio-2.0.so.0()(64bit)'
+    - 'libnspr4.so()(64bit)'
+    - 'libnss3.so()(64bit)'
+    - 'libnssutil3.so()(64bit)'
+    - 'libsmime3.so()(64bit)'
+    - 'libatk-1.0.so.0()(64bit)'
+    - 'libatk-bridge-2.0.so.0()(64bit)'
+    - 'libcups.so.2()(64bit)'
+    - 'libdbus-1.so.3()(64bit)'
+    - 'libcairo.so.2()(64bit)'
+    - 'libgtk-3.so.0()(64bit)'
+    - 'libpango-1.0.so.0()(64bit)'
+    - 'libX11.so.6()(64bit)'
+    - 'libXcomposite.so.1()(64bit)'
+    - 'libXdamage.so.1()(64bit)'
+    - 'libXext.so.6()(64bit)'
+    - 'libXfixes.so.3()(64bit)'
+    - 'libXrandr.so.2()(64bit)'
+    - 'libgbm.so.1()(64bit)'
+    - 'libexpat.so.1()(64bit)'
+    - 'libxcb.so.1()(64bit)'
+    - 'libxkbcommon.so.0()(64bit)'
+    - 'libudev.so.1()(64bit)'
+    - 'libasound.so.2()(64bit)'
+    - 'libatspi.so.0()(64bit)'
+    - xdg-utils
+  fpm:
+    # Don't claim /usr/lib/.build-id entries other Electron apps also ship.
+    - --rpm-rpmbuild-define=_build_id_links none

@@ -3,7 +3,7 @@
 A WYSIWYG editor for Sphinx + MyST Markdown, aimed at writers who shouldn't have to
 see Markdown syntax. An Electron app shipped as an AppImage.
 
-## Status: phase 6 — advanced (Markdown) view
+## Status: phase 7 — RPM package
 
 Open a documentation folder and edit its pages as formatted documents:
 
@@ -228,7 +228,8 @@ npm test                     # unit tests: round-trip, edits, save verification,
 npm run test:sphinx          # integration: real uv + Sphinx on the fixture (downloads packages once)
 npm run test:e2e             # build, then drive the real app with Playwright
 npm run typecheck
-npm run dist                 # release/MyST-Editor-<version>-x86_64.AppImage (with uv bundled)
+npm run dist                 # AppImage and RPM in release/ (uv bundled in both)
+npm run dist:appimage        # AppImage only (no rpmbuild needed)
 ```
 
 Other tools:
@@ -250,6 +251,20 @@ folder (Python, uv cache) in the system temp dir, so downloads happen once; set
 
 In development the app uses `resources/uv/uv` if fetched, otherwise `uv` from `PATH`.
 Per-project environments, builds and logs live in `<userData>/sphinx/`.
+
+### Installing
+
+- **RHEL 9, Rocky/Alma, Fedora, openSUSE:** `sudo dnf install ./MyST-Editor-<version>-x86_64.rpm`
+  (`zypper install` on openSUSE). Dependencies are declared as library sonames, so
+  each distribution's own packages satisfy them, and no FUSE is needed. It installs
+  to `/opt/MyST Editor/` with a `mysteditor` command and a menu entry. The
+  post-install script only makes Chromium's sandbox setuid on systems without user
+  namespaces.
+- **Anything else:** the AppImage. It needs `libfuse2`, or run it with
+  `--appimage-extract-and-run`.
+
+Building the RPM needs `rpmbuild`: `sudo dnf install rpm-build` on Fedora/RHEL, or
+`sudo apt install rpm` on Debian/Ubuntu.
 
 ### Air-gapped machines
 
@@ -369,8 +384,9 @@ With an internal PyPI mirror instead, the private environment works too: uv read
    Still cards: `{list-table}` and grid tables in `{eval-rst}`.
 6. ~~Advanced view: pure Markdown editing next to a live preview, hiding the
    formatting toolbar~~ ✅
-7. Packaging: an RPM target alongside the AppImage. It can declare its dependencies
-   and doesn't need FUSE, which RHEL 9 doesn't install by default.
+7. ~~Packaging: an RPM target alongside the AppImage~~ ✅ Verified by inspecting
+   the package and running the e2e suite on its payload. Not yet installed on a real
+   RHEL 9 machine.
 8. Git, last:
    - open a repository from an HTTPS or SSH link, cloning it locally
    - commit changes from the app
