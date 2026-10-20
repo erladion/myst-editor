@@ -118,12 +118,14 @@ export function insertMath(ctx: EditorContext): Command {
 
 export const insertDivider: Command = insertBlock(nodes.thematic_break.create());
 
+const IMAGE_HELP = 'Relative to this page. Images from outside the folder are copied into an images folder next to it.';
+
 export async function insertFigure(ctx: EditorContext, run: (cmd: Command) => void) {
   const values = await ctx.ui.editFields({
     title: 'Insert figure',
     submit: 'Insert',
     fields: [
-      { key: 'src', label: 'Image file', value: '', placeholder: 'images/diagram.png', help: 'Relative to this page' },
+      { key: 'src', label: 'Image file', value: '', placeholder: 'images/diagram.png', help: IMAGE_HELP, browse: () => ctx.chooseImage() },
       { key: 'alt', label: 'Description', value: '', help: 'Read aloud by screen readers' },
       { key: 'caption', label: 'Caption', value: '' },
     ],
@@ -132,6 +134,64 @@ export async function insertFigure(ctx: EditorContext, run: (cmd: Command) => vo
   const options: [string, string][] = values.alt ? [['alt', values.alt]] : [];
   const caption = values.caption ? [nodes.paragraph.create(null, schema.text(values.caption))] : [nodes.paragraph.create()];
   run(insertBlock(nodes.md_directive.create({ name: 'figure', args: values.src, options, fence: newDirectiveFence(ctx.config) }, caption), 2));
+}
+
+// An image in the text, `![description](path)`; a figure adds a caption and numbering.
+export async function insertImage(ctx: EditorContext, run: (cmd: Command) => void) {
+  const values = await ctx.ui.editFields({
+    title: 'Insert image',
+    submit: 'Insert',
+    fields: [
+      { key: 'src', label: 'Image file', value: '', placeholder: 'images/screenshot.png', help: IMAGE_HELP, browse: () => ctx.chooseImage() },
+      { key: 'alt', label: 'Description', value: '', help: 'Read aloud by screen readers' },
+    ],
+  });
+  if (!values?.src) return;
+  run((state, dispatch) => {
+    const image = nodes.image.create({ src: values.src.trim(), alt: values.alt.trim() });
+    if (!state.selection.$from.parent.type.contentMatch.matchType(nodes.image)) return false;
+    dispatch?.(state.tr.replaceSelectionWith(image, false).scrollIntoView());
+    return true;
+  });
+}
+
+// A label for a link target: lower case, words joined by hyphens.
+export function targetLabel(text: string): string {
+  return text
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^\w\s.-]/g, '')
+    .trim()
+    .replace(/[\s_]+/g, '-')
+    .replace(/-+/g, '-');
+}
+
+// `(label)=` before the current block, so {ref}`label` links to it (a heading's title
+// becomes the link text).
+export async function insertTarget(ctx: EditorContext, state: EditorState, run: (cmd: Command) => void) {
+  const { $from } = state.selection;
+  const block = $from.depth > 0 ? $from.node(1) : null;
+  const values = await ctx.ui.editFields({
+    title: 'Insert link target',
+    submit: 'Insert',
+    fields: [
+      {
+        key: 'label',
+        label: 'Label',
+        value: block?.type === nodes.heading ? targetLabel(block.textContent) : '',
+        placeholder: 'installing-on-rhel',
+        help: 'Placed before this block. Other pages link here with a cross-reference to this label.',
+      },
+    ],
+  });
+  const label = values && targetLabel(values.label);
+  if (!label) return;
+  run((s, dispatch) => {
+    const at = s.selection.$from.depth > 0 ? s.selection.$from.before(1) : s.selection.from;
+    dispatch?.(s.tr.insert(at, nodes.target.create({ label })).scrollIntoView());
+    return true;
+  });
 }
 
 export async function insertReference(ctx: EditorContext, run: (cmd: Command) => void) {

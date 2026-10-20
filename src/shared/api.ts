@@ -50,6 +50,9 @@ export interface MystApi {
   initialProject(): Promise<ProjectInfo | null>;
   chooseProject(): Promise<ProjectInfo | null>;
   openProject(folder: string): Promise<ProjectInfo>;
+  // Pick an image for a page: its path relative to the page, or null if cancelled.
+  // Images from outside the opened folder are copied into one.
+  chooseImage(page: string): Promise<string | null>;
   readFile(rel: string): Promise<string>;
   writeFile(rel: string, text: string): Promise<void>;
   // URL the renderer can load an image from; `rel` is relative to the project root.

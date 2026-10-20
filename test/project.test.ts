@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildInputsOf, firstHeading, listDocuments, openProject, resolveInside, unwatchedDir } from '../src/main/project.js';
+import { buildInputsOf, firstHeading, placeImage, listDocuments, openProject, resolveInside, unwatchedDir } from '../src/main/project.js';
 import { FolderWatcher } from '../src/main/watch.js';
 
 function project() {
@@ -121,5 +121,23 @@ describe('FolderWatcher', () => {
     } finally {
       w.close();
     }
+  });
+});
+
+describe('placeImage', () => {
+  it('refers to images in the folder relative to the page, and copies others in', async () => {
+    const root = project();
+    mkdirSync(join(root, 'docs', 'images'));
+    writeFileSync(join(root, 'docs', 'images', 'in.png'), 'in');
+    expect(await placeImage(root, 'docs/guide/a.md', join(root, 'docs', 'images', 'in.png'))).toBe('../images/in.png');
+
+    const elsewhere = mkdtempSync(join(tmpdir(), 'mysteditor-pictures-'));
+    writeFileSync(join(elsewhere, 'shot.png'), 'shot');
+    expect(await placeImage(root, 'docs/guide/a.md', join(elsewhere, 'shot.png'))).toBe('images/shot.png');
+    expect(readFileSync(join(root, 'docs', 'guide', 'images', 'shot.png'), 'utf8')).toBe('shot');
+    // A second one with the same name doesn't overwrite the first.
+    writeFileSync(join(elsewhere, 'shot.png'), 'newer');
+    expect(await placeImage(root, 'docs/guide/a.md', join(elsewhere, 'shot.png'))).toBe('images/shot-2.png');
+    expect(existsSync(join(root, 'docs', 'guide', 'images', 'shot-2.png'))).toBe(true);
   });
 });

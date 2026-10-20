@@ -159,6 +159,10 @@ export function App() {
       get filePath() {
         return current()?.current ?? null;
       },
+      chooseImage() {
+        const page = current()?.current;
+        return page ? api.chooseImage(page) : Promise.resolve(null);
+      },
       assetUrl(ref: string) {
         const w = current();
         if (!w || /^(https?:|data:)/.test(ref)) return ref;

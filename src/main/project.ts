@@ -246,6 +246,28 @@ export async function listDocuments(base: string): Promise<string[]> {
   return (await scanFolder(base)).files;
 }
 
+export const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'];
+
+// An image the writer picked for `page`, as the path to write in the page (relative
+// to it). One from outside the opened folder is copied into an images/ folder next to
+// the page first, under a name not already taken.
+export async function placeImage(root: string, page: string, picked: string): Promise<string> {
+  const pageDir = dirname(resolveInside(root, page));
+  const real = realpathSync(picked);
+  const realRoot = realpathSync(root);
+  let target = real;
+  if (!real.startsWith(realRoot + sep)) {
+    const dir = join(pageDir, 'images');
+    await fs.mkdir(dir, { recursive: true });
+    const ext = real.slice(real.lastIndexOf('.'));
+    const stem = basename(real, ext);
+    target = join(dir, basename(real));
+    for (let n = 2; existsSync(target); n++) target = join(dir, `${stem}-${n}${ext}`);
+    await fs.copyFile(real, target);
+  }
+  return relative(realpathSync(pageDir), target).split(sep).join('/');
+}
+
 // Resolve `rel` inside `base`, refusing anything that escapes it (including via
 // symlinks). Used for every path that comes from the renderer.
 export function resolveInside(base: string, rel: string): string {

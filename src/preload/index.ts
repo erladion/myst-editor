@@ -12,6 +12,7 @@ const api: MystApi = {
   initialProject: () => ipcRenderer.invoke('initial-project'),
   chooseProject: () => ipcRenderer.invoke('choose-project'),
   openProject: (folder) => ipcRenderer.invoke('open-project', folder),
+  chooseImage: (page) => ipcRenderer.invoke('choose-image', page),
   readFile: (rel) => ipcRenderer.invoke('read-file', rel),
   writeFile: (rel, text) => ipcRenderer.invoke('write-file', rel, text),
   assetUrl: (rel) => `${ASSET_SCHEME}://project/${rel.split('/').map(encodeURIComponent).join('/')}`,

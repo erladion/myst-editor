@@ -30,7 +30,9 @@ Open a documentation folder and edit its pages as formatted documents:
   - math rendered with KaTeX (the source shows while the cursor is in it)
   - roles as chips; `{doc}` links show the page title, Ctrl+click opens the page
   - the toctree as a clickable table of contents
-  - an Insert menu for callouts, figures, code, equations and cross-references
+  - an Insert menu for callouts, images, figures, code, equations, cross-references
+    and link targets (`(label)=`, labelled from the heading). Choose… picks an image;
+    one from outside the folder is copied into an `images/` folder next to the page.
 - **Tables:** Markdown tables are edited as tables:
   - Tab and Shift+Tab move between cells. Enter moves down a row, adding one at the
     bottom.

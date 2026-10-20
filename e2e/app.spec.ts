@@ -82,6 +82,36 @@ test('inserting a callout from the menu', async () => {
   expect(file('guide/install.md')).toBe(original('guide/install.md') + '\n:::{warning}\nBack up your settings first.\n:::\n');
 });
 
+test('inserting an image, and a link target for a heading', async () => {
+  const { page } = ctx;
+  await openPage(page, 'Installing Widget');
+  await clickEndOf(page, 'Settings live in');
+  await page.keyboard.type(' See ');
+  await page.getByRole('button', { name: 'Insert ▾' }).click();
+  await page.getByRole('menuitem', { name: 'Image…' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Insert image' });
+  await expect(dialog.getByRole('button', { name: 'Choose…' })).toBeVisible();
+  await dialog.getByLabel('Image file').fill('../images/diagram.svg');
+  await dialog.getByLabel('Description').fill('The flow');
+  await dialog.getByRole('button', { name: 'Insert' }).click();
+  await expect(page.locator('.prose img[alt="The flow"]')).toBeVisible();
+  await waitForSave(page);
+  expect(changes('guide/install.md')).toEqual({
+    removed: ['Settings live in `widget.toml`.'],
+    added: ['Settings live in `widget.toml`. See ![The flow](../images/diagram.svg)'],
+  });
+
+  // A target for the page's heading, labelled from its title.
+  await page.locator('.prose h1').click();
+  await page.getByRole('button', { name: 'Insert ▾' }).click();
+  await page.getByRole('menuitem', { name: 'Link target…' }).click();
+  const target = page.getByRole('dialog', { name: 'Insert link target' });
+  await expect(target.getByLabel('Label')).toHaveValue('installing-widget');
+  await target.getByRole('button', { name: 'Insert' }).click();
+  await waitForSave(page);
+  expect(file('guide/install.md').startsWith('(installing-widget)=\n# Installing Widget\n')).toBe(true);
+});
+
 test('bold and italic from the keyboard and Markdown shortcuts', async () => {
   const { page } = ctx;
   await openPage(page, 'Installing Widget');

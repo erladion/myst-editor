@@ -2,9 +2,9 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, net, protocol, shell, type MenuItemConstructorOptions } from 'electron';
 import { createHash } from 'node:crypto';
 import { promises as fs, statSync } from 'node:fs';
-import { join, relative, sep } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { buildInputsOf, isBuildInput, listDocuments, openProject, readDocument, readTitle, resolveInside, UNWATCHED_DIRS, unwatchedDir, writeDocument } from './project.js';
+import { buildInputsOf, isBuildInput, listDocuments, openProject, readDocument, readTitle, IMAGE_EXTENSIONS, placeImage, resolveInside, UNWATCHED_DIRS, unwatchedDir, writeDocument } from './project.js';
 import { FolderWatcher } from './watch.js';
 import { SphinxManager } from './sphinx/manager.js';
 import { ASSET_SCHEME, BUILD_SCHEME, type MenuCommand, type ProjectInfo } from '../shared/api.js';
@@ -328,6 +328,17 @@ function registerIpc() {
     return result.canceled ? null : useProject(result.filePaths[0]);
   });
   ipcMain.handle('open-project', (_e, folder: string) => useProject(folder));
+  ipcMain.handle('choose-image', async (_e, page: string) => {
+    const p = requireProject();
+    const pagePath = resolveInside(p.root, page);
+    const result = await dialog.showOpenDialog(win!, {
+      title: 'Choose an image',
+      defaultPath: dirname(pagePath),
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: IMAGE_EXTENSIONS }],
+    });
+    return result.canceled ? null : placeImage(p.root, page, result.filePaths[0]);
+  });
   ipcMain.handle('read-file', (_e, rel: string) => readDocument(requireProject(), rel));
   ipcMain.handle('write-file', async (_e, rel: string, text: string) => {
     fingerprints.set(rel, fingerprintText(text));

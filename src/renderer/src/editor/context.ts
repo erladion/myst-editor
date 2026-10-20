@@ -13,6 +13,8 @@ export interface Field {
   choices?: { value: string; label: string }[];
   // Autocomplete; a function gets the form's current values (e.g. to depend on a choice).
   suggestions?: Suggestion[] | ((values: Record<string, string>) => Suggestion[]);
+  // A "Choose…" button next to the field, filling it in (null: cancelled).
+  browse?: () => Promise<string | null>;
 }
 
 export interface EditorUi {
@@ -29,6 +31,8 @@ export interface EditorContext {
   config: MystConfig;
   // The open page, relative to the Sphinx source directory.
   filePath: string | null;
+  // Pick an image file for the open page (see MystApi.chooseImage).
+  chooseImage(): Promise<string | null>;
   // URL for an image referenced from the open page.
   assetUrl(ref: string): string;
   // Open the page a {doc} role or toctree entry points at.

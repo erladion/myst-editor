@@ -5,7 +5,7 @@ import type { Command, EditorState } from 'prosemirror-state';
 import { undo, redo } from 'prosemirror-history';
 import { schema } from '../../../core/schema';
 import {
-  blockKind, editLink, heading, inList, insertCodeBlock, insertDirective, insertDivider, insertFigure, insertMath,
+  blockKind, editLink, heading, inList, insertCodeBlock, insertDirective, insertDivider, insertFigure, insertImage, insertTarget, insertMath,
   insertProjectDirective, insertReference, markActive, paragraph, toggleCode, toggleEm, toggleList, toggleQuote, toggleStrike, toggleStrong,
 } from '../editor/commands';
 import type { EditorContext } from '../editor/context';
@@ -166,7 +166,7 @@ export function Toolbar({ view, ctx, onMarkdown, previewAvailable, previewOpen, 
       <Btn label="1." title="Numbered list" cmd={toggleList(schema.nodes.ordered_list)} active={list === 'ordered_list'} />
       <Btn label="❝" title="Quote" cmd={toggleQuote} />
       <span className="tb-sep" />
-      <InsertMenu disabled={disabled} ctx={ctx} run={run} />
+      <InsertMenu disabled={disabled} ctx={ctx} state={state} run={run} />
       {conditions && (
         <>
           <span className="tb-sep" />
@@ -275,7 +275,7 @@ function MenuButton({ label, items, state, run }: { label: string; items: [strin
   );
 }
 
-function InsertMenu({ disabled, ctx, run }: { disabled: boolean; ctx: EditorContext; run: (cmd: Command) => void }) {
+function InsertMenu({ disabled, ctx, state, run }: { disabled: boolean; ctx: EditorContext; state: EditorState | undefined; run: (cmd: Command) => void }) {
   const [open, setOpen] = useState(false);
   const projectDirectives = Object.entries(ctx.config.editor.directives).filter(([, d]) => d.insert);
   const ref = useRef<HTMLDivElement>(null);
@@ -308,6 +308,7 @@ function InsertMenu({ disabled, ctx, run }: { disabled: boolean; ctx: EditorCont
           <div className="menu-heading">Callouts</div>
           {['note', 'tip', 'important', 'warning', 'danger', 'seealso'].map((n) => item(ADMONITIONS[n].label, () => run(insertDirective(ctx, n))))}
           <div className="menu-heading">Blocks</div>
+          {item('Image…', () => insertImage(ctx, run))}
           {item('Figure…', () => insertFigure(ctx, run))}
           {item('Table', () => run(insertTable))}
           {item('Code block', () => run(insertCodeBlock()))}
@@ -318,6 +319,7 @@ function InsertMenu({ disabled, ctx, run }: { disabled: boolean; ctx: EditorCont
           {projectDirectives.map(([name, def]) => item(def.label ?? name, () => run(insertProjectDirective(ctx, name, def))))}
           <div className="menu-heading">Inline</div>
           {item('Cross-reference…', () => insertReference(ctx, run))}
+          {state && item('Link target…', () => insertTarget(ctx, state, run))}
         </div>
       )}
     </div>
