@@ -1,7 +1,7 @@
 // Runs a project's Sphinx build in the background: environment setup, debounced
 // incremental builds, and merged results for the renderer.
 import { createHash } from 'node:crypto';
-import { createWriteStream, existsSync, mkdirSync, promises as fs, type WriteStream } from 'node:fs';
+import { createWriteStream, existsSync, mkdirSync, promises as fs, readFileSync, rmSync, type WriteStream } from 'node:fs';
 import { join } from 'node:path';
 import type { SphinxProject } from '../../shared/api.js';
 import { fromProject } from '../../shared/projects.js';
@@ -28,6 +28,8 @@ export interface ManagerOptions {
   appRoot: string; // for development: where resources/ lives
   resourcesPath: string | null; // packaged app resources
   trusted: boolean;
+  // See ProjectInfo.buildInputs: when it changes, the next build starts afresh.
+  buildInputs: () => string;
   // The writer's saved choice for this project; managed if none.
   environment: EnvironmentChoice | null;
   emit: (state: SphinxState) => void;
@@ -37,6 +39,16 @@ export interface ManagerOptions {
 const NETWORK_ERROR = /dns error|failed to lookup address|could not connect|connection refused|tcp connect error|error sending request|network is unreachable|operation timed out|offline mode|no route to host/i;
 
 const BUILD_DELAY_MS = 600;
+// Files changing this long after a build or setup finished may still be its output.
+const BUSY_GRACE_MS = 2000;
+
+// The last build's results, kept between sessions so opening a project shows them at
+// once and only needs an incremental build.
+interface SavedState {
+  version: 1;
+  key: string; // what the results depend on: see buildKey()
+  info: SphinxInfo;
+}
 const BUILD_TIMEOUT_MS = 20 * 60_000;
 
 export class SphinxManager {
@@ -46,8 +58,10 @@ export class SphinxManager {
   private building = false;
   private pending: { fresh: boolean } | null = null;
   private timer: ReturnType<typeof setTimeout> | undefined;
-  // The first build of a session re-reads everything, so all warnings are known.
+  // Whether the next build re-reads everything. The first build of a session does,
+  // unless the last session's results still apply.
   private fresh = true;
+  private busyUntil = 0;
   private log: WriteStream;
   private logTail = '';
   private readonly key: string;
@@ -76,8 +90,42 @@ export class SphinxManager {
   }
 
   start() {
-    if (this.opts.trusted) void this.setUp();
-    else void this.askForTrust();
+    if (this.opts.trusted) {
+      const saved = this.loadSaved();
+      if (saved) this.state = { ...this.state, info: saved.info };
+      void this.setUp();
+    } else void this.askForTrust();
+  }
+
+  // Building or setting up, or only just finished: files changing now may be its output.
+  busy(): boolean {
+    const kind = this.state.status.kind;
+    return this.building || kind === 'setting-up' || Date.now() < this.busyUntil;
+  }
+
+  private get savedFile() {
+    return join(this.opts.dataDir, 'builds', this.key, 'editor-state.json');
+  }
+
+  private loadSaved(): SavedState | null {
+    try {
+      const saved = JSON.parse(readFileSync(this.savedFile, 'utf8')) as SavedState;
+      return saved.version === 1 && saved.info ? saved : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // The Python, the build driver and the project's extensions: when any of them
+  // changed, earlier results (and Sphinx's own saved environment) can't be trusted.
+  private buildKey(): string {
+    let driver = '';
+    try {
+      driver = readFileSync(this.driverPath(), 'utf8');
+    } catch {
+      // reported when the build runs
+    }
+    return createHash('sha256').update(`${this.python}\0${this.opts.buildInputs()}\0${driver}`).digest('hex').slice(0, 24);
   }
 
   // Pythons on this computer that could build the project (for choosing one).
@@ -91,6 +139,8 @@ export class SphinxManager {
     this.opts.environment = choice;
     this.python = null;
     this.fresh = true;
+    this.state = { ...this.state, info: null };
+    rmSync(this.savedFile, { force: true });
     void this.setUp();
   }
 
@@ -130,6 +180,7 @@ export class SphinxManager {
   }
 
   private setStatus(status: SphinxStatus) {
+    if (this.state.status.kind === 'setting-up' && status.kind !== 'setting-up') this.busyUntil = Date.now() + BUSY_GRACE_MS;
     this.state = { ...this.state, status };
     this.opts.emit(this.state);
   }
@@ -139,7 +190,11 @@ export class SphinxManager {
     try {
       if (choice.kind === 'existing') await this.useExisting(choice.python);
       else await this.useManaged();
-      if (this.python) await this.build();
+      if (!this.python) return;
+      // Nothing the build depends on changed since last time: carry on from there.
+      if (this.state.info && this.loadSaved()?.key === this.buildKey()) this.fresh = false;
+      else this.state = { ...this.state, info: null };
+      await this.build();
     } catch (e) {
       if (this.abort.signal.aborted) return;
       const message = e instanceof Error ? e.message : String(e);
@@ -230,6 +285,7 @@ export class SphinxManager {
       this.setStatus({ kind: 'error', message: e instanceof Error ? e.message : String(e) });
     } finally {
       this.building = false;
+      this.busyUntil = Date.now() + BUSY_GRACE_MS;
     }
     if (this.pending && !this.abort.signal.aborted) {
       const { fresh: again } = this.pending;
@@ -265,6 +321,8 @@ export class SphinxManager {
     };
     this.state = { ...this.state, status: { kind: 'ready' }, info };
     this.opts.emit(this.state);
+    const saved: SavedState = { version: 1, key: this.buildKey(), info };
+    fs.writeFile(this.savedFile, JSON.stringify(saved)).catch(() => {});
   }
 
   private driverPath(): string {

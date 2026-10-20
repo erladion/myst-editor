@@ -15,8 +15,11 @@ Open a documentation folder and edit its pages as formatted documents:
   `myst_enable_extensions`, matching its Sphinx build. For example, without
   `colon_fence`, `:::{note}` stays plain text and new callouts use backtick fences.
   Pages outside every project are listed as "Other files".
+- **Opening** a large folder shows what it's doing (finding pages, reading titles).
+  Folders such as `.venv`, `node_modules` and `.git` are never scanned or watched.
 - **Sidebar:** pages listed by their title, with folders and a filter, in one section
-  per project when there are several.
+  per project when there are several (with the folder added when two projects have
+  the same name). Once built, it follows the toctree, and entries fold away.
 - **Editing:** headings, bold/italic/code/strike, links, lists, quotes. Markdown
   shortcuts (`# `, `- `, `1. `, `**bold**`, `` `code` ``) work while typing.
 - **MyST constructs:**
@@ -82,6 +85,13 @@ build per project:
 - **Incremental builds** after every save, of the saved page's project only, in about
   a second for small projects. Changes to files outside every project, such as a
   shared extension module, rebuild them all.
+- **Reopening a project** shows the last build's contents, references and problems
+  at once, and only builds what changed since: on a 1,500-page project, 2 seconds
+  instead of a 44-second full build. It starts afresh when the Python, a `.py` file
+  (a local extension) or a capabilities file changed in the meantime.
+- **Files a build writes itself** (an extension that generates pages or data) don't
+  set off build after build: rewrites with the same content are ignored, and a file
+  that changes during two builds in a row is taken to be build output.
 - **Problems:** Sphinx warnings with page and line, in a panel and marked on the
   offending blocks. Clicking one jumps there.
 - **Cross-references:** `{ref}` chips show the real section title, `{doc}` chips the

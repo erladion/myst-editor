@@ -18,6 +18,7 @@ const api: MystApi = {
   setUnsaved: (unsaved) => ipcRenderer.send('set-unsaved', unsaved),
   closeWindow: () => ipcRenderer.send('close-window'),
   onFilesChanged: (cb) => on('files-changed', cb),
+  onOpenProgress: (cb) => on('open-progress', cb),
   onProjectChanged: (cb) => on('project-changed', cb),
   onMenu: (cb) => on('menu', cb),
   onCloseRequested: (cb) => on('close-requested', () => cb()),

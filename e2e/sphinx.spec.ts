@@ -36,6 +36,12 @@ test('builds the project: contents, resolved references, problems and preview', 
 
   // The sidebar follows the toctree.
   await expect(page.locator('.tree .page')).toHaveText(['Widget documentation', 'Installing Widget', 'Configuring Widget']);
+  // Entries with pages under them fold away.
+  const toggle = page.getByRole('button', { name: 'Hide the pages in Widget documentation' });
+  await toggle.click();
+  await expect(page.locator('.tree .page')).toHaveText(['Widget documentation']);
+  await page.getByRole('button', { name: 'Show the pages in Widget documentation' }).click();
+  await expect(page.locator('.tree .page')).toHaveText(['Widget documentation', 'Installing Widget', 'Configuring Widget']);
 
   // {ref}`configuration` shows the section's title from the build.
   await expect(page.locator('.role-ref', { hasText: 'Configuration' })).toBeVisible();

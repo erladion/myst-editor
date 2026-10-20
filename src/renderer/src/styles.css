@@ -183,6 +183,40 @@ button:focus-visible {
   margin: 0 0 24px;
 }
 
+/* Opening a folder: over the welcome screen, or the previous project. */
+.opening {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  background: var(--bg-soft);
+}
+
+.opening h2 {
+  font: 600 20px/1.3 var(--font-doc);
+  margin: 12px 0 8px;
+}
+
+.opening p {
+  margin: 0;
+}
+
+.opening .spinner.large {
+  display: block;
+  width: 28px;
+  height: 28px;
+  margin: 0 auto;
+  border-width: 3px;
+  color: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 3s;
+  }
+}
+
 .empty-state {
   padding: 48px;
   text-align: center;
@@ -274,6 +308,31 @@ button:focus-visible {
 
 .chevron {
   width: 10px;
+}
+
+/* Contents entries: a toggle for the pages under an entry, then the page itself. */
+.toc-row {
+  display: flex;
+  align-items: stretch;
+}
+
+.toc-toggle {
+  flex: none;
+  width: 22px;
+  padding: 0 0 0 8px;
+  border: none;
+  background: none;
+  border-radius: 0;
+  color: var(--fg-muted);
+}
+
+button.toc-toggle:hover {
+  color: var(--fg);
+  background: var(--border);
+}
+
+.toc-row .page {
+  padding-left: 4px;
 }
 
 .unsaved-dot {

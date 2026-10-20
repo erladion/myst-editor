@@ -1,9 +1,11 @@
 // Electron main process: window, menu, project file access and change watching.
 import { app, BrowserWindow, dialog, ipcMain, Menu, net, protocol, shell, type MenuItemConstructorOptions } from 'electron';
-import { watch, promises as fs, statSync, type FSWatcher } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { promises as fs, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { openProject, listDocuments, readDocument, readTitles, resolveInside, writeDocument } from './project.js';
+import { buildInputsOf, isBuildInput, listDocuments, openProject, readDocument, readTitle, resolveInside, UNWATCHED_DIRS, unwatchedDir, writeDocument } from './project.js';
+import { FolderWatcher } from './watch.js';
 import { SphinxManager } from './sphinx/manager.js';
 import { ASSET_SCHEME, BUILD_SCHEME, type MenuCommand, type ProjectInfo } from '../shared/api.js';
 import type { EnvironmentChoice, SphinxState } from '../shared/sphinx.js';
@@ -15,9 +17,6 @@ import type { GitInfo } from '../shared/git.js';
 import { projectFor } from '../shared/projects.js';
 import { SETTINGS_FILE } from '../core/editor-config.js';
 
-// Not watched: changes in build output, dependencies and virtualenvs aren't edits.
-const IGNORED_DIRS = new Set(['_build', 'build', 'node_modules', 'venv', 'env', '__pycache__', 'site-packages', 'dist']);
-
 // Lets tests (and portable setups) keep settings out of the real profile.
 if (process.env.MYSTEDITOR_USER_DATA) app.setPath('userData', process.env.MYSTEDITOR_USER_DATA);
 
@@ -28,7 +27,7 @@ protocol.registerSchemesAsPrivileged([
 
 let win: BrowserWindow | null = null;
 let project: ProjectInfo | null = null;
-let watcher: FSWatcher | null = null;
+let watcher: FolderWatcher | null = null;
 // Git and the prompts it needs answered (see git/askpass.ts).
 let askpass: AskPass | null = null;
 const git = new Git(() => askpass?.env() ?? { GIT_TERMINAL_PROMPT: '0' });
@@ -84,8 +83,10 @@ function plain<T>(fn: () => Promise<T>): Promise<T> {
 const sphinx = new Map<string, SphinxManager>();
 let unsaved = false;
 let closing = false;
-// What we last wrote to each file, so our own saves aren't reported as external changes.
-const written = new Map<string, string>();
+// The content of files as last seen (or written by us), by path relative to the
+// opened folder: a file event only counts when the content really changed.
+const fingerprints = new Map<string, string>();
+const fingerprintText = (text: string | Buffer) => createHash('sha1').update(text).digest('hex');
 
 const settingsPath = () => join(app.getPath('userData'), 'settings.json');
 
@@ -111,9 +112,30 @@ async function updateSettings(patch: (s: Settings) => Settings) {
   await fs.writeFile(settingsPath(), JSON.stringify(next, null, 2));
 }
 
+// Opening a large folder takes a while: tell the window what's happening.
+let progressTimer: NodeJS.Timeout | undefined;
+let progressNext: { step: string; detail?: string } | null = null;
+function openProgress(folder: string, step: string | null, detail?: string) {
+  clearTimeout(progressTimer);
+  if (step === null) {
+    progressNext = null;
+    win?.webContents.send('open-progress', null);
+    return;
+  }
+  const first = !progressNext;
+  progressNext = { step, detail };
+  const send = () => win?.webContents.send('open-progress', { folder, ...progressNext });
+  if (first) send();
+  else progressTimer = setTimeout(send, 100);
+}
+
 async function useProject(folder: string): Promise<ProjectInfo> {
-  project = await openProject(folder);
-  written.clear();
+  try {
+    project = await openProject(folder, (step, detail) => openProgress(folder, step, detail));
+  } finally {
+    openProgress(folder, null);
+  }
+  fingerprints.clear();
   startWatching(project);
   win?.setTitle(`${project.name} — MyST Editor`);
   await updateSettings((s) => ({ ...s, lastProject: project!.root }));
@@ -138,6 +160,7 @@ async function startSphinx(p: ProjectInfo) {
       appRoot: join(import.meta.dirname, '..', '..'),
       resourcesPath: app.isPackaged ? process.resourcesPath : null,
       trusted: !!settings.trusted?.includes(p.root),
+      buildInputs: () => p.buildInputs,
       environment: settings.environments?.[p.root] ?? null,
       emit: (state: SphinxState) => win?.webContents.send('sphinx-state', { project: sp.id, state }),
     });
@@ -154,62 +177,120 @@ async function refreshProject(p: ProjectInfo) {
   const same = (a: ProjectInfo, b: ProjectInfo) => JSON.stringify([a.projects, a.defaultConfig]) === JSON.stringify([b.projects, b.defaultConfig]);
   if (same(next, p)) return;
   const restart = JSON.stringify(next.projects.map((x) => x.id)) !== JSON.stringify(p.projects.map((x) => x.id));
-  Object.assign(p, { projects: next.projects, defaultConfig: next.defaultConfig });
+  Object.assign(p, { projects: next.projects, defaultConfig: next.defaultConfig, buildInputs: next.buildInputs });
   win?.webContents.send('project-changed', { project: p });
   if (restart) await startSphinx(p);
 }
 
-// Build the project a changed file belongs to; files outside every project (say a
-// shared extension module or requirements file) may affect them all.
-function buildFor(p: ProjectInfo, rel: string, fresh: boolean) {
+// Files that changed while their project was building, in how many builds in a row.
+// One changing during two builds is output of the build itself (an extension that
+// generates pages, say), not an edit, so it doesn't start yet another build.
+const changedInBuilds = new Map<string, number>();
+
+// Build what a changed file can affect: its own project, incrementally (Sphinx works
+// out what's outdated, including included files and images). Python files and data
+// files are extension code and inputs Sphinx can't track, so those builds start
+// afresh, and a shared one outside every project affects them all.
+function buildFor(p: ProjectInfo, rel: string, external: boolean) {
   const owner = projectFor(p.projects, rel);
-  if (owner) sphinx.get(owner.id)?.requestBuild({ fresh });
-  else if (fresh) sphinx.forEach((m) => m.requestBuild({ fresh }));
+  const name = rel.split('/').pop()!;
+  const fresh = isBuildInput(name);
+  const managers = owner ? [sphinx.get(owner.id)!].filter(Boolean) : fresh || /\.(html|jinja2?)$/.test(name) ? [...sphinx.values()] : [];
+  if (external) {
+    if (managers.some((m) => m.busy())) {
+      const n = (changedInBuilds.get(rel) ?? 0) + 1;
+      changedInBuilds.set(rel, n);
+      if (n >= 2) return;
+    } else changedInBuilds.delete(rel);
+  }
+  managers.forEach((m) => m.requestBuild({ fresh }));
+}
+
+// A file's content as a fingerprint; size and time for large files. Null if it's gone,
+// 'dir' for a directory.
+async function fingerprint(path: string): Promise<string | null> {
+  try {
+    const st = await fs.stat(path);
+    if (st.isDirectory()) return 'dir';
+    if (st.size > 4 * 1024 * 1024) return `${st.size}:${st.mtimeMs}`;
+    return fingerprintText(await fs.readFile(path));
+  } catch {
+    return null;
+  }
 }
 
 function startWatching(p: ProjectInfo) {
   watcher?.close();
+  changedInBuilds.clear();
   const pending = new Set<string>();
   let timer: NodeJS.Timeout | undefined;
+  let flushing = Promise.resolve();
   const flush = async () => {
     if (project !== p) return;
-    const changed: string[] = [];
-    for (const rel of pending) {
-      try {
-        const text = await readDocument(p, rel);
-        if (written.get(rel) !== text) changed.push(rel);
-      } catch {
-        // deleted or unreadable: the file list update covers it
-      }
-    }
-    const others = [...pending].filter((rel) => !rel.endsWith('.md'));
+    const batch = [...pending];
     pending.clear();
-    p.files = await listDocuments(p.root);
-    p.titles = await readTitles(p.root, p.files);
-    win?.webContents.send('files-changed', { files: p.files, titles: p.titles, changed });
-    // Our own saves request builds directly; here it's changes made outside the app.
-    // Configuration, extensions and templates can affect every page of a project.
+    const changed: string[] = []; // files whose content is new
+    let relist = false; // a folder appeared or went: list the pages again
+    for (const rel of batch) {
+      const fp = await fingerprint(join(p.root, rel));
+      if (fp === 'dir') {
+        relist = true;
+        continue;
+      }
+      if (fp === null) {
+        if (p.files.some((f) => f.startsWith(rel + '/'))) relist = true;
+        if (fingerprints.delete(rel) || p.files.includes(rel)) changed.push(rel);
+        continue;
+      }
+      if (fingerprints.get(rel) === fp) continue;
+      fingerprints.set(rel, fp);
+      changed.push(rel);
+    }
+    if (project !== p || (!changed.length && !relist)) return;
+
+    // Pages: only re-read what changed, which matters in a folder of thousands.
+    const before = new Set(p.files);
+    let files = relist ? await listDocuments(p.root) : [...p.files];
+    if (!relist) {
+      for (const rel of changed.filter((r) => r.endsWith('.md'))) {
+        const exists = fingerprints.has(rel);
+        if (exists && !before.has(rel)) files.push(rel);
+        if (!exists) files = files.filter((f) => f !== rel);
+      }
+      files.sort((a, b) => a.localeCompare(b));
+    }
+    const titles = Object.fromEntries(Object.entries(p.titles).filter(([f]) => files.includes(f)));
+    const reread = new Set([...changed.filter((r) => r.endsWith('.md')), ...files.filter((f) => !before.has(f))]);
+    for (const rel of reread) {
+      if (!files.includes(rel)) continue;
+      const title = await readTitle(join(p.root, rel));
+      if (title) titles[rel] = title;
+      else delete titles[rel];
+    }
+    if (project !== p) return;
+    Object.assign(p, { files, titles });
+    const pages = changed.filter((r) => r.endsWith('.md') && files.includes(r));
+    win?.webContents.send('files-changed', { files, titles, changed: pages });
     refreshGit();
-    for (const rel of changed) buildFor(p, rel, false);
-    for (const rel of others) buildFor(p, rel, /\.(py|html|jinja2?|toml|ya?ml|txt|json)$/.test(rel));
+    // Our own saves request builds directly; these are changes made outside the app.
+    if (changed.some((rel) => isBuildInput(rel.split('/').pop()!))) p.buildInputs = await buildInputsOf(p.root);
+    for (const rel of changed) if (!rel.endsWith(SETTINGS_FILE)) buildFor(p, rel, true);
     // conf.py, editor settings and capabilities files change how pages are read.
-    if (others.some((rel) => /(^|\/)(conf\.py|\.mysteditor\.toml)$|\.json$/.test(rel))) await refreshProject(p);
+    const settings = (rel: string) => /(^|\/)(conf\.py|\.mysteditor\.toml)$/.test(rel) || (rel.endsWith('.json') && isBuildInput(rel.split('/').pop()!));
+    if (changed.some(settings)) await refreshProject(p);
   };
-  try {
-    watcher = watch(p.root, { recursive: true }, (_event, filename) => {
-      if (!filename) return;
-      const rel = filename.toString().split(sep).join('/');
-      const parts = rel.split('/');
-      // Hidden files are ignored, except the editor's own settings.
-      const hidden = parts.some((part, i) => (part.startsWith('.') && !(i === parts.length - 1 && part === SETTINGS_FILE)) || IGNORED_DIRS.has(part));
-      if (hidden) return;
-      pending.add(rel);
-      clearTimeout(timer);
-      timer = setTimeout(flush, 300);
-    });
-  } catch (e) {
-    console.warn('File watching unavailable:', e);
-  }
+  const w = new FolderWatcher(p.root, unwatchedDir, (rel) => {
+    // Hidden files are ignored, except the editor's own settings.
+    const parts = rel.split('/');
+    const name = parts[parts.length - 1];
+    if ((name.startsWith('.') && name !== SETTINGS_FILE) || UNWATCHED_DIRS.has(name)) return;
+    pending.add(rel);
+    clearTimeout(timer);
+    // One flush at a time, so a slow one can't overlap the next.
+    timer = setTimeout(() => (flushing = flushing.then(flush, flush)), 300);
+  });
+  watcher = w;
+  w.start().catch((e) => console.warn('File watching unavailable:', e));
 }
 
 // The project folder from the command line (`mysteditor ./docs`), if given.
@@ -249,7 +330,7 @@ function registerIpc() {
   ipcMain.handle('open-project', (_e, folder: string) => useProject(folder));
   ipcMain.handle('read-file', (_e, rel: string) => readDocument(requireProject(), rel));
   ipcMain.handle('write-file', async (_e, rel: string, text: string) => {
-    written.set(rel, text);
+    fingerprints.set(rel, fingerprintText(text));
     await writeDocument(requireProject(), rel, text);
     buildFor(requireProject(), rel, false);
     refreshGit();

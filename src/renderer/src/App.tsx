@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { EditorView } from 'prosemirror-view';
 import type { EditorState } from 'prosemirror-state';
-import type { ProjectInfo } from '../../shared/api';
+import type { OpenProgress, ProjectInfo } from '../../shared/api';
 import type { EnvironmentChoice, SphinxState } from '../../shared/sphinx';
 import type { SourceMap } from '../../core/sourcemap';
 import { configFor, fromProject, projectFor } from '../../shared/projects';
@@ -101,6 +101,8 @@ export function App() {
   const [gitInfo, setGitInfo] = useState<GitInfo | null>(null);
   const [gitPanel, setGitPanel] = useState(false);
   const [cloning, setCloning] = useState(false);
+  const [opening, setOpening] = useState<OpenProgress | null>(null);
+  useEffect(() => api.onOpenProgress(setOpening), []);
   const dialogs = useRef<DialogApi>(null);
   const viewRef = useRef<EditorView | null>(null);
   const [view, setView] = useState<EditorView | null>(null);
@@ -358,10 +360,23 @@ export function App() {
   // Hooks stay above the welcome screen's early return.
   const previewBuild = usePreviewBuild(pageProject?.id ?? null, info && session ? docnameOf(info, session.path) : null, info?.builtAt ?? null);
 
+  const openingCard = opening && (
+    <div className="opening" role="status" aria-live="polite">
+      <div className="welcome-card">
+        <div className="spinner large" aria-hidden="true" />
+        <h2>Opening {opening.folder.split('/').pop()}</h2>
+        <p>
+          {opening.step}…{opening.detail && <span className="muted"> {opening.detail}</span>}
+        </p>
+      </div>
+    </div>
+  );
+
   if (!ws) {
     return (
       <div className="welcome">
-        {!starting && (
+        {openingCard}
+        {!starting && !opening && (
           <div className="welcome-card">
             <h1>MyST Editor</h1>
             <p>Edit your Sphinx documentation as formatted pages. Your Markdown files are saved exactly as written, apart from what you change.</p>
@@ -396,6 +411,7 @@ export function App() {
 
   return (
     <div className="app">
+      {openingCard}
       <Sidebar
         projectName={ws.project.name}
         files={ws.project.files}

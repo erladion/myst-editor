@@ -1,5 +1,5 @@
 // Page tree: one section per Sphinx project in the opened folder, plus other files.
-import { useMemo, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import type { SphinxProject } from '../../../shared/api';
 import type { SphinxInfo } from '../../../shared/sphinx';
 import { projectFor } from '../../../shared/projects';
@@ -68,8 +68,10 @@ export function Sidebar({ projectName, files, titles, projects, builds, current,
   }, [files, projects]);
 
   const matches = filter ? files.filter((f) => `${titles[f] ?? ''} ${f}`.toLowerCase().includes(filter.toLowerCase())) : null;
-  // Section headings only when there's more than one group of pages.
+  // Section headings only when there's more than one group of pages. Projects that
+  // share a name (conf.py's `project`) are told apart by their folders.
   const headings = projects.length + (sections.other.length ? 1 : 0) > 1;
+  const heading = (p: SphinxProject) => (projects.some((q) => q !== p && q.name === p.name) ? `${p.name} (${p.dir || 'top folder'})` : p.name);
 
   const fileItem = (file: string) => (
     <li key={file}>
@@ -113,10 +115,10 @@ export function Sidebar({ projectName, files, titles, projects, builds, current,
         ) : (
           <>
             {projects.map((project) => (
-              <section key={project.id} className="tree-section" aria-label={project.name}>
+              <section key={project.id} className="tree-section" aria-label={heading(project)}>
                 {headings && (
                   <div className="section-name" title={project.confPy}>
-                    {project.name}
+                    {heading(project)}
                   </div>
                 )}
                 <ProjectPages
@@ -156,47 +158,107 @@ interface ProjectPagesProps {
 
 function ProjectPages({ project, files, info, current, unsaved, onOpen, fileItem }: ProjectPagesProps) {
   const toc = useMemo(() => (info ? tocTree(info) : null), [info]);
+  // Entries the writer opened or closed; the rest show the top level, and the way to
+  // the current page. Kept by page name, so a new build doesn't reset them.
+  const [chosen, setChosen] = useState<Record<string, boolean>>({});
+  const ancestors = useMemo(() => (toc && current ? ancestorsOf(toc.root, current) : []), [toc, current]);
+  // Opening a page inside a closed entry shows it.
+  useEffect(() => {
+    if (ancestors.some((d) => chosen[d] === false)) setChosen((c) => ({ ...c, ...Object.fromEntries(ancestors.map((d) => [d, true])) }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ancestors]);
   if (!toc) return <FolderView folder={buildTree(files, project.dir)} depth={0} current={current} fileItem={fileItem} />;
+  const tree: TreeProps = {
+    files,
+    current,
+    unsaved,
+    onOpen,
+    isOpen: (e, depth) => chosen[e.docname] ?? (depth === 0 || ancestors.includes(e.docname)),
+    toggle: (e, open) => setChosen((c) => ({ ...c, [e.docname]: open })),
+  };
   return (
     <>
-      {toc.root && <ul>{tocItem(toc.root, files, current, unsaved, onOpen, 0)}</ul>}
+      {toc.root && <ul>{tocItem(toc.root, tree, 0)}</ul>}
       {toc.orphans.length > 0 && (
         <>
           <div className="folder-name static" title="Pages that no table of contents links to">
             Not in the contents
           </div>
-          <ul>{toc.orphans.map((o) => tocItem(o, files, current, unsaved, onOpen, 0))}</ul>
+          <ul>{toc.orphans.map((o) => tocItem(o, tree, 0))}</ul>
         </>
       )}
     </>
   );
 }
 
-function tocItem(entry: TocEntry, files: string[], current: string | null, unsaved: Set<string>, onOpen: (p: string) => void, depth: number): ReactElement {
+// Page names from the root down to (not including) the entry for `source`.
+function ancestorsOf(root: TocEntry | null, source: string): string[] {
+  const path: string[] = [];
+  const find = (e: TocEntry): boolean => {
+    if (e.source === source) return true;
+    path.push(e.docname);
+    if (e.children.some(find)) return true;
+    path.pop();
+    return false;
+  };
+  return root && find(root) ? path : [];
+}
+
+interface TreeProps {
+  files: string[];
+  current: string | null;
+  unsaved: Set<string>;
+  onOpen: (path: string) => void;
+  isOpen: (entry: TocEntry, depth: number) => boolean;
+  toggle: (entry: TocEntry, open: boolean) => void;
+}
+
+function tocItem(entry: TocEntry, tree: TreeProps, depth: number): ReactElement {
+  const { files, current, unsaved, onOpen } = tree;
   const editable = files.includes(entry.source);
+  const parent = entry.children.length > 0;
+  const open = parent && tree.isOpen(entry, depth);
   return (
     <li key={entry.docname}>
-      <button
-        type="button"
-        className={`page${entry.source === current ? ' current' : ''}`}
-        style={{ paddingLeft: 14 + depth * 14 }}
-        title={editable ? entry.source : `${entry.source} isn’t a Markdown page`}
-        aria-current={entry.source === current ? 'page' : undefined}
-        disabled={!editable}
-        onClick={() => onOpen(entry.source)}
-      >
-        <span className="page-title">{entry.title}</span>
-        {unsaved.has(entry.source) && <span className="unsaved-dot" title="Unsaved changes" />}
-      </button>
-      {entry.children.length > 0 && <ul>{entry.children.map((c) => tocItem(c, files, current, unsaved, onOpen, depth + 1))}</ul>}
+      <div className="toc-row" style={{ paddingLeft: depth * 14 }}>
+        {parent ? (
+          <button
+            type="button"
+            className="toc-toggle"
+            aria-expanded={open}
+            aria-label={`${open ? 'Hide' : 'Show'} the pages in ${entry.title}`}
+            title={open ? 'Hide the pages in it' : 'Show the pages in it'}
+            onClick={() => tree.toggle(entry, !open)}
+          >
+            <span className="chevron">{open ? '▾' : '▸'}</span>
+          </button>
+        ) : (
+          <span className="toc-toggle" aria-hidden="true" />
+        )}
+        <button
+          type="button"
+          className={`page${entry.source === current ? ' current' : ''}`}
+          title={editable ? entry.source : `${entry.source} isn’t a Markdown page`}
+          aria-current={entry.source === current ? 'page' : undefined}
+          disabled={!editable}
+          onClick={() => onOpen(entry.source)}
+        >
+          <span className="page-title">{entry.title}</span>
+          {unsaved.has(entry.source) && <span className="unsaved-dot" title="Unsaved changes" />}
+        </button>
+      </div>
+      {open && <ul>{entry.children.map((c) => tocItem(c, tree, depth + 1))}</ul>}
     </li>
   );
 }
 
 function FolderView({ folder, depth, current, fileItem }: { folder: Folder; depth: number; current: string | null; fileItem: (f: string) => ReactElement }) {
   const containsCurrent = !!current && (folder.path === '' || current.startsWith(folder.path + '/'));
-  const [open, setOpen] = useState(depth === 0 || containsCurrent);
-  const isOpen = open || containsCurrent;
+  const [isOpen, setOpen] = useState(depth === 0 || containsCurrent);
+  // Opening a page in a closed folder shows it.
+  useEffect(() => {
+    if (containsCurrent) setOpen(true);
+  }, [containsCurrent, current]);
   const children = (
     <ul>
       {folder.files.map(fileItem)}

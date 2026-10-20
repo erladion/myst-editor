@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { firstHeading, listDocuments, openProject, resolveInside } from '../src/main/project.js';
+import { buildInputsOf, firstHeading, listDocuments, openProject, resolveInside, unwatchedDir } from '../src/main/project.js';
+import { FolderWatcher } from '../src/main/watch.js';
 
 function project() {
   const root = mkdtempSync(join(tmpdir(), 'mysteditor-test-'));
@@ -25,6 +26,29 @@ describe('openProject', () => {
     expect(p.projects[0]).toMatchObject({ dir: 'docs', sourceDir: join(p.root, 'docs'), confPy: 'docs/conf.py', config: { extensions: ['colon_fence'] } });
     expect(p.files).toEqual(['docs/guide/a.md', 'docs/index.md', 'outside/secret.md']);
     expect(p.titles).toEqual({ 'docs/index.md': 'Home page', 'docs/guide/a.md': 'Setext title' }); // secret.md has no heading
+  });
+
+  it('reports progress while opening', async () => {
+    const steps: string[] = [];
+    await openProject(project(), (step, detail) => steps.push(detail ? `${step}: ${detail}` : step));
+    expect(steps[0]).toBe('Looking for pages and Sphinx projects');
+    expect(steps).toContain('Looking for pages and Sphinx projects: 3 pages found');
+    expect(steps.at(-1)).toBe('Reading page titles: 3 of 3');
+  });
+
+  it('fingerprints the Python and capabilities files a build reads, not other data', async () => {
+    const root = project();
+    writeFileSync(join(root, 'docs', '.mysteditor.toml'), '[conditions]\ncapabilities = "caps.json"\n');
+    writeFileSync(join(root, 'docs', 'caps.json'), '["A"]');
+    const before = (await openProject(root)).buildInputs;
+    const touch = (path: string, time: number) => utimesSync(path, time, time);
+    writeFileSync(join(root, 'docs', 'generated.json'), '{"built": 1}'); // e.g. written by every build
+    expect(await buildInputsOf(root)).toBe(before);
+    touch(join(root, 'docs', 'caps.json'), 1_000_000);
+    const caps = await buildInputsOf(root);
+    expect(caps).not.toBe(before);
+    writeFileSync(join(root, 'docs', '_ext.py'), 'def setup(app): pass\n');
+    expect(await buildInputsOf(root)).not.toBe(caps);
   });
 
   it('skips build output', async () => {
@@ -53,5 +77,49 @@ describe('firstHeading', () => {
   it('strips inline markup and roles', () => {
     expect(firstHeading('# The `widget` {term}`API <api>` and [docs](x.md)\n')).toBe('The widget API and docs');
     expect(firstHeading('No heading here\n')).toBeNull();
+  });
+});
+
+describe('FolderWatcher', () => {
+  const next = (seen: string[], pred: (s: string) => boolean) =>
+    new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`not seen; saw ${seen.join(', ')}`)), 3000);
+      const check = setInterval(() => {
+        if (seen.some(pred)) {
+          clearTimeout(timer);
+          clearInterval(check);
+          resolve();
+        }
+      }, 20);
+    });
+
+  it('reports changes in new folders, and none from inside skipped ones', async () => {
+    const root = project();
+    mkdirSync(join(root, '.venv'));
+    writeFileSync(join(root, '.venv', 'pyvenv.cfg'), '');
+    mkdirSync(join(root, 'myenv'));
+    writeFileSync(join(root, 'myenv', 'pyvenv.cfg'), '');
+    const seen: string[] = [];
+    const w = new FolderWatcher(root, unwatchedDir, (rel) => seen.push(rel));
+    await w.start();
+    try {
+      writeFileSync(join(root, 'docs', 'guide', 'a.md'), '# Changed\n');
+      await next(seen, (s) => s === 'docs/guide/a.md');
+      mkdirSync(join(root, 'docs', 'new'));
+      await next(seen, (s) => s === 'docs/new');
+      // The new folder is watched once it's been noticed.
+      await new Promise((r) => setTimeout(r, 100));
+      writeFileSync(join(root, 'docs', 'new', 'page.md'), '# New\n');
+      await next(seen, (s) => s === 'docs/new/page.md');
+      writeFileSync(join(root, '.venv', 'lib.py'), '');
+      writeFileSync(join(root, 'myenv', 'lib.py'), '');
+      writeFileSync(join(root, 'docs', '_build', 'out.html'), '');
+      rmSync(join(root, 'docs', 'new'), { recursive: true });
+      await next(seen, (s) => s === 'docs/new');
+      await new Promise((r) => setTimeout(r, 200));
+      expect(seen.filter((s) => /venv|myenv\/|_build\//.test(s))).toEqual([]);
+    } finally {
+      w.close();
+    }
   });
 });

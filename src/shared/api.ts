@@ -20,6 +20,16 @@ export interface ProjectInfo {
   defaultConfig: MystConfig; // for pages outside every project
   files: string[]; // Markdown files, POSIX paths relative to root
   titles: Record<string, string>; // first heading of each file, where found
+  // Sizes and times of the folder's Python files and capabilities files (extensions
+  // and the data they read), which Sphinx doesn't track: when it differs from the
+  // last build's, the first build starts afresh.
+  buildInputs: string;
+}
+
+export interface OpenProgress {
+  folder: string;
+  step: string; // e.g. "Reading page titles"
+  detail?: string; // e.g. "1200 of 3400"
 }
 
 export interface FilesChanged {
@@ -49,6 +59,8 @@ export interface MystApi {
   // Close after the renderer has finished saving.
   closeWindow(): void;
   onFilesChanged(cb: (e: FilesChanged) => void): () => void;
+  // While a folder is being opened; null when done.
+  onOpenProgress(cb: (p: OpenProgress | null) => void): () => void;
   onProjectChanged(cb: (e: ProjectChanged) => void): () => void;
   onMenu(cb: (cmd: MenuCommand) => void): () => void;
   onCloseRequested(cb: () => void): () => void;

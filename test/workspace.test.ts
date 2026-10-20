@@ -17,7 +17,7 @@ function fakeApi(files: Record<string, string>) {
   return { api, writes };
 }
 
-const project: ProjectInfo = { root: '/x', name: 'x', projects: [], defaultConfig: DEFAULT_CONFIG, files: ['a.md'], titles: {} };
+const project: ProjectInfo = { root: '/x', name: 'x', projects: [], defaultConfig: DEFAULT_CONFIG, files: ['a.md'], titles: {}, buildInputs: '' };
 
 describe('Workspace text mode', () => {
   beforeEach(() => vi.useFakeTimers());

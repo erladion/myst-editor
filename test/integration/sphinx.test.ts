@@ -1,7 +1,7 @@
 // Runs the real build pipeline (uv, Sphinx) on the e2e fixture project. Needs network
 // access the first time, to download Python and the docs packages.
 import { describe, expect, it } from 'vitest';
-import { appendFileSync, cpSync, mkdtempSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openProject } from '../../src/main/project.js';
@@ -10,15 +10,16 @@ import type { SphinxState } from '../../src/shared/sphinx.js';
 
 const repo = join(import.meta.dirname, '..', '..');
 
-async function setUp() {
-  const work = mkdtempSync(join(tmpdir(), 'mysteditor-sphinx-'));
-  cpSync(join(repo, 'e2e', 'fixture'), join(work, 'project'), { recursive: true });
+// `work`: reopen a project set up earlier, as a new session would.
+async function setUp(work = mkdtempSync(join(tmpdir(), 'mysteditor-sphinx-'))) {
+  if (!existsSync(join(work, 'project'))) cpSync(join(repo, 'e2e', 'fixture'), join(work, 'project'), { recursive: true });
   const project = await openProject(join(work, 'project'));
   const states: SphinxState[] = [];
   let notify = () => {};
   const manager = new SphinxManager(project.projects[0], {
     root: project.root,
     searchDirs: project.projects.map((x) => x.sourceDir),
+    buildInputs: () => project.buildInputs,
     // A shared data dir keeps the downloaded Python and packages between runs.
     dataDir: process.env.MYSTEDITOR_TEST_DATA ?? join(tmpdir(), 'mysteditor-sphinx-data'),
     appRoot: repo,
@@ -41,7 +42,7 @@ async function setUp() {
       notify = check;
       check();
     });
-  return { manager, project, states, until, docs: join(work, 'project', 'docs') };
+  return { manager, project, states, until, work, docs: join(work, 'project', 'docs') };
 }
 
 describe('SphinxManager', () => {
@@ -70,12 +71,37 @@ describe('SphinxManager', () => {
     manager.dispose();
   });
 
+  it('starts the next session from the last results, unless an extension changed', async () => {
+    const first = await setUp();
+    first.manager.start();
+    const built = await first.until((s) => s.status.kind === 'ready');
+    first.manager.dispose();
+
+    // Reopened: the last results show at once, and the build is incremental, so the
+    // warning from the unchanged page is carried over rather than found again.
+    const again = await setUp(first.work);
+    again.manager.start();
+    const ready = await again.until((s) => s.status.kind === 'ready');
+    expect(again.states[0].info?.builtAt).toBe(built.info!.builtAt);
+    expect(ready.info!.warnings).toEqual(built.info!.warnings);
+    expect(ready.info!.duration).toBeLessThan(built.info!.duration);
+    again.manager.dispose();
+
+    // A local extension appeared: its effect on pages is unknown, so start afresh.
+    writeFileSync(join(first.docs, 'helper.py'), 'X = 1\n');
+    const changed = await setUp(first.work);
+    changed.manager.start();
+    await changed.until((s) => s.status.kind === 'ready');
+    expect(changed.states.find((s) => s.status.kind === 'building')?.info).toBeNull();
+    changed.manager.dispose();
+  });
+
   it('asks before running anything for an untrusted project', async () => {
     const { project } = await setUp();
     let state: SphinxState | null = null;
     const manager = new SphinxManager(project.projects[0], {
     root: project.root,
-    searchDirs: project.projects.map((x) => x.sourceDir), dataDir: join(tmpdir(), 'unused'), appRoot: repo, resourcesPath: null, trusted: false, environment: null, emit: (s) => (state = s) });
+    searchDirs: project.projects.map((x) => x.sourceDir), buildInputs: () => project.buildInputs, dataDir: join(tmpdir(), 'unused'), appRoot: repo, resourcesPath: null, trusted: false, environment: null, emit: (s) => (state = s) });
     manager.start();
     await new Promise((r) => setTimeout(r, 3000)); // finding Pythons on this computer
     expect(state).toMatchObject({ status: { kind: 'needs-trust', requirements: 'docs/requirements.txt' }, info: null });

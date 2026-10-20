@@ -70,7 +70,7 @@ test('new callouts use each project’s fence style, and saving rebuilds only th
   expect(readFileSync(join(ctx.project, 'admin-guide', 'index.md'), 'utf8')).toContain('```{note}\nOnly admins can see this page.\n```');
 
   // In the user guide (colon_fence enabled) the same insert uses colons.
-  await page.locator('.tree-section[aria-label="User Guide"]').getByRole('button', { name: 'User guide' }).click();
+  await page.locator('.tree-section[aria-label="User Guide"]').getByRole('button', { name: 'User guide', exact: true }).click();
   await page.locator('.prose').getByText('Start with').click();
   await page.keyboard.press('End');
   await page.keyboard.press('Enter');

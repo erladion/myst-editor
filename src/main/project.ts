@@ -18,19 +18,100 @@ async function skipDir(dir: string, name: string): Promise<boolean> {
   return name.startsWith('.') || SKIP_DIRS.has(name) || (await exists(join(dir, name, 'pyvenv.cfg')));
 }
 
-const MAX_DEPTH = 6;
+const MAX_DEPTH = 6; // how deep conf.py files are looked for
 
-export async function openProject(folder: string): Promise<ProjectInfo> {
+// Reports what opening a folder is doing: a step, and how far along it is.
+export type OpenProgress = (step: string, detail?: string) => void;
+
+export async function openProject(folder: string, progress: OpenProgress = () => {}): Promise<ProjectInfo> {
   const root = realpathSync(resolve(folder));
-  const projects = await findSphinxProjects(root);
-  const files = await listDocuments(root);
+  const finding = 'Looking for pages and Sphinx projects';
+  progress(finding);
+  const { files, projects, defaultConfig, buildInputs } = await inspect(root, (n) => progress(finding, `${n} page${n === 1 ? '' : 's'} found`));
+  const titles = await readTitles(root, files, (done) => progress('Reading page titles', `${done} of ${files.length}`));
+  return { root, name: basename(root), projects, defaultConfig, files, titles, buildInputs };
+}
+
+// The folder's current ProjectInfo.buildInputs.
+export async function buildInputsOf(root: string): Promise<string> {
+  return (await inspect(root)).buildInputs;
+}
+
+async function inspect(root: string, found?: (pages: number) => void) {
+  const { files, confDirs, inputs } = await scanFolder(root, found);
+  // Capabilities files the settings name are build inputs too (an extension reads them).
+  const read = new Set<string>();
+  const projects = await sphinxProjects(root, confDirs, read);
   // Pages outside every project still get the folder's own editor settings.
-  const defaultConfig = { ...DEFAULT_CONFIG, editor: loadEditorConfig(settingsSources(root, root)) };
-  return { root, name: basename(root), projects, defaultConfig, files, titles: await readTitles(root, files) };
+  const defaultConfig = { ...DEFAULT_CONFIG, editor: loadEditorConfig(settingsSources(root, root, read)) };
+  return { files, projects, defaultConfig, buildInputs: await fingerprintOf(root, [...new Set([...inputs, ...read])]) };
+}
+
+async function fingerprintOf(root: string, files: string[]): Promise<string> {
+  const hash = createHash('sha256');
+  for (const rel of files.sort()) {
+    try {
+      const { size, mtimeMs } = await fs.stat(join(root, rel));
+      hash.update(`${rel}\0${size}\0${mtimeMs}\n`);
+    } catch {
+      // gone since the scan
+    }
+  }
+  return hash.digest('hex').slice(0, 24);
+}
+
+// One walk of the folder: its Markdown pages (sorted POSIX paths relative to it), the
+// directories holding a conf.py, and its Python files (extensions a build may load).
+async function scanFolder(root: string, found: (pages: number) => void = () => {}): Promise<{ files: string[]; confDirs: string[]; inputs: string[] }> {
+  const files: string[] = [];
+  const confDirs: string[] = [];
+  const inputs: string[] = [];
+  const walk = async (dir: string, depth: number) => {
+    let entries;
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    const subdirs: string[] = [];
+    for (const e of entries) {
+      if (e.name.startsWith('.')) continue;
+      if (e.isFile()) {
+        if (e.name.endsWith('.md')) {
+          files.push(relative(root, join(dir, e.name)).split(sep).join('/'));
+          if (files.length % 100 === 0) found(files.length);
+        } else {
+          if (e.name === 'conf.py' && depth <= MAX_DEPTH) confDirs.push(dir);
+          if (e.name.endsWith('.py')) inputs.push(relative(root, join(dir, e.name)).split(sep).join('/'));
+        }
+      } else if (e.isDirectory() && !(await skipDir(dir, e.name))) subdirs.push(join(dir, e.name));
+    }
+    // A few folders at a time: quick on slow (network) drives without opening thousands at once.
+    for (let i = 0; i < subdirs.length; i += 8) await Promise.all(subdirs.slice(i, i + 8).map((d) => walk(d, depth + 1)));
+  };
+  await walk(root, 0);
+  found(files.length);
+  return { files: files.sort((a, b) => a.localeCompare(b)), confDirs, inputs };
+}
+
+// Files a Sphinx build may depend on without Sphinx noticing when they change: the
+// project's own extensions, and data such as a capabilities list. Not package
+// manager files, which change when tools are installed.
+export function isBuildInput(name: string): boolean {
+  return name.endsWith('.py') || (name.endsWith('.json') && !/^(package(-lock)?|tsconfig|composer)\.json$/.test(name));
+}
+
+// Directories whose changes never matter to the app: hidden ones (.git, .venv),
+// dependencies, build output and virtualenvs whatever they're called. Unlike page
+// listing, _static and _templates are watched: the build uses them.
+export const UNWATCHED_DIRS = new Set(['_build', 'build', 'node_modules', 'venv', 'env', '__pycache__', 'site-packages', 'dist', 'jupyter_execute']);
+
+export async function unwatchedDir(parent: string, name: string): Promise<boolean> {
+  return name.startsWith('.') || UNWATCHED_DIRS.has(name) || (await exists(join(parent, name, 'pyvenv.cfg')));
 }
 
 // The .mysteditor.toml files that apply to `dir`, from the opened folder down.
-export function settingsSources(root: string, dir: string): SettingsSource[] {
+export function settingsSources(root: string, dir: string, read?: Set<string>): SettingsSource[] {
   const dirs = [dir];
   for (let d = dir; d !== root && d.startsWith(root + sep); ) dirs.unshift((d = dirname(d)));
   const sources: SettingsSource[] = [];
@@ -46,7 +127,11 @@ export function settingsSources(root: string, dir: string): SettingsSource[] {
       file: relative(root, path).split(sep).join('/'),
       text,
       // Relative to the settings file, and like every path, inside the opened folder.
-      readCapabilities: (p) => readFileSync(resolveInside(root, relative(root, resolve(d, p))), 'utf8'),
+      readCapabilities: (p) => {
+        const rel = relative(root, resolve(d, p));
+        read?.add(rel.split(sep).join('/'));
+        return readFileSync(resolveInside(root, rel), 'utf8');
+      },
     });
   }
   return sources;
@@ -56,21 +141,12 @@ export function settingsSources(root: string, dir: string): SettingsSource[] {
 // configuration and has a root document next to it, so a Python package's own
 // conf.py module isn't mistaken for documentation.
 export async function findSphinxProjects(root: string): Promise<SphinxProject[]> {
+  return sphinxProjects(root, (await scanFolder(root)).confDirs);
+}
+
+async function sphinxProjects(root: string, confDirs: string[], read?: Set<string>): Promise<SphinxProject[]> {
   const found: string[] = [];
-  const walk = async (dir: string, depth: number) => {
-    let entries;
-    try {
-      entries = await fs.readdir(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    if (entries.some((e) => e.isFile() && e.name === 'conf.py') && (await looksLikeSphinx(dir))) found.push(dir);
-    if (depth >= MAX_DEPTH) return;
-    for (const e of entries) {
-      if (e.isDirectory() && !(await skipDir(dir, e.name))) await walk(join(dir, e.name), depth + 1);
-    }
-  };
-  await walk(root, 0);
+  for (const dir of confDirs) if (await looksLikeSphinx(dir)) found.push(dir);
   const projects: SphinxProject[] = [];
   for (const sourceDir of found.sort()) {
     const confText = await fs.readFile(join(sourceDir, 'conf.py'), 'utf8');
@@ -81,7 +157,7 @@ export async function findSphinxProjects(root: string): Promise<SphinxProject[]>
       dir,
       sourceDir,
       confPy: dir ? `${dir}/conf.py` : 'conf.py',
-      config: { ...readConfPy(confText), editor: loadEditorConfig(settingsSources(root, sourceDir)) },
+      config: { ...readConfPy(confText), editor: loadEditorConfig(settingsSources(root, sourceDir, read)) },
     });
   }
   return projects;
@@ -101,24 +177,35 @@ async function looksLikeSphinx(dir: string): Promise<boolean> {
 }
 
 // The first heading of each page, for showing titles instead of file names.
-export async function readTitles(base: string, files: string[]): Promise<Record<string, string>> {
+export async function readTitles(base: string, files: string[], progress: (done: number) => void = () => {}): Promise<Record<string, string>> {
   const titles: Record<string, string> = {};
-  await Promise.all(
-    files.map(async (rel) => {
-      let handle;
-      try {
-        handle = await fs.open(join(base, rel), 'r');
-        const { buffer, bytesRead } = await handle.read(Buffer.alloc(16384), 0, 16384, 0);
-        const title = firstHeading(buffer.subarray(0, bytesRead).toString('utf8'));
-        if (title) titles[rel] = title;
-      } catch {
-        // unreadable: fall back to the file name
-      } finally {
-        await handle?.close();
-      }
-    }),
-  );
+  let next = 0;
+  let done = 0;
+  // A bounded number of files open at once (thousands at a time can run out of handles).
+  const worker = async () => {
+    while (next < files.length) {
+      const rel = files[next++];
+      const title = await readTitle(join(base, rel));
+      if (title) titles[rel] = title;
+      if (++done % 100 === 0) progress(done);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(32, files.length) }, worker));
+  progress(done);
   return titles;
+}
+
+export async function readTitle(path: string): Promise<string | null> {
+  let handle;
+  try {
+    handle = await fs.open(path, 'r');
+    const { buffer, bytesRead } = await handle.read(Buffer.alloc(16384), 0, 16384, 0);
+    return firstHeading(buffer.subarray(0, bytesRead).toString('utf8'));
+  } catch {
+    return null; // unreadable: the file name is shown instead
+  } finally {
+    await handle?.close();
+  }
 }
 
 export function firstHeading(text: string): string | null {
@@ -156,26 +243,7 @@ function plain(text: string): string {
 
 // Markdown files under `base`, as sorted POSIX paths relative to it.
 export async function listDocuments(base: string): Promise<string[]> {
-  const out: string[] = [];
-  const walk = async (dir: string) => {
-    let entries;
-    try {
-      entries = await fs.readdir(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const e of entries) {
-      if (e.name.startsWith('.')) continue;
-      const full = join(dir, e.name);
-      if (e.isDirectory()) {
-        if (!(await skipDir(dir, e.name))) await walk(full);
-      } else if (e.isFile() && e.name.endsWith('.md')) {
-        out.push(relative(base, full).split(sep).join('/'));
-      }
-    }
-  };
-  await walk(base);
-  return out.sort((a, b) => a.localeCompare(b));
+  return (await scanFolder(base)).files;
 }
 
 // Resolve `rel` inside `base`, refusing anything that escapes it (including via

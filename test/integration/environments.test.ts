@@ -32,6 +32,7 @@ function manager(info: Awaited<ReturnType<typeof openProject>>, dataDir: string,
   const m = new SphinxManager(info.projects[0], {
     root: info.root,
     searchDirs: info.projects.map((x) => x.sourceDir),
+    buildInputs: () => info.buildInputs,
     dataDir,
     appRoot: repo,
     resourcesPath: null,
