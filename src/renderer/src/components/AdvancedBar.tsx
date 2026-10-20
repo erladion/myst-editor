@@ -25,7 +25,7 @@ export function AdvancedBar({ preview, onPreview, built, onRich, conditions, vie
       </button>
       <span className="label">Markdown — saved exactly as typed. Find with Ctrl+F.</span>
       <span className="spacer" />
-      {conditions && <ViewAsMenu capabilities={conditions.capabilities} viewAs={viewAs} onViewAs={onViewAs} />}
+      {conditions && <ViewAsMenu settings={conditions} viewAs={viewAs} onViewAs={onViewAs} />}
       <span className="label">Preview</span>
       <div className="segmented" role="group" aria-label="Preview">
         {option('live', 'Live', 'Updates as you type')}

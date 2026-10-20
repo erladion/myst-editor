@@ -10,7 +10,8 @@ import {
 } from '../editor/commands';
 import type { EditorContext } from '../editor/context';
 import { ADMONITIONS } from '../editor/directives';
-import { conditionKind, makeConditional } from '../editor/conditions';
+import { conditionColor, conditionKind, makeConditional } from '../editor/conditions';
+import type { ConditionsDef } from '../../../core/editor-config';
 import {
   addColumnAfter, addColumnBefore, addRowAfter, addRowBefore, alignColumn, columnAlign, deleteColumn, deleteRow, deleteTable,
   insertTable, isInTable, mergeCells, splitCell,
@@ -28,7 +29,8 @@ async function makeConditionalInteractive(ctx: EditorContext, view: EditorView) 
   view.focus();
 }
 
-export function ViewAsMenu({ capabilities, viewAs, onViewAs }: { capabilities: string[]; viewAs: string[] | null; onViewAs: (v: string[] | null) => void }) {
+export function ViewAsMenu({ settings, viewAs, onViewAs }: { settings: ConditionsDef; viewAs: string[] | null; onViewAs: (v: string[] | null) => void }) {
+  const capabilities = settings.capabilities;
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -64,6 +66,7 @@ export function ViewAsMenu({ capabilities, viewAs, onViewAs }: { capabilities: s
           {capabilities.map((c) => (
             <label key={c} className="check">
               <input type="checkbox" checked={!!viewAs?.includes(c)} onChange={() => toggle(c)} />
+              <span className="cond-swatch" style={{ background: conditionColor(c, settings) }} aria-hidden="true" />
               {c}
             </label>
           ))}
@@ -180,7 +183,7 @@ export function Toolbar({ view, ctx, onMarkdown, previewAvailable, previewOpen, 
           >
             Condition…
           </button>
-          <ViewAsMenu capabilities={conditions.capabilities} viewAs={viewAs} onViewAs={onViewAs} />
+          <ViewAsMenu settings={conditions} viewAs={viewAs} onViewAs={onViewAs} />
         </>
       )}
       <span className="spacer" />

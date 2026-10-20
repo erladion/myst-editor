@@ -180,6 +180,12 @@ key = "product.capabilities"         # where the names are in the JSON (optional
 block = ["if", "endif"]              # the defaults
 inline = ["if-inline", "endif-inline"]
 case_sensitive = true
+
+# Optional colours, by condition as written: purple, orange, teal, magenta, blue,
+# olive, green, slate, or "#rrggbb".
+[conditions.colors]
+CapabilityX = "teal"
+"CapabilityX or CapabilityY" = "orange"
 ```
 
 The capabilities file can be a list of names, an object keyed by name, or a list of
@@ -188,7 +194,11 @@ objects with a `name`/`id`, optionally under `key`.
 With `[conditions]` set:
 
 - Each condition shows as a "Shown only when …" line, with a stripe beside its
-  content. Nested conditions stack stripes.
+  content. Nested conditions stack stripes, one per condition.
+- Each condition has its own colour, the same on every page: capabilities take the
+  palette in the order the capabilities file lists them, so the first eight always
+  differ, and combinations get one of their own. `[conditions.colors]` picks them
+  instead. **View as** shows each capability's colour.
 - **Condition…** in the toolbar wraps the current block, or the selected words, using
   a capability checklist or an expression (`and`, `or`, `not`, parentheses;
   precedence `not` > `and` > `or`). Unknown capabilities and malformed expressions

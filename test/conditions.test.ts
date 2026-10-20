@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { describe as text, evaluate, parseCondition, readMarker, unknownNames, withExpression } from '../src/core/conditions.js';
 import { capabilityNames, loadEditorConfig, type ConditionsDef } from '../src/core/editor-config.js';
+import { conditionColor } from '../src/renderer/src/editor/conditions.js';
 
 const has = (...names: string[]) => (n: string) => names.includes(n);
 const parse = (s: string) => {
@@ -59,6 +60,7 @@ describe('unknownNames', () => {
     caseSensitive,
     capabilities: ['CapabilityX', 'CapabilityY'],
     capabilitiesFile: 'c.json',
+    colors: {},
   });
   it('flags names the capabilities file does not list', () => {
     expect(unknownNames(['CapabilityX', 'Typo', 'capabilityy'], conditions(true))).toEqual(['Typo', 'capabilityy']);
@@ -131,5 +133,40 @@ describe('loadEditorConfig', () => {
       expect.stringMatching(/^guide\/\.mysteditor\.toml: Not valid TOML/),
     ]);
     expect(Object.keys(config.directives)).toEqual(['b']);
+  });
+});
+
+describe('condition colours', () => {
+  const settings = (colors: Record<string, string> = {}, caseSensitive = true): ConditionsDef => ({
+    block: ['if', 'endif'],
+    inline: ['if-inline', 'endif-inline'],
+    caseSensitive,
+    capabilities: ['CapabilityX', 'CapabilityY', 'CapabilityZ'],
+    capabilitiesFile: 'c.json',
+    colors,
+  });
+
+  it('gives each capability its own colour, the same everywhere', () => {
+    const s = settings();
+    expect([conditionColor('CapabilityX', s), conditionColor('CapabilityY', s), conditionColor('CapabilityZ', s)]).toEqual([
+      'var(--cond-purple)',
+      'var(--cond-orange)',
+      'var(--cond-teal)',
+    ]);
+    expect(conditionColor(' CapabilityX  or CapabilityY', s)).toBe(conditionColor('CapabilityX or CapabilityY', s));
+    expect(conditionColor('CapabilityX or CapabilityY', s)).toMatch(/^var\(--cond-\w+\)$/);
+  });
+
+  it('uses colours chosen in the settings', () => {
+    expect(conditionColor('CapabilityX', settings({ CapabilityX: 'orange' }))).toBe('var(--cond-orange)');
+    expect(conditionColor('capabilityx or capabilityy', settings({ 'CapabilityX or CapabilityY': '#0a7f6f' }, false))).toBe('#0a7f6f');
+  });
+
+  it('reads [conditions.colors], refusing what isn’t a colour', () => {
+    const config = loadEditorConfig([
+      { file: '.mysteditor.toml', readCapabilities: () => '[]', text: '[conditions]\n[conditions.colors]\nCapabilityX = "teal"\n"X or Y" = "#abc"\nBad = "url(x)"\n' },
+    ]);
+    expect(config.conditions?.colors).toEqual({ CapabilityX: 'teal', 'X or Y': '#abc' });
+    expect(config.problems.map((p) => p.message)).toEqual([expect.stringMatching(/^\[conditions\.colors\] "Bad": use one of purple, orange/)]);
   });
 });

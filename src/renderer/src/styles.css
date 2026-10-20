@@ -1472,16 +1472,39 @@ button.toc-toggle:hover {
 /* ---- conditional content ---- */
 
 :root {
-  --cond: #8a5cd1;
+  --cond-purple: #8a5cd1;
+  --cond-blue: #2f6fde;
+  --cond-teal: #0f8a8a;
+  --cond-green: #2e8b3e;
+  --cond-orange: #c46a12;
+  --cond-magenta: #c0398f;
+  --cond-olive: #7a7414;
+  --cond-slate: #5b6b8c;
+  /* Each condition sets its own (see editor/conditions.ts); this is the default. */
+  --cond: var(--cond-purple);
 }
 
 :root[data-theme='dark'] {
-  --cond: #b48cf2;
+  --cond-purple: #b48cf2;
+  --cond-blue: #6ea1ff;
+  --cond-teal: #3cc4c4;
+  --cond-green: #5fcf72;
+  --cond-orange: #f0a050;
+  --cond-magenta: #f07ac4;
+  --cond-olive: #c9c255;
+  --cond-slate: #9fb0d4;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
-    --cond: #b48cf2;
+    --cond-purple: #b48cf2;
+    --cond-blue: #6ea1ff;
+    --cond-teal: #3cc4c4;
+    --cond-green: #5fcf72;
+    --cond-orange: #f0a050;
+    --cond-magenta: #f07ac4;
+    --cond-olive: #c9c255;
+    --cond-slate: #9fb0d4;
   }
 }
 
@@ -1557,7 +1580,7 @@ button.toc-toggle:hover {
   bottom: 2px;
   left: calc(-14px - var(--cond-depth) * 5px);
   width: calc(var(--cond-depth) * 5px);
-  background: repeating-linear-gradient(to right, var(--cond) 0 3px, transparent 3px 5px);
+  background: var(--cond-stripes, var(--cond));
   border-radius: 2px;
   pointer-events: none;
 }
@@ -1604,6 +1627,13 @@ button.toc-toggle:hover {
   color: var(--tone-danger);
   background: color-mix(in srgb, var(--tone-danger) 10%, var(--bg));
   outline: 1px solid color-mix(in srgb, var(--tone-danger) 45%, transparent);
+}
+
+.cond-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex: none;
 }
 
 .view-as {

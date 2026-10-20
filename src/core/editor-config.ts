@@ -22,6 +22,10 @@
 //   capabilities = "capabilities.json"   # relative to this file
 //   block = ["if", "endif"]
 //   inline = ["if-inline", "endif-inline"]
+//
+//   [conditions.colors]                  # optional; otherwise chosen automatically
+//   CapabilityX = "teal"                 # a palette colour, or "#0a7f6f"
+//   "CapabilityX or CapabilityY" = "orange"
 import { parse as parseToml } from 'smol-toml';
 
 export const SETTINGS_FILE = '.mysteditor.toml';
@@ -57,7 +61,14 @@ export interface ConditionsDef {
   caseSensitive: boolean;
   capabilities: string[]; // known capability names, from the JSON file
   capabilitiesFile: string | null; // as written in the settings
+  // Colours chosen for conditions, by expression as written (a capability name, or
+  // "X or Y"): a palette colour name or a #hex colour.
+  colors: Record<string, string>;
 }
+
+// Named colours for conditions (light and dark shades are in the stylesheet).
+// Neighbours contrast, since capabilities take them in order.
+export const CONDITION_PALETTE = ['purple', 'orange', 'teal', 'magenta', 'blue', 'olive', 'green', 'slate'] as const;
 
 export interface SettingsProblem {
   file: string; // relative to the opened folder
@@ -80,7 +91,7 @@ export interface EditorConfig {
 
 export const EMPTY_EDITOR_CONFIG: EditorConfig = { directives: {}, roles: {}, tables: {}, conditions: null, problems: [] };
 
-const DEFAULT_CONDITIONS: Omit<ConditionsDef, 'capabilities' | 'capabilitiesFile'> = {
+const DEFAULT_CONDITIONS: Omit<ConditionsDef, 'capabilities' | 'capabilitiesFile' | 'colors'> = {
   block: ['if', 'endif'],
   inline: ['if-inline', 'endif-inline'],
   caseSensitive: true,
@@ -167,6 +178,7 @@ function applySettings(config: EditorConfig, { file, text, readCapabilities }: S
       ...DEFAULT_CONDITIONS,
       capabilities: prev?.capabilities ?? [],
       capabilitiesFile: prev?.capabilitiesFile ?? null,
+      colors: { ...prev?.colors },
       ...(prev ? { block: prev.block, inline: prev.inline, caseSensitive: prev.caseSensitive } : {}),
     };
     for (const kind of ['block', 'inline'] as const) {
@@ -194,8 +206,17 @@ function applySettings(config: EditorConfig, { file, text, readCapabilities }: S
         }
       }
     }
+    if (c.colors !== undefined) {
+      if (!isTable(c.colors)) problem('[conditions.colors] must be a table, like CapabilityX = "teal"');
+      else {
+        for (const [expr, color] of Object.entries(c.colors)) {
+          if (typeof color === 'string' && ((CONDITION_PALETTE as readonly string[]).includes(color) || /^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(color))) next.colors[expr] = color;
+          else problem(`[conditions.colors] "${expr}": use one of ${CONDITION_PALETTE.join(', ')}, or a colour like "#0a7f6f"`);
+        }
+      }
+    }
     for (const key of Object.keys(c)) {
-      if (!['block', 'inline', 'case_sensitive', 'capabilities', 'key'].includes(key)) problem(`[conditions] unknown setting "${key}"`);
+      if (!['block', 'inline', 'case_sensitive', 'capabilities', 'key', 'colors'].includes(key)) problem(`[conditions] unknown setting "${key}"`);
     }
     config.conditions = next;
   }

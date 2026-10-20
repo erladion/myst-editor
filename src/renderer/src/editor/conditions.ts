@@ -3,7 +3,7 @@
 import type { Node as PMNode } from 'prosemirror-model';
 import { Plugin, PluginKey, type Command, type EditorState, type Transaction } from 'prosemirror-state';
 import { Decoration, DecorationSet } from 'prosemirror-view';
-import type { ConditionsDef } from '../../../core/editor-config';
+import { CONDITION_PALETTE, type ConditionsDef } from '../../../core/editor-config';
 import { endMarker, evaluate, parseCondition, readMarker, startMarker, unknownNames, type ParseResult } from '../../../core/conditions';
 import { schema } from '../../../core/schema';
 
@@ -61,6 +61,25 @@ export function scanConditions(doc: PMNode, settings: ConditionsDef): ConditionS
   return { regions, unmatched };
 }
 
+// ---- colours ----------------------------------------------------------------------
+
+// A condition's colour, as CSS. The same condition has the same colour on every page:
+// one chosen in the settings, else a single capability's place in the capabilities
+// list (so the first few always differ), else one picked from the expression's text.
+export function conditionColor(expr: string, settings: ConditionsDef): string {
+  const key = (e: string) => (settings.caseSensitive ? e : e.toLowerCase()).trim().replace(/\s+/g, ' ');
+  const wanted = key(expr);
+  const chosen = Object.entries(settings.colors).find(([e]) => key(e) === wanted)?.[1];
+  if (chosen) return chosen.startsWith('#') ? chosen : `var(--cond-${chosen})`;
+  const index = settings.capabilities.findIndex((c) => key(c) === wanted);
+  let n = index;
+  if (n < 0) {
+    n = 0x811c9dc5; // FNV-1a
+    for (const ch of wanted) n = Math.imul(n ^ ch.charCodeAt(0), 0x01000193) >>> 0;
+  }
+  return `var(--cond-${CONDITION_PALETTE[n % CONDITION_PALETTE.length]})`;
+}
+
 // ---- plugin -----------------------------------------------------------------------
 
 interface PluginState {
@@ -81,37 +100,51 @@ function decorate(doc: PMNode, settings: ConditionsDef | null, viewAs: string[] 
   if (!settings) return DecorationSet.empty;
   const { regions, unmatched } = scanConditions(doc, settings);
   const decorations: Decoration[] = [];
-  // Per block inside conditions: how deeply nested, and whether "View as" hides it.
-  const inside = new Map<number, { node: PMNode; depth: number; hidden: boolean }>();
+  // Per block inside conditions: the colours of the conditions around it (outermost
+  // first), and whether "View as" hides it.
+  const inside = new Map<number, { node: PMNode; colors: string[]; hidden: boolean }>();
 
-  for (const region of regions) {
+  // Outer conditions first, so a block's stripes go outside in.
+  for (const region of [...regions].sort((a, b) => a.depth - b.depth)) {
     const hidden = !regionVisible(region, settings, viewAs);
+    const color = conditionColor(region.start.expr, settings);
+    const style = `--cond: ${color}`;
     const problem = !region.parsed.ok ? region.parsed.error : unknownNames(region.parsed.names, settings).map((n) => `Unknown capability “${n}”`).join('\n');
     const markerClass = `cond-marker${problem ? ' cond-problem' : ''}${hidden ? ' cond-off' : ''}`;
     const title = problem || (region.parsed.ok ? '' : region.start.expr);
-    decorations.push(Decoration.node(region.start.pos, region.start.pos + region.start.node.nodeSize, { class: markerClass, title }));
-    decorations.push(Decoration.node(region.end.pos, region.end.pos + region.end.node.nodeSize, { class: `cond-marker${hidden ? ' cond-off' : ''}` }));
+    decorations.push(Decoration.node(region.start.pos, region.start.pos + region.start.node.nodeSize, { class: markerClass, title, style }));
+    decorations.push(Decoration.node(region.end.pos, region.end.pos + region.end.node.nodeSize, { class: `cond-marker${hidden ? ' cond-off' : ''}`, style }));
 
     const from = region.start.pos + region.start.node.nodeSize;
     const to = region.end.pos;
     if (from >= to) continue;
     if (region.start.inline) {
-      decorations.push(Decoration.inline(from, to, { class: `cond-inline${hidden ? ' cond-off' : ''}` }));
+      decorations.push(Decoration.inline(from, to, { class: `cond-inline${hidden ? ' cond-off' : ''}`, style }));
       continue;
     }
     // The outermost blocks entirely between the markers.
     doc.nodesBetween(from, to, (node, pos) => {
       if (!node.isBlock) return false;
       if (pos >= from && pos + node.nodeSize <= to) {
-        const seen = inside.get(pos) ?? { node, depth: 0, hidden: false };
-        inside.set(pos, { node, depth: seen.depth + 1, hidden: seen.hidden || hidden });
+        const seen = inside.get(pos) ?? { node, colors: [], hidden: false };
+        inside.set(pos, { node, colors: [...seen.colors, color], hidden: seen.hidden || hidden });
         return false;
       }
       return true;
     });
   }
-  for (const [pos, { node, depth, hidden }] of inside) {
-    decorations.push(Decoration.node(pos, pos + node.nodeSize, { class: `cond-in cond-d${Math.min(depth, 4)}${hidden ? ' cond-off' : ''}` }));
+  for (const [pos, { node, colors, hidden }] of inside) {
+    // One 3px stripe per condition, 2px apart.
+    const shown = colors.slice(0, 4);
+    const stripes = shown.map((c, i) => `${c} ${i * 5}px ${i * 5 + 3}px, transparent ${i * 5 + 3}px ${i * 5 + 5}px`).join(', ');
+    decorations.push(
+      Decoration.node(pos, pos + node.nodeSize, {
+        class: `cond-in cond-d${shown.length}${hidden ? ' cond-off' : ''}`,
+        // Only the stripes: a nested condition's own marker sits inside the outer one and
+        // keeps its own --cond.
+        style: `--cond-stripes: linear-gradient(to right, ${stripes})`,
+      }),
+    );
   }
   for (const m of unmatched) {
     decorations.push(

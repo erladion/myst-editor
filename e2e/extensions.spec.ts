@@ -43,6 +43,15 @@ test('shows conditional content, nesting and inline conditions', async () => {
   await expect(page().locator('.cond-in.cond-d2', { hasText: 'Nested for Z.' })).toBeVisible();
   await expect(page().locator('.cond-pill-start')).toHaveText('if CapabilityX');
   await expect(page().locator('.cond-inline')).toHaveText('fast');
+
+  // Each condition has its own colour; a nested block shows a stripe of each.
+  const color = (l: ReturnType<ReturnType<typeof page>['locator']>) => l.evaluate((e) => getComputedStyle(e).color);
+  const [xOrY, z, inlineX] = await Promise.all([color(page().locator('.cond-start').first()), color(page().locator('.cond-start').nth(1)), color(page().locator('.cond-pill-start'))]);
+  expect(new Set([xOrY, z, inlineX]).size).toBe(3);
+  const stripes = await page().locator('.cond-in.cond-d2', { hasText: 'Nested for Z.' }).evaluate((e) => getComputedStyle(e, '::before').backgroundImage);
+  expect(stripes).toContain(xOrY); // outer
+  expect(stripes).toContain(z); // inner
+  await page().screenshot({ path: test.info().outputPath('colours.png') });
   expect(file()).toBe(original);
 });
 
