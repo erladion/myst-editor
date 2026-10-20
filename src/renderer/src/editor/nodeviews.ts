@@ -10,6 +10,7 @@ import { ADMONITIONS, CALLOUT_CHOICES, ICONS, REFERENCE_ROLES, directiveInfo, sp
 import { renderMath } from './math';
 import { describe, parseCondition, readMarker, withExpression } from '../../../core/conditions';
 import { removeCondition } from './conditions';
+import { FORMATTING, LINE_BREAKS, inlineTag, lineTagOf, safeHtml } from './html';
 
 // "A or B and not C" with the capability names as chips.
 function conditionChips(text: string): Node[] {
@@ -76,12 +77,14 @@ function replaceWithSource(view: EditorView, getPos: GetPos, node: PMNode, sourc
 const optionCount = (options: [string, string][]) => (options.length ? `Options (${options.length})` : 'Options');
 
 let tokenizer: ReturnType<typeof createTokenizer> | null = null;
-function markdownPreview(source: string): string {
-  tokenizer ??= createTokenizer({ markdownit: { html: false } });
+// A Markdown block (a table, say) rendered for a card, with the HTML in it shown
+// as it looks (see html.ts for what's allowed).
+function markdownPreview(source: string, assetUrl: (src: string) => string): DocumentFragment {
+  tokenizer ??= createTokenizer({ markdownit: { html: true } });
   try {
-    return tokenizer.render(source);
+    return safeHtml(tokenizer.render(source), assetUrl);
   } catch {
-    return '';
+    return document.createDocumentFragment();
   }
 }
 
@@ -435,9 +438,16 @@ class RawBlockView extends CardView {
       return this.card('card-frontmatter', [label, el('span', { class: 'muted' }, keys.join(', '))], []);
     }
     if (kind === 'table' || kind === 'definitionList' || kind === 'footnote') {
-      const preview = el('div', { class: 'card-rendered' });
-      preview.innerHTML = markdownPreview(source);
+      const preview = el('div', { class: 'card-rendered' }, markdownPreview(source, (src) => this.ctx.assetUrl(src)));
       return this.card(`card-${kind}`, [label], [preview]);
+    }
+    // An HTML block shows what it looks like; one that shows nothing (a comment, say)
+    // shows its source.
+    if (kind === 'html') {
+      const rendered = safeHtml(source, (src) => this.ctx.assetUrl(src));
+      if (rendered.textContent?.trim() || rendered.querySelector?.('img, hr')) {
+        return this.card('card-raw card-html', [label], [el('div', { class: 'card-rendered html-rendered' }, rendered)]);
+      }
     }
     this.card('card-raw', [label], [el('pre', { class: 'card-source' }, source)]);
   }
@@ -564,6 +574,7 @@ abstract class InlineView implements NodeView {
     protected view: EditorView,
     protected getPos: GetPos,
     protected ctx: EditorContext,
+    protected decorations: readonly Decoration[] = [],
   ) {
     this.dom = el('span', { contenteditable: 'false' });
     this.dom.addEventListener('dblclick', (e) => {
@@ -582,10 +593,12 @@ abstract class InlineView implements NodeView {
   protected abstract render(): void;
   protected abstract edit(): void;
 
-  update(node: PMNode) {
+  update(node: PMNode, decorations: readonly Decoration[] = []) {
     if (node.type !== this.node.type) return false;
-    if (node.attrs !== this.node.attrs) {
+    const marks = (ds: readonly Decoration[]) => JSON.stringify(ds.map((d) => (d as Decoration & { spec: unknown }).spec));
+    if (node.attrs !== this.node.attrs || marks(decorations) !== marks(this.decorations)) {
       this.node = node;
+      this.decorations = decorations;
       this.render();
     }
     return true;
@@ -750,9 +763,44 @@ class HtmlInlineView extends InlineView {
       this.dom.textContent = 'end';
       return;
     }
+    this.renderHtml(this.node.attrs.value);
+  }
+
+  // Common tags look like what they do: a line break, a list item's bullet, or
+  // nothing (the text between <b> and </b> shows bold). Selecting one shows the tag.
+  private renderHtml(value: string) {
+    const tag = inlineTag(value);
+    this.dom.dataset.raw = value;
+    this.dom.title = `${value} (HTML; double-click to edit)`;
+    const shown = (cls: string, ...children: Node[]) => {
+      this.dom.className = `html-tag ${cls}`;
+      this.dom.replaceChildren(...children);
+    };
+    if (!tag || (tag.attrs && !['a', 'span', 'img', 'ol', 'li', 'td', 'th'].includes(tag.name))) {
+      this.dom.className = 'html-inline';
+      this.dom.title = 'Inline HTML (double-click to edit)';
+      this.dom.textContent = value;
+      return;
+    }
+    if (tag.name === 'br') return shown('html-br', document.createElement('br'));
+    const line = lineTagOf(this.decorations);
+    const lineBreak = line?.lineBreak ? [document.createElement('br')] : [];
+    if (tag.name === 'li' && tag.kind === 'open') {
+      const marker = el('span', { class: 'html-li-marker' }, line?.marker ?? '•');
+      marker.style.marginLeft = `${((line?.depth ?? 1) - 1) * 1.4}em`;
+      return shown('html-li', ...lineBreak, marker);
+    }
+    if (tag.name === 'img') {
+      const src = /\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(value);
+      const alt = /\salt\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(value);
+      const img = el('img', { src: this.ctx.assetUrl(src?.[1] ?? src?.[2] ?? src?.[3] ?? ''), alt: alt?.[1] ?? alt?.[2] ?? '', draggable: 'false' });
+      return shown('html-img', img);
+    }
+    // Ends of block-level tags start a new line too, so text after a list is below it.
+    if (LINE_BREAKS.has(tag.name) && !(tag.name === 'li' && tag.kind === 'close')) return shown(lineBreak.length ? 'html-block' : 'html-hidden', ...lineBreak);
+    if (tag.name in FORMATTING || tag.name === 'a' || tag.name === 'span' || tag.name === 'li') return shown('html-hidden');
     this.dom.className = 'html-inline';
-    this.dom.title = 'Inline HTML';
-    this.dom.textContent = this.node.attrs.value;
+    this.dom.textContent = value;
   }
 
   protected async edit() {
@@ -819,7 +867,7 @@ export function nodeViews(ctx: EditorContext): Record<string, NodeViewConstructo
     inline_math: (node, view, getPos) => new InlineMathView(node, view, getPos, ctx),
     ref_link: (node, view, getPos) => new RefLinkView(node, view, getPos, ctx),
     footnote_ref: (node, view, getPos) => new FootnoteRefView(node, view, getPos, ctx),
-    html_inline: (node, view, getPos) => new HtmlInlineView(node, view, getPos, ctx),
+    html_inline: (node, view, getPos, decorations) => new HtmlInlineView(node, view, getPos, ctx, decorations),
     image: (node, view, getPos) => new ImageView(node, view, getPos, ctx),
     target: (node, view, getPos) => new TargetView(node, view, getPos, ctx),
   };

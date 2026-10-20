@@ -1077,6 +1077,48 @@ button.toc-toggle:hover {
   color: var(--fg-muted);
 }
 
+/* Inline HTML shown as what it does (see editor/html.ts). The tag itself appears when
+   it's selected, so it can still be found and deleted. */
+.html-tag.html-hidden {
+  display: inline-block;
+  width: 1px;
+  height: 1em;
+  vertical-align: middle;
+}
+
+.html-li-marker {
+  display: inline-block;
+  min-width: 1.2em;
+  color: var(--fg-muted);
+}
+
+.html-img img {
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+.html-tag.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+  border-radius: 2px;
+}
+
+.html-tag.ProseMirror-selectednode::after {
+  content: attr(data-raw);
+  font: 0.75em var(--font-mono);
+  color: var(--fg-muted);
+  background: var(--accent-soft);
+  padding: 0 2px;
+}
+
+.html-link {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.html-rendered :is(ul, ol) {
+  padding-left: 1.4em;
+}
+
 .target {
   display: inline-flex;
   align-items: center;

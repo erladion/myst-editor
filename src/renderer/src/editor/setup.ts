@@ -124,6 +124,8 @@ const syncSelectionOnKey = new Plugin({
   },
 });
 
+import { inlineHtmlPlugin } from './html';
+
 export function createEditorState(doc: PMNode): EditorState {
   return EditorState.create({
     doc,
@@ -143,6 +145,7 @@ export function createEditorState(doc: PMNode): EditorState {
       problemsPlugin,
       conditionsPlugin,
       previewsPlugin,
+      inlineHtmlPlugin(),
     ],
   });
 }

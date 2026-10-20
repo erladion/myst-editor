@@ -45,6 +45,11 @@ Open a documentation folder and edit its pages as formatted documents:
   - Tables the model can't hold exactly stay as cards, kept as written and previewed
     from the build: a covered cell with content, a span past the edge, or more cells
     than the header.
+- **HTML in pages** shows as what it does, in text and in table cells: `<br>` breaks
+  the line, `<ul>`/`<ol>`/`<li>` show bullets and numbers, and the text between
+  `<b>`, `<i>`, `<sub>` and similar tags shows formatted. Selecting a hidden tag shows
+  it. HTML blocks render in their card. Only plain elements are rendered, never
+  scripts, styles or event handlers, and the HTML is saved exactly as written.
 - **Everything else is still safe:** unknown directives, tables, front matter and HTML
   show as cards with a preview, and can be edited as source.
 - **Saving:**

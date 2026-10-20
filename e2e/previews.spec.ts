@@ -44,7 +44,7 @@ test('a custom directive the editor doesn’t know shows as the build renders it
 
 test('raw HTML is previewed from the build, and updates after editing', async () => {
   const { page } = ctx;
-  const card = page.locator('.card-raw', { hasText: 'raw-note' });
+  const card = page.locator('.card-html', { hasText: 'Raw HTML from the docs.' });
   await expect(card.frameLocator('iframe.card-preview').locator('.raw-note p')).toHaveText('Raw HTML from the docs.');
 
   await card.dblclick();
