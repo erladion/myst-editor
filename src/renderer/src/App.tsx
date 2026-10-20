@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import type { EditorView } from 'prosemirror-view';
 import type { EditorState } from 'prosemirror-state';
 import type { ProjectInfo } from '../../shared/api';
-import type { SphinxState } from '../../shared/sphinx';
+import type { EnvironmentChoice, SphinxState } from '../../shared/sphinx';
 import type { SourceMap } from '../../core/sourcemap';
 import { DEFAULT_CONFIG } from '../../core/project-config';
 import { Workspace } from './workspace';
@@ -13,14 +13,14 @@ import { Sidebar } from './components/Sidebar';
 import { Toolbar } from './components/Toolbar';
 import { Banner, StatusBar } from './components/Status';
 import { DialogHost, type DialogApi } from './components/Dialogs';
-import { Preview, ProblemsPanel, SphinxChip, TrustBanner } from './components/SphinxUi';
+import { EnvironmentDialog, Preview, ProblemsPanel, SphinxChip, SphinxDialog, TrustBanner } from './components/SphinxUi';
 import { join, resolveRef } from './paths';
 import { docnameOf, problemsIn, resolveLink, resolveRole, suggestTargets } from './sphinx';
 
 const api = window.myst;
 const noop = () => () => {};
 const zero = () => 0;
-const NO_SPHINX: SphinxState = { status: { kind: 'off' }, info: null };
+const NO_SPHINX: SphinxState = { status: { kind: 'off' }, info: null, environment: null };
 
 // The Markdown page a {doc} role or toctree entry refers to, if it exists.
 function findPage(files: string[], from: string | null, ref: string): string | null {
@@ -43,6 +43,7 @@ export function App() {
   const [showProblems, setShowProblems] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [reveal, setReveal] = useState<number | null>(null);
+  const [sphinxDialog, setSphinxDialog] = useState<'details' | 'environment' | null>(null);
   const dialogs = useRef<DialogApi>(null);
   const viewRef = useRef<EditorView | null>(null);
   const [view, setView] = useState<EditorView | null>(null);
@@ -187,6 +188,11 @@ export function App() {
     await dialogs.current?.showText({ title: 'Sphinx build', text: `${summary}${log.trim() || 'Nothing logged yet.'}` });
   }, [sphinx]);
 
+  const useEnvironment = useCallback((choice: EnvironmentChoice) => {
+    setSphinxDialog(null);
+    void api.useEnvironment(choice);
+  }, []);
+
   const openProblem = useCallback(
     async (path: string, line: number | null) => {
       await openPage(path);
@@ -291,7 +297,8 @@ export function App() {
         />
         <TrustBanner
           state={sphinx}
-          onAllow={() => void api.trustSphinx()}
+          onUse={useEnvironment}
+          onChooseOther={() => setSphinxDialog('environment')}
           onDecline={() => void api.declineSphinx()}
         />
         {session && (
@@ -341,11 +348,27 @@ export function App() {
             state={sphinx}
             problems={info?.warnings.length ?? 0}
             onShowProblems={() => setShowProblems(!showProblems)}
-            onShowLog={() => void showLog()}
-            onEnable={() => void api.trustSphinx()}
+            onShowDetails={() => setSphinxDialog('details')}
+            onEnable={() => setSphinxDialog('environment')}
           />
         </StatusBar>
       </main>
+      {sphinxDialog === 'details' && (
+        <SphinxDialog
+          state={sphinx}
+          onChangeEnvironment={() => setSphinxDialog('environment')}
+          onRebuild={() => {
+            void api.rebuild();
+            setSphinxDialog(null);
+          }}
+          onShowLog={() => {
+            setSphinxDialog(null);
+            void showLog();
+          }}
+          onClose={() => setSphinxDialog(null)}
+        />
+      )}
+      {sphinxDialog === 'environment' && <EnvironmentDialog state={sphinx} onUse={useEnvironment} onClose={() => setSphinxDialog(null)} />}
       <DialogHost ref={dialogs} />
     </div>
   );

@@ -1263,3 +1263,76 @@ button:focus-visible {
 .page:disabled {
   opacity: 0.55;
 }
+
+/* ---- Python environment choice ---- */
+
+.env-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.env-option {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.env-option:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.env-option.unusable {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.env-option span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.env-option code {
+  font: 12px var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.env-option small {
+  color: var(--fg-muted);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 16px;
+  margin: 0 0 8px;
+}
+
+.facts dt {
+  color: var(--fg-muted);
+}
+
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.sphinx-error {
+  background: color-mix(in srgb, var(--tone-danger) 10%, var(--bg));
+  border-radius: 6px;
+  padding: 8px 12px;
+  white-space: pre-wrap;
+  margin: 0 0 12px;
+}
+
+.sphinx-error.offline {
+  background: color-mix(in srgb, var(--tone-warning) 12%, var(--bg));
+}

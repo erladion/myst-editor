@@ -53,18 +53,37 @@ export interface SphinxInfo {
   duration: number;
 }
 
+// A Python found on this computer, and what it has installed.
+export interface PythonCandidate {
+  python: string; // interpreter path
+  label: string; // where it was found, e.g. "Project .venv", "System Python"
+  pythonVersion: string;
+  sphinx: string | null; // installed versions, if importable
+  myst: string | null;
+}
+
+export const usable = (c: PythonCandidate) => !!c.sphinx && !!c.myst;
+
+// How a project's builds get their Python.
+export type EnvironmentChoice =
+  | { kind: 'managed' } // a private environment set up by uv (needs internet the first time)
+  | { kind: 'existing'; python: string }; // an interpreter that already has Sphinx
+
 export type SphinxStatus =
   | { kind: 'off' } // no project
-  | { kind: 'needs-trust'; requirements: string } // waiting for the writer to allow running Sphinx
+  // Waiting for the writer to allow running Sphinx, and choose its Python.
+  | { kind: 'needs-trust'; requirements: string; candidates: PythonCandidate[] }
   | { kind: 'declined' }
   | { kind: 'setting-up'; step: string }
   | { kind: 'building' }
   | { kind: 'ready' }
-  | { kind: 'error'; message: string };
+  | { kind: 'error'; message: string; offline?: boolean };
 
 export interface SphinxState {
   status: SphinxStatus;
   info: SphinxInfo | null; // from the last successful build
+  // The environment in use, once chosen.
+  environment: { kind: 'managed'; requirements: string } | { kind: 'existing'; python: string; pythonVersion: string; sphinx: string } | null;
 }
 
 // Combine an incremental build's warnings with the ones already known. Sphinx only

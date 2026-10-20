@@ -37,12 +37,19 @@ With the project's permission, the real Sphinx build also runs in the background
 
 - **Trust prompt:** building runs the project's `conf.py` (arbitrary Python) and
   installs packages, so the app asks once per project and remembers the answer.
-- **No Python setup for writers:** a bundled `uv` creates a private environment per
-  project, outside the repo, with its own downloaded Python. The system Python is
-  never used, so RHEL 9's 3.9 doesn't matter. Requirements come from
-  `.readthedocs.yaml`, a docs `requirements*.txt`, a `pyproject.toml` docs extra, or,
-  as a fallback, are guessed from `conf.py`'s extensions and theme. The environment
-  is rebuilt when they change.
+- **Where Python comes from**, chosen in the trust prompt and changeable from the
+  status bar:
+  - **An environment already on the computer:** a project `.venv`/`venv`, the
+    active virtualenv, or the system `python3`, if it has Sphinx and MyST-Parser.
+    It's used as-is and nothing is downloaded, which makes it the option for
+    air-gapped machines and for keeping a known-good setup (e.g. Python 3.9 with
+    older Sphinx). Any other interpreter can be picked with Browse.
+  - **A private environment:** a bundled `uv` creates one per project, outside the
+    repo, with its own downloaded Python. Requirements come from
+    `.readthedocs.yaml`, a docs `requirements*.txt`, a `pyproject.toml` docs extra,
+    or, as a fallback, are guessed from `conf.py`'s extensions and theme. It's
+    rebuilt when they change, and once set up it needs no network. Without internet,
+    setup stops within seconds with a clear message pointing to the first option.
 - **Incremental builds** after every save, in about a second for small projects.
 - **Problems:** Sphinx warnings with page and line, in a panel and marked on the
   offending blocks. Clicking one jumps there.
@@ -143,6 +150,25 @@ folder (Python, uv cache) in the system temp dir, so downloads happen once; set
 In development the app uses `resources/uv/uv` if fetched, otherwise `uv` from `PATH`.
 Per-project environments, builds and logs live in `<userData>/sphinx/`.
 
+### Air-gapped machines
+
+Prepare a documentation environment with the packages copied over as wheel files,
+then choose it in the app. It's found automatically if it's a `.venv`/`venv` in the
+project:
+
+```sh
+python3 -m venv docs/.venv
+docs/.venv/bin/pip install --no-index --find-links /path/to/wheels -r docs/requirements.txt
+```
+
+The wheels must include Sphinx, MyST-Parser and every extension and theme `conf.py`
+uses. On RHEL 9's system Python 3.9 that means Sphinx 7.4 or older, since Sphinx 8
+needs Python 3.10. The build driver works with Sphinx 5.3 and later (tested on 5.3.0,
+7.1.2 and 9.1.1).
+
+With an internal PyPI mirror instead, the private environment works too: uv reads
+`UV_DEFAULT_INDEX` and `UV_PYTHON_INSTALL_MIRROR` from the environment.
+
 ### Linux / WSL notes
 
 - Electron needs `libasound2t64`, and running an AppImage needs `libfuse2t64`. Both
@@ -167,8 +193,15 @@ Per-project environments, builds and logs live in `<userData>/sphinx/`.
 - Only `{ref}`, `{doc}`, `{term}` and `[](target)` are checked for broken targets.
   Domain roles like `{py:func}` often point at other projects through intersphinx,
   so they aren't flagged.
-- Each project's environment takes disk space in `<userData>/sphinx/`, and there's no
-  cleanup UI yet.
+- Each project's private environment takes disk space in `<userData>/sphinx/`, and
+  there's no cleanup UI yet.
+- An existing environment is only checked for Sphinx and MyST-Parser. A missing
+  extension shows up as a build failure naming the module.
+- `intersphinx` in `conf.py` tries to download other projects' inventories on every
+  build, which offline produces a warning each time.
+- The private environment's Python version comes from `.readthedocs.yaml` or
+  `.python-version` (default 3.12). `requires-python` in `pyproject.toml` isn't read
+  yet.
 - Installing the project itself (`pip install -e .` from `.readthedocs.yaml` or a
   pyproject docs extra) can fail for projects with compiled code. Details are in the
   build log.

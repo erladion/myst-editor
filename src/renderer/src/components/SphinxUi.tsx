@@ -1,30 +1,203 @@
 // Sphinx in the UI: the permission banner, the status chip, the problems list and
 // the preview pane.
-import { useMemo } from 'react';
-import type { SphinxState, SphinxWarning } from '../../../shared/sphinx';
+import { useEffect, useMemo, useState } from 'react';
+import { usable, type EnvironmentChoice, type PythonCandidate, type SphinxState, type SphinxWarning } from '../../../shared/sphinx';
 
 interface TrustProps {
   state: SphinxState;
-  onAllow: () => void;
+  onUse: (choice: EnvironmentChoice) => void;
+  onChooseOther: () => void;
   onDecline: () => void;
 }
 
-export function TrustBanner({ state, onAllow, onDecline }: TrustProps) {
+const describe = (c: PythonCandidate) => `Sphinx ${c.sphinx}, Python ${c.pythonVersion}`;
+
+export function TrustBanner({ state, onUse, onChooseOther, onDecline }: TrustProps) {
   if (state.status.kind !== 'needs-trust') return null;
+  const { requirements, candidates } = state.status;
+  const best = candidates.find(usable);
   return (
     <div className="banner info" role="region" aria-label="Preview">
       <div>
-        <strong>Check links and preview pages with Sphinx?</strong> This builds the documentation in the background,
-        which runs the project’s <code>conf.py</code> and installs its documentation packages (from{' '}
-        {state.status.requirements}) in a private environment. Only allow this for projects you trust.
+        <strong>Check links and preview pages with Sphinx?</strong> Builds run the project’s <code>conf.py</code>, so
+        only allow this for projects you trust.{' '}
+        {best ? (
+          <>
+            Found <strong>{best.label}</strong> on this computer ({describe(best)}).
+          </>
+        ) : (
+          <>The packages from {requirements} are downloaded into a private environment (needs internet the first time).</>
+        )}
       </div>
       <div className="banner-actions">
         <button type="button" onClick={onDecline}>
           Not now
         </button>
-        <button type="button" className="primary" onClick={onAllow}>
-          Allow
+        <button type="button" onClick={onChooseOther}>
+          {best ? 'Other…' : 'Use Python on this computer…'}
         </button>
+        {best && (
+          <button type="button" onClick={() => onUse({ kind: 'managed' })}>
+            Download packages
+          </button>
+        )}
+        <button
+          type="button"
+          className="primary"
+          onClick={() => onUse(best ? { kind: 'existing', python: best.python } : { kind: 'managed' })}
+        >
+          {best ? `Use ${best.label}` : 'Allow'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+interface EnvironmentDialogProps {
+  state: SphinxState;
+  onUse: (choice: EnvironmentChoice) => void;
+  onClose: () => void;
+}
+
+// Choose where builds get Python from: a private uv environment, or one already here.
+export function EnvironmentDialog({ state, onUse, onClose }: EnvironmentDialogProps) {
+  const [candidates, setCandidates] = useState<PythonCandidate[] | null>(null);
+  const current = state.environment;
+  const [selected, setSelected] = useState<string>(current?.kind === 'existing' ? current.python : 'managed');
+  const offline = state.status.kind === 'error' && !!state.status.offline;
+  useEffect(() => {
+    void window.myst.pythonCandidates().then((found) => {
+      setCandidates(found);
+      // The private environment just failed for lack of internet: suggest a local one.
+      const local = found.find(usable);
+      if (offline && local) setSelected((s) => (s === 'managed' ? local.python : s));
+    });
+  }, [offline]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const browse = async () => {
+    const found = await window.myst.browsePython();
+    if (!found) return;
+    setCandidates((list) => [...(list ?? []).filter((c) => c.python !== found.python), found]);
+    if (usable(found)) setSelected(found.python);
+  };
+  const requirements = current?.kind === 'managed' ? current.requirements : state.status.kind === 'needs-trust' ? state.status.requirements : 'the project’s requirements';
+
+  return (
+    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label="Python environment">
+        <h2>Python environment for this project</h2>
+        <p className="modal-help">Sphinx builds run with this Python. It needs Sphinx, MyST-Parser and the extensions the project’s conf.py uses.</p>
+        <div className="env-options" role="radiogroup" aria-label="Python environment">
+          <label className="env-option">
+            <input type="radio" name="env" checked={selected === 'managed'} onChange={() => setSelected('managed')} />
+            <span>
+              <strong>Private environment</strong>
+              <small>
+                Set up by MyST Editor: downloads Python and the packages from {requirements}. Needs internet the first time
+                {offline ? ', which this computer doesn’t have' : ''}.
+              </small>
+            </span>
+          </label>
+          {candidates === null && <p className="muted">Looking for Python on this computer…</p>}
+          {candidates?.map((c) => (
+            <label key={c.python} className={`env-option${usable(c) ? '' : ' unusable'}`}>
+              <input type="radio" name="env" disabled={!usable(c)} checked={selected === c.python} onChange={() => setSelected(c.python)} />
+              <span>
+                <strong>{c.label}</strong>
+                <code>{c.python}</code>
+                <small>
+                  Python {c.pythonVersion} ·{' '}
+                  {usable(c)
+                    ? `Sphinx ${c.sphinx}, MyST-Parser ${c.myst}`
+                    : `missing ${[!c.sphinx && 'Sphinx', !c.myst && 'MyST-Parser'].filter(Boolean).join(' and ')}`}
+                </small>
+              </span>
+            </label>
+          ))}
+          {candidates?.length === 0 && <p className="muted">No other Python found.</p>}
+        </div>
+        <button type="button" className="link-button" onClick={() => void browse()}>
+          Browse for a Python…
+        </button>
+        <div className="modal-actions">
+          <button type="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="primary"
+            onClick={() => onUse(selected === 'managed' ? { kind: 'managed' } : { kind: 'existing', python: selected })}
+          >
+            Use this environment
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface SphinxDialogProps {
+  state: SphinxState;
+  onChangeEnvironment: () => void;
+  onRebuild: () => void;
+  onShowLog: () => void;
+  onClose: () => void;
+}
+
+// Build status and the environment in use, from the status bar.
+export function SphinxDialog({ state, onChangeEnvironment, onRebuild, onShowLog, onClose }: SphinxDialogProps) {
+  const { status, info, environment } = state;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  const statusText =
+    status.kind === 'building' ? 'Building…' :
+    status.kind === 'setting-up' ? `${status.step}…` :
+    status.kind === 'ready' && info ? `Built in ${info.duration.toFixed(1)} s with Sphinx ${info.sphinxVersion}` :
+    status.kind === 'declined' ? 'Off for this session' :
+    status.kind === 'error' ? 'Failed' : '';
+  return (
+    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label="Sphinx">
+        <h2>Sphinx</h2>
+        {status.kind === 'error' && <p className={`sphinx-error${status.offline ? ' offline' : ''}`}>{status.message}</p>}
+        <dl className="facts">
+          <dt>Status</dt>
+          <dd>{statusText}</dd>
+          <dt>Python</dt>
+          <dd>
+            {environment?.kind === 'existing' ? (
+              <>
+                <code>{environment.python}</code> (Python {environment.pythonVersion}, Sphinx {environment.sphinx})
+              </>
+            ) : environment?.kind === 'managed' ? (
+              <>Private environment, from {environment.requirements}</>
+            ) : (
+              'Not chosen yet'
+            )}
+          </dd>
+        </dl>
+        <div className="modal-actions">
+          <button type="button" onClick={onShowLog}>
+            Build log
+          </button>
+          <button type="button" onClick={onRebuild} disabled={!environment || status.kind === 'error'}>
+            Rebuild everything
+          </button>
+          <button type="button" className={status.kind === 'error' ? 'primary' : ''} onClick={onChangeEnvironment}>
+            Change Python environment…
+          </button>
+          <button type="button" className={status.kind === 'error' ? '' : 'primary'} onClick={onClose}>
+            Close
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -34,11 +207,11 @@ interface ChipProps {
   state: SphinxState;
   problems: number;
   onShowProblems: () => void;
-  onShowLog: () => void;
+  onShowDetails: () => void;
   onEnable: () => void;
 }
 
-export function SphinxChip({ state, problems, onShowProblems, onShowLog, onEnable }: ChipProps) {
+export function SphinxChip({ state, problems, onShowProblems, onShowDetails, onEnable }: ChipProps) {
   const { status, info } = state;
   switch (status.kind) {
     case 'off':
@@ -52,7 +225,7 @@ export function SphinxChip({ state, problems, onShowProblems, onShowLog, onEnabl
       );
     case 'setting-up':
       return (
-        <button type="button" className="chip-button busy" onClick={onShowLog} title="Show details">
+        <button type="button" className="chip-button busy" onClick={onShowDetails} title="Show details">
           <span className="spinner" aria-hidden="true" />
           {status.step}…
         </button>
@@ -62,7 +235,7 @@ export function SphinxChip({ state, problems, onShowProblems, onShowLog, onEnabl
       const label = status.kind === 'building' ? 'Building…' : info ? `Built in ${info.duration.toFixed(1)} s` : 'Ready';
       return (
         <>
-          <button type="button" className={`chip-button${status.kind === 'building' ? ' busy' : ''}`} onClick={onShowLog} title={info ? `Sphinx ${info.sphinxVersion}` : undefined}>
+          <button type="button" className={`chip-button${status.kind === 'building' ? ' busy' : ''}`} onClick={onShowDetails} title={info ? `Sphinx ${info.sphinxVersion}` : undefined}>
             {status.kind === 'building' && <span className="spinner" aria-hidden="true" />}
             {label}
           </button>
@@ -76,8 +249,8 @@ export function SphinxChip({ state, problems, onShowProblems, onShowLog, onEnabl
     }
     case 'error':
       return (
-        <button type="button" className="chip-button failed" onClick={onShowLog} title={status.message}>
-          Build failed — details
+        <button type="button" className="chip-button failed" onClick={onShowDetails} title={status.message}>
+          {status.offline ? 'Offline — choose Python…' : 'Build failed — details'}
         </button>
       );
   }

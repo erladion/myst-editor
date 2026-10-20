@@ -4,9 +4,20 @@ import { createHash } from 'node:crypto';
 import { createWriteStream, existsSync, mkdirSync, promises as fs, type WriteStream } from 'node:fs';
 import { join } from 'node:path';
 import type { ProjectInfo } from '../../shared/api.js';
-import { mergeWarnings, type BuildResult, type SphinxInfo, type SphinxState, type SphinxStatus } from '../../shared/sphinx.js';
-import { ensureEnvironment, findUv, uvEnv, type EnvPaths } from './environment.js';
+import {
+  mergeWarnings,
+  usable,
+  type BuildResult,
+  type EnvironmentChoice,
+  type PythonCandidate,
+  type SphinxInfo,
+  type SphinxState,
+  type SphinxStatus,
+} from '../../shared/sphinx.js';
+import { ensureEnvironment, environmentIsCurrent, findUv, hasManagedPython, uvEnv, type EnvPaths } from './environment.js';
 import { planEnvironment } from './discover.js';
+import { existingEnv, findPythons, probePython } from './pythons.js';
+import { canDownload } from './network.js';
 import { run, CommandError } from './run.js';
 
 export interface ManagerOptions {
@@ -14,14 +25,19 @@ export interface ManagerOptions {
   appRoot: string; // for development: where resources/ lives
   resourcesPath: string | null; // packaged app resources
   trusted: boolean;
+  // The writer's saved choice for this project; managed if none.
+  environment: EnvironmentChoice | null;
   emit: (state: SphinxState) => void;
 }
+
+// What uv prints when it can't reach the network.
+const NETWORK_ERROR = /dns error|failed to lookup address|could not connect|connection refused|tcp connect error|error sending request|network is unreachable|operation timed out|offline mode|no route to host/i;
 
 const BUILD_DELAY_MS = 600;
 const BUILD_TIMEOUT_MS = 20 * 60_000;
 
 export class SphinxManager {
-  private state: SphinxState = { status: { kind: 'off' }, info: null };
+  private state: SphinxState = { status: { kind: 'off' }, info: null, environment: null };
   private abort = new AbortController();
   private python: string | null = null;
   private building = false;
@@ -59,15 +75,28 @@ export class SphinxManager {
   start() {
     if (!this.project.confPy) return; // not a Sphinx project
     if (this.opts.trusted) void this.setUp();
-    else {
-      const plan = planEnvironment(this.project.root, this.project.sourceDir);
-      this.setStatus({ kind: 'needs-trust', requirements: plan.description });
-    }
+    else void this.askForTrust();
   }
 
-  trust() {
+  // Pythons on this computer that could build the project (for choosing one).
+  candidates(): Promise<PythonCandidate[]> {
+    return findPythons(this.project.root, this.project.sourceDir);
+  }
+
+  // Allow builds, with the given environment.
+  use(choice: EnvironmentChoice) {
     this.opts.trusted = true;
+    this.opts.environment = choice;
+    this.python = null;
+    this.fresh = true;
     void this.setUp();
+  }
+
+  private async askForTrust() {
+    const plan = planEnvironment(this.project.root, this.project.sourceDir);
+    const candidates = await this.candidates();
+    if (this.abort.signal.aborted) return;
+    this.setStatus({ kind: 'needs-trust', requirements: plan.description, candidates });
   }
 
   decline() {
@@ -104,27 +133,67 @@ export class SphinxManager {
   }
 
   private async setUp() {
-    const uv = findUv(this.opts.resourcesPath, this.opts.appRoot);
-    if (!uv) {
-      this.setStatus({ kind: 'error', message: 'The uv tool needed to set up Sphinx was not found.' });
-      return;
-    }
+    const choice = this.opts.environment ?? { kind: 'managed' };
     try {
-      this.setStatus({ kind: 'setting-up', step: 'Checking the Python environment' });
-      const { python } = await ensureEnvironment(
-        uv,
-        this.project.root,
-        this.project.sourceDir,
-        this.paths,
-        (step) => this.setStatus({ kind: 'setting-up', step }),
-        { log: (t) => this.write(t), signal: this.abort.signal },
-      );
-      this.python = python;
-      await this.build();
+      if (choice.kind === 'existing') await this.useExisting(choice.python);
+      else await this.useManaged();
+      if (this.python) await this.build();
     } catch (e) {
       if (this.abort.signal.aborted) return;
-      this.setStatus({ kind: 'error', message: e instanceof Error ? e.message : String(e) });
+      const message = e instanceof Error ? e.message : String(e);
+      const output = e instanceof CommandError ? e.output : '';
+      if (choice.kind === 'managed' && NETWORK_ERROR.test(output + message)) this.offline();
+      else this.setStatus({ kind: 'error', message });
     }
+  }
+
+  private async useExisting(python: string) {
+    this.setStatus({ kind: 'setting-up', step: 'Checking the Python environment' });
+    const found = await probePython(python, 'Chosen');
+    if (!found) throw new Error(`The Python at ${python} couldn’t be started. Choose another environment.`);
+    if (!usable(found)) {
+      const missing = [!found.sphinx && 'Sphinx', !found.myst && 'MyST-Parser'].filter(Boolean).join(' and ');
+      throw new Error(`The Python at ${python} (${found.pythonVersion}) doesn’t have ${missing} installed. Install it there, or choose another environment.`);
+    }
+    this.write(`Using ${python}: Python ${found.pythonVersion}, Sphinx ${found.sphinx}, MyST-Parser ${found.myst}\n`);
+    this.state = { ...this.state, environment: { kind: 'existing', python, pythonVersion: found.pythonVersion, sphinx: found.sphinx! } };
+    this.python = python;
+  }
+
+  private async useManaged() {
+    const uv = findUv(this.opts.resourcesPath, this.opts.appRoot);
+    if (!uv) throw new Error('The uv tool needed to set up Sphinx was not found.');
+    const plan = planEnvironment(this.project.root, this.project.sourceDir);
+    this.state = { ...this.state, environment: { kind: 'managed', requirements: plan.description } };
+    // An environment that's already set up needs no network; otherwise check first,
+    // rather than letting downloads time out.
+    if (!(await environmentIsCurrent(plan, this.paths))) {
+      this.setStatus({ kind: 'setting-up', step: 'Checking the internet connection' });
+      if (!(await canDownload(!hasManagedPython(this.paths)))) return this.offline();
+    }
+    this.setStatus({ kind: 'setting-up', step: 'Checking the Python environment' });
+    const { python } = await ensureEnvironment(
+      uv,
+      this.project.root,
+      this.project.sourceDir,
+      this.paths,
+      (step) => this.setStatus({ kind: 'setting-up', step }),
+      { log: (t) => this.write(t), signal: this.abort.signal },
+    );
+    this.python = python;
+  }
+
+  private offline() {
+    const plan = planEnvironment(this.project.root, this.project.sourceDir);
+    this.write('No internet connection: the managed environment can’t be set up.\n');
+    this.setStatus({
+      kind: 'error',
+      offline: true,
+      message:
+        `This computer can’t reach the internet, which setting up Sphinx needs the first time ` +
+        `(to download Python and the packages from ${plan.description}). ` +
+        `Choose a Python environment on this computer that already has Sphinx and MyST-Parser.`,
+    });
   }
 
   private async build() {
@@ -142,7 +211,10 @@ export class SphinxManager {
       if (fresh) args.push('--fresh');
       const { output } = await run(this.python, args, {
         cwd: this.project.sourceDir, // like Read the Docs; conf.py paths are often relative to it
-        env: { ...uvEnv(this.paths), PYTHONUNBUFFERED: '1', PYTHONDONTWRITEBYTECODE: '1', ELECTRON_RUN_AS_NODE: undefined },
+        env:
+          this.state.environment?.kind === 'existing'
+            ? existingEnv()
+            : { ...uvEnv(this.paths), PYTHONUNBUFFERED: '1', PYTHONDONTWRITEBYTECODE: '1', ELECTRON_RUN_AS_NODE: undefined },
         log: (t) => this.write(t),
         signal: this.abort.signal,
         timeoutMs: BUILD_TIMEOUT_MS,
@@ -182,7 +254,7 @@ export class SphinxManager {
       builtAt: Date.now(),
       duration: result.duration,
     };
-    this.state = { status: { kind: 'ready' }, info };
+    this.state = { ...this.state, status: { kind: 'ready' }, info };
     this.opts.emit(this.state);
   }
 

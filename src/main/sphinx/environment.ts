@@ -1,6 +1,6 @@
 // A private Python environment per project, created and kept up to date with uv.
 import { createHash } from 'node:crypto';
-import { existsSync, promises as fs, readFileSync } from 'node:fs';
+import { existsSync, promises as fs, readdirSync, readFileSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { runChecked, run, type RunOptions } from './run.js';
 import { planEnvironment, type EnvPlan } from './discover.js';
@@ -28,12 +28,16 @@ export function findUv(resourcesPath: string | null, appRoot: string): string | 
 export function uvEnv(paths: EnvPaths): NodeJS.ProcessEnv {
   return {
     ...process.env,
-    // Keep uv's downloads with the app, and never pick up a system Python (RHEL's
-    // 3.9 is too old for current Sphinx, and distro Pythons vary).
+    // Keep uv's downloads with the app, and never pick up a system Python for a
+    // managed environment (distro Pythons vary; RHEL 9's 3.9 can't run current
+    // Sphinx). Existing environments are a separate, explicit choice.
     UV_CACHE_DIR: process.env.UV_CACHE_DIR ?? join(paths.dataDir, 'uv-cache'),
     UV_PYTHON_INSTALL_DIR: process.env.UV_PYTHON_INSTALL_DIR ?? join(paths.dataDir, 'python'),
     UV_PYTHON_PREFERENCE: 'only-managed',
     UV_NO_PROGRESS: '1',
+    // Give up quickly on a network that isn't there.
+    UV_HTTP_CONNECT_TIMEOUT: process.env.UV_HTTP_CONNECT_TIMEOUT ?? '10',
+    UV_HTTP_RETRIES: process.env.UV_HTTP_RETRIES ?? '1',
     VIRTUAL_ENV: undefined,
     PYTHONHOME: undefined,
   };
@@ -54,6 +58,25 @@ function fingerprint(plan: EnvPlan): string {
   return hash.digest('hex');
 }
 
+// Whether the environment matches the plan already, so nothing needs installing.
+export async function environmentIsCurrent(plan: EnvPlan, paths: EnvPaths): Promise<boolean> {
+  try {
+    const marker = JSON.parse(await fs.readFile(join(paths.envDir, MARKER), 'utf8'));
+    return marker.fingerprint === fingerprint(plan) && existsSync(envPython(paths.envDir));
+  } catch {
+    return false;
+  }
+}
+
+// Whether uv has downloaded any Python yet (otherwise setup needs to download one).
+export function hasManagedPython(paths: EnvPaths): boolean {
+  try {
+    return readdirSync(process.env.UV_PYTHON_INSTALL_DIR ?? join(paths.dataDir, 'python')).some((d) => d.startsWith('cpython-'));
+  } catch {
+    return false;
+  }
+}
+
 export async function ensureEnvironment(
   uv: string,
   root: string,
@@ -66,12 +89,7 @@ export async function ensureEnvironment(
   const print = fingerprint(plan);
   const python = envPython(paths.envDir);
   const markerPath = join(paths.envDir, MARKER);
-  try {
-    const marker = JSON.parse(await fs.readFile(markerPath, 'utf8'));
-    if (marker.fingerprint === print && existsSync(python)) return { python, plan };
-  } catch {
-    // no environment yet
-  }
+  if (await environmentIsCurrent(plan, paths)) return { python, plan };
 
   const env = uvEnv(paths);
   const runOpts = { ...opts, cwd: root, env };

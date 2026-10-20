@@ -1,6 +1,6 @@
 // The API the preload script exposes to the renderer as `window.myst`.
 import type { MystConfig } from '../core/project-config.js';
-import type { SphinxState } from './sphinx.js';
+import type { EnvironmentChoice, PythonCandidate, SphinxState } from './sphinx.js';
 
 export interface ProjectInfo {
   root: string; // the folder the writer opened
@@ -40,9 +40,14 @@ export interface MystApi {
   // Background Sphinx builds.
   sphinxState(): Promise<SphinxState>;
   onSphinxState(cb: (state: SphinxState) => void): () => void;
-  // Allow this project to run Sphinx (remembered), or not for now.
-  trustSphinx(): Promise<void>;
+  // Allow this project to run Sphinx with the given environment (remembered), or
+  // not for now.
+  useEnvironment(choice: EnvironmentChoice): Promise<void>;
   declineSphinx(): Promise<void>;
+  // Pythons on this computer that could build the project.
+  pythonCandidates(): Promise<PythonCandidate[]>;
+  // Let the writer pick an interpreter; null if cancelled or not a working Python.
+  browsePython(): Promise<PythonCandidate | null>;
   rebuild(): Promise<void>;
   sphinxLog(): Promise<string>;
   // URL of a page in the HTML output, for the preview; `uri` as in SphinxDoc.

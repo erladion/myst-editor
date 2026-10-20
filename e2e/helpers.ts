@@ -9,11 +9,18 @@ export interface App {
   project: string; // temp copy of the fixture project
 }
 
+export interface LaunchOptions {
+  env?: Record<string, string>;
+  // Runs on the project copy before the app starts (e.g. to add a .venv).
+  prepare?: (project: string) => void;
+}
+
 // Launch the built app (`npm run build` first) on a fresh copy of the fixture project.
-export async function launch(): Promise<App> {
+export async function launch(opts: LaunchOptions = {}): Promise<App> {
   const work = mkdtempSync(join(tmpdir(), 'mysteditor-e2e-'));
   const project = join(work, 'project');
   cpSync(join(import.meta.dirname, 'fixture'), project, { recursive: true });
+  opts.prepare?.(project);
   // Set when running inside another Electron app's Node (e.g. an editor extension host).
   const { ELECTRON_RUN_AS_NODE: _, ...env } = process.env;
   // MYSTEDITOR_EXECUTABLE runs the tests against a packaged build instead of out/.
@@ -25,6 +32,7 @@ export async function launch(): Promise<App> {
       ...env,
       MYSTEDITOR_USER_DATA: join(work, 'user-data'),
       MYSTEDITOR_SPHINX_DATA: process.env.MYSTEDITOR_SPHINX_DATA ?? join(tmpdir(), 'mysteditor-e2e-sphinx'),
+      ...opts.env,
     } as Record<string, string>,
   });
   const page = await app.firstWindow();

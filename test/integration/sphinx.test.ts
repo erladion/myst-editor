@@ -22,6 +22,7 @@ async function setUp() {
     appRoot: repo,
     resourcesPath: null,
     trusted: true,
+    environment: null,
     emit: (s) => {
       states.push(s);
       notify();
@@ -70,9 +71,10 @@ describe('SphinxManager', () => {
   it('asks before running anything for an untrusted project', async () => {
     const { project } = await setUp();
     let state: SphinxState | null = null;
-    const manager = new SphinxManager(project, { dataDir: join(tmpdir(), 'unused'), appRoot: repo, resourcesPath: null, trusted: false, emit: (s) => (state = s) });
+    const manager = new SphinxManager(project, { dataDir: join(tmpdir(), 'unused'), appRoot: repo, resourcesPath: null, trusted: false, environment: null, emit: (s) => (state = s) });
     manager.start();
-    expect(state).toEqual({ status: { kind: 'needs-trust', requirements: 'docs/requirements.txt' }, info: null });
+    await new Promise((r) => setTimeout(r, 3000)); // finding Pythons on this computer
+    expect(state).toMatchObject({ status: { kind: 'needs-trust', requirements: 'docs/requirements.txt' }, info: null });
     manager.dispose();
   });
 });

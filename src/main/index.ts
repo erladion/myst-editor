@@ -6,7 +6,8 @@ import { pathToFileURL } from 'node:url';
 import { openProject, listDocuments, readDocument, readTitles, resolveInside, writeDocument } from './project.js';
 import { SphinxManager } from './sphinx/manager.js';
 import { ASSET_SCHEME, BUILD_SCHEME, type MenuCommand, type ProjectInfo } from '../shared/api.js';
-import type { SphinxState } from '../shared/sphinx.js';
+import type { EnvironmentChoice, SphinxState } from '../shared/sphinx.js';
+import { probePython } from './sphinx/pythons.js';
 
 // Lets tests (and portable setups) keep settings out of the real profile.
 if (process.env.MYSTEDITOR_USER_DATA) app.setPath('userData', process.env.MYSTEDITOR_USER_DATA);
@@ -31,6 +32,8 @@ interface Settings {
   lastProject?: string;
   // Projects the writer allowed to run Sphinx (which executes their conf.py).
   trusted?: string[];
+  // Per project root: where its builds get Python from.
+  environments?: Record<string, EnvironmentChoice>;
 }
 
 async function loadSettings(): Promise<Settings> {
@@ -67,6 +70,7 @@ async function startSphinx(p: ProjectInfo) {
     appRoot: join(import.meta.dirname, '..', '..'),
     resourcesPath: app.isPackaged ? process.resourcesPath : null,
     trusted: !!settings.trusted?.includes(p.root),
+    environment: settings.environments?.[p.root] ?? null,
     emit: (state: SphinxState) => win?.webContents.send('sphinx-state', state),
   });
   sphinx.start();
@@ -153,10 +157,23 @@ function registerIpc() {
     sphinx?.requestBuild();
   });
   ipcMain.handle('sphinx-state', () => sphinx?.getState() ?? { status: { kind: 'off' }, info: null });
-  ipcMain.handle('sphinx-trust', async () => {
+  ipcMain.handle('sphinx-use', async (_e, choice: EnvironmentChoice) => {
     const root = requireProject().root;
-    await updateSettings((s) => ({ ...s, trusted: [...new Set([...(s.trusted ?? []), root])] }));
-    sphinx?.trust();
+    await updateSettings((s) => ({
+      ...s,
+      trusted: [...new Set([...(s.trusted ?? []), root])],
+      environments: { ...s.environments, [root]: choice },
+    }));
+    sphinx?.use(choice);
+  });
+  ipcMain.handle('sphinx-candidates', () => sphinx?.candidates() ?? []);
+  ipcMain.handle('sphinx-browse-python', async () => {
+    const result = await dialog.showOpenDialog(win!, {
+      title: 'Choose the Python to build the documentation with',
+      defaultPath: requireProject().root,
+      properties: ['openFile', 'showHiddenFiles'],
+    });
+    return result.canceled ? null : probePython(result.filePaths[0], 'Chosen');
   });
   ipcMain.handle('sphinx-decline', () => sphinx?.decline());
   ipcMain.handle('sphinx-rebuild', () => sphinx?.requestBuild({ fresh: true }));
