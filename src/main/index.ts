@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { promises as fs, statSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { buildInputsOf, isBuildInput, listDocuments, openProject, readDocument, readTitle, IMAGE_EXTENSIONS, placeImage, resolveInside, UNWATCHED_DIRS, unwatchedDir, writeDocument } from './project.js';
+import { buildInputsOf, isBuildInput, listDocuments, openProject, readDocument, readTitle, IMAGE_EXTENSIONS, placeImage, resolveInside, saveImage, UNWATCHED_DIRS, unwatchedDir, writeDocument } from './project.js';
 import { FolderWatcher } from './watch.js';
 import { SphinxManager } from './sphinx/manager.js';
 import { ASSET_SCHEME, BUILD_SCHEME, type MenuCommand, type ProjectInfo } from '../shared/api.js';
@@ -416,6 +416,13 @@ function registerIpc() {
     return result.canceled ? null : useProject(result.filePaths[0]);
   });
   ipcMain.handle('open-project', (_e, folder: string) => useProject(folder));
+  // Images pasted or dropped into a page: a file on disk (referenced where it is if
+  // it's in the folder, else copied in), or bytes (a pasted screenshot).
+  ipcMain.handle('add-image-file', (_e, page: string, path: string) => {
+    if (!IMAGE_EXTENSIONS.includes(path.split('.').pop()?.toLowerCase() ?? '')) throw new Error(`Not an image file: ${path}`);
+    return placeImage(requireProject().root, page, path);
+  });
+  ipcMain.handle('add-image-data', (_e, page: string, name: string, bytes: Uint8Array) => saveImage(requireProject().root, page, name, bytes));
   ipcMain.handle('choose-image', async (_e, page: string) => {
     const p = requireProject();
     const pagePath = resolveInside(p.root, page);

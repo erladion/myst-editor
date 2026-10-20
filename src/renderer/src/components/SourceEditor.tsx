@@ -21,6 +21,7 @@ import { HighlightStyle, bracketMatching, syntaxHighlighting } from '@codemirror
 import { highlightSelectionMatches, search, searchKeymap } from '@codemirror/search';
 import { lintGutter, setDiagnostics, type Diagnostic } from '@codemirror/lint';
 import { tags } from '@lezer/highlight';
+import { imageFiles } from '../editor/images';
 import type { SphinxWarning } from '../../../shared/sphinx';
 
 interface Props {
@@ -32,6 +33,9 @@ interface Props {
   // Move the cursor to a line (from the preview or the problems list).
   goto: number | null;
   onGotoDone: () => void;
+  // A picture pasted or dropped in: saved, and its path for `![](path)`.
+  onImage: (file: File) => Promise<string>;
+  onImageError: (message: string) => void;
 }
 
 // MyST syntax CommonMark highlighting doesn't know: {roles} and {directive} names,
@@ -88,11 +92,23 @@ function diagnostics(state: EditorState, problems: SphinxWarning[]): Diagnostic[
     });
 }
 
-export function SourceEditor({ text, onChange, problems, onLine, goto, onGotoDone }: Props) {
+export function SourceEditor({ text, onChange, problems, onLine, goto, onGotoDone, onImage, onImageError }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
-  const callbacks = useRef({ onChange, onLine });
-  callbacks.current = { onChange, onLine };
+  const callbacks = useRef({ onChange, onLine, onImage, onImageError });
+  callbacks.current = { onChange, onLine, onImage, onImageError };
+  // Pictures become ![](path) at `pos`, once saved.
+  const addImages = async (view: EditorView, files: File[], pos: number) => {
+    const refs: string[] = [];
+    for (const file of files) {
+      try {
+        refs.push(`![](${await callbacks.current.onImage(file)})`);
+      } catch (e) {
+        callbacks.current.onImageError(`Couldn’t add ${file.name || 'the image'}: ${String(e instanceof Error ? e.message : e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')}`);
+      }
+    }
+    if (refs.length) view.dispatch({ changes: { from: pos, insert: refs.join(' ') }, selection: { anchor: pos + refs.join(' ').length } });
+  };
 
   useEffect(() => {
     let frame = 0;
@@ -120,6 +136,22 @@ export function SourceEditor({ text, onChange, problems, onLine, goto, onGotoDon
           keymap.of([...defaultKeymap.filter((k) => k.key !== 'Mod-/'), ...historyKeymap, ...searchKeymap, indentWithTab]),
           theme,
           EditorView.contentAttributes.of({ 'aria-label': 'Markdown source', spellcheck: 'true' }),
+          EditorView.domEventHandlers({
+            paste(event, view) {
+              const files = imageFiles(event.clipboardData);
+              if (!files.length || event.clipboardData?.getData('text/plain')) return false;
+              event.preventDefault();
+              void addImages(view, files, view.state.selection.main.head);
+              return true;
+            },
+            drop(event, view) {
+              const files = imageFiles(event.dataTransfer);
+              if (!files.length) return false;
+              event.preventDefault();
+              void addImages(view, files, view.posAtCoords({ x: event.clientX, y: event.clientY }) ?? view.state.selection.main.head);
+              return true;
+            },
+          }),
           EditorView.updateListener.of((u) => {
             if (u.docChanged) callbacks.current.onChange(u.state.doc.toString());
             if (u.selectionSet && u.view.hasFocus) callbacks.current.onLine(u.state.doc.lineAt(u.state.selection.main.head).number);

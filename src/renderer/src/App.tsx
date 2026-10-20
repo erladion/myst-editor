@@ -65,6 +65,15 @@ function findPage(info: ProjectInfo, from: string | null, ref: string): string |
 }
 
 // The page to show when a folder opens: the first project's root page if there is one.
+// A name for a picture pasted from the clipboard (browsers call them all image.png).
+function imageName(file: File): string {
+  const ext = ({ 'image/jpeg': 'jpg', 'image/svg+xml': 'svg', 'image/gif': 'gif', 'image/webp': 'webp' } as Record<string, string>)[file.type] ?? 'png';
+  if (file.name && file.name !== 'image.png' && /\.[a-z0-9]+$/i.test(file.name)) return file.name;
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `screenshot-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.${ext}`;
+}
+
 function landingPage(info: ProjectInfo): string | null {
   const { files, projects } = info;
   return (
@@ -166,6 +175,15 @@ export function App() {
       chooseImage() {
         const page = current()?.current;
         return page ? api.chooseImage(page) : Promise.resolve(null);
+      },
+      async addImage(file: File) {
+        const page = current()?.current;
+        if (!page) throw new Error('No page is open');
+        // A file from disk is referenced (or copied in); a picture from the clipboard
+        // has no file, so it's saved under a dated name.
+        const path = api.filePath(file);
+        if (path) return api.addImageFile(page, path);
+        return api.addImageData(page, imageName(file), new Uint8Array(await file.arrayBuffer()));
       },
       assetUrl(ref: string) {
         const w = current();
@@ -562,6 +580,8 @@ export function App() {
               onLine={setSourceLine}
               goto={gotoLine}
               onGotoDone={onGotoDone}
+              onImage={ctx.addImage}
+              onImageError={(m) => dialogs.current?.notify(m)}
             />
             {advancedPreview !== 'off' && (
               <div className="advanced-preview">

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildInputsOf, firstHeading, placeImage, listDocuments, openProject, resolveInside, unwatchedDir } from '../src/main/project.js';
+import { buildInputsOf, firstHeading, placeImage, saveImage, listDocuments, openProject, resolveInside, unwatchedDir } from '../src/main/project.js';
 import { FolderWatcher } from '../src/main/watch.js';
 
 function project() {
@@ -165,5 +165,18 @@ describe('placeImage', () => {
     writeFileSync(join(elsewhere, 'shot.png'), 'newer');
     expect(await placeImage(root, 'docs/guide/a.md', join(elsewhere, 'shot.png'))).toBe('images/shot-2.png');
     expect(existsSync(join(root, 'docs', 'guide', 'images', 'shot-2.png'))).toBe(true);
+  });
+});
+
+describe('saveImage', () => {
+  it('saves a pasted picture next to the page under a free name, and only pictures', async () => {
+    const root = project();
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    expect(await saveImage(root, 'docs/guide/a.md', 'screenshot.png', png)).toBe('images/screenshot.png');
+    expect(await saveImage(root, 'docs/guide/a.md', 'screenshot.png', png)).toBe('images/screenshot-2.png');
+    expect(await saveImage(root, 'docs/guide/a.md', 'my diagram (v2).PNG', png)).toBe('images/my-diagram-v2.png');
+    expect(readFileSync(join(root, 'docs', 'guide', 'images', 'screenshot-2.png'))).toEqual(Buffer.from(png));
+    await expect(saveImage(root, 'docs/guide/a.md', 'notes.txt', png)).rejects.toThrow(/Not an image/);
+    await expect(saveImage(root, '../outside.md', 'x.png', png)).rejects.toThrow(/outside the project/);
   });
 });

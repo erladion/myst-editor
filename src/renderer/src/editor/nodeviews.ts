@@ -823,7 +823,7 @@ class HtmlInlineView extends InlineView {
 class ImageView extends InlineView {
   protected render() {
     const img = el('img', { src: this.ctx.assetUrl(this.node.attrs.src), alt: this.node.attrs.alt, draggable: 'false' });
-    if (this.node.attrs.title) img.title = this.node.attrs.title;
+    img.title = this.node.attrs.title ?? (this.node.attrs.alt ? `${this.node.attrs.alt} (double-click to change)` : 'Double-click to describe this image or change it');
     this.dom.className = 'inline-image';
     this.dom.replaceChildren(img);
   }
@@ -832,7 +832,7 @@ class ImageView extends InlineView {
     const next = await this.ctx.ui.editFields({
       title: 'Image',
       fields: [
-        { key: 'src', label: 'Image file', value: this.node.attrs.src },
+        { key: 'src', label: 'Image file', value: this.node.attrs.src, browse: () => this.ctx.chooseImage() },
         { key: 'alt', label: 'Description', value: this.node.attrs.alt, help: 'Read aloud by screen readers' },
       ],
     });

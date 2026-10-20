@@ -1,5 +1,5 @@
 // Exposes a narrow, typed API to the sandboxed renderer.
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
+import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron';
 import { ASSET_SCHEME, BUILD_SCHEME, type MystApi } from '../shared/api.js';
 
 function on<T>(channel: string, cb: (value: T) => void): () => void {
@@ -13,6 +13,9 @@ const api: MystApi = {
   chooseProject: () => ipcRenderer.invoke('choose-project'),
   openProject: (folder) => ipcRenderer.invoke('open-project', folder),
   chooseImage: (page) => ipcRenderer.invoke('choose-image', page),
+  addImageFile: (page, path) => ipcRenderer.invoke('add-image-file', page, path),
+  addImageData: (page, name, bytes) => ipcRenderer.invoke('add-image-data', page, name, bytes),
+  filePath: (file) => webUtils.getPathForFile(file),
   createPage: (rel, text) => ipcRenderer.invoke('create-page', rel, text),
   deletePage: (rel, permanently) => ipcRenderer.invoke('delete-page', rel, permanently),
   sphinxEnv: (project) => ipcRenderer.invoke('sphinx-env', project),

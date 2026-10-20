@@ -33,6 +33,8 @@ export interface EditorContext {
   filePath: string | null;
   // Pick an image file for the open page (see MystApi.chooseImage).
   chooseImage(): Promise<string | null>;
+  // An image pasted or dropped into the open page, as the path to write in it.
+  addImage(file: File): Promise<string>;
   // URL for an image referenced from the open page.
   assetUrl(ref: string): string;
   // Open the page a {doc} role or toctree entry points at.

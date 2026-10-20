@@ -5,6 +5,7 @@ import { EditorView } from 'prosemirror-view';
 import type { SphinxWarning } from '../../../shared/sphinx';
 import type { EditorContext } from './context';
 import { nodeViews } from './nodeviews';
+import { imageInput } from './images';
 import { locateProblems, setProblems } from './problems';
 import { setConditionView } from './conditions';
 import { locatePreviews, setPreviews, type PreviewBuild } from './previews';
@@ -37,6 +38,7 @@ export function Editor({ state, ctx, onChange, viewRef, onView, problems, savedT
     const view: EditorView = new EditorView(host.current!, {
       state,
       nodeViews: nodeViews(ctx),
+      ...imageInput(ctx),
       attributes: { class: 'prose', spellcheck: 'true', 'aria-label': 'Page content' },
       dispatchTransaction(tr) {
         const next = view.state.apply(tr);

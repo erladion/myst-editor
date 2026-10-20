@@ -297,6 +297,22 @@ export async function placeImage(root: string, page: string, picked: string): Pr
   return relative(pageDir, target).split(sep).join('/');
 }
 
+// An image given as bytes (pasted from the clipboard, say), saved in an images/ folder
+// next to `page` under a name not already taken. Returns the path to write in the page.
+export async function saveImage(root: string, page: string, name: string, bytes: Uint8Array): Promise<string> {
+  const ext = /\.([a-z0-9]+)$/i.exec(name)?.[1]?.toLowerCase();
+  if (!ext || !IMAGE_EXTENSIONS.includes(ext)) throw new Error(`Not an image file: ${name}`);
+  if (bytes.byteLength > 50 * 1024 * 1024) throw new Error('Images over 50 MB aren’t added; make it smaller first.');
+  const pageDir = realpathSync.native(dirname(resolveInside(root, page)));
+  const dir = join(pageDir, 'images');
+  await fs.mkdir(dir, { recursive: true });
+  const stem = basename(name).slice(0, -(ext.length + 1)).replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '') || 'image';
+  let target = join(dir, `${stem}.${ext}`);
+  for (let n = 2; existsSync(target); n++) target = join(dir, `${stem}-${n}.${ext}`);
+  await fs.writeFile(target, bytes, { flag: 'wx' });
+  return relative(pageDir, target).split(sep).join('/');
+}
+
 // Whether `path` is `base` or inside it. Windows (and macOS) paths ignore case.
 export function isInside(base: string, path: string, orSame = false): boolean {
   const fold = process.platform === 'win32' || process.platform === 'darwin' ? (p: string) => p.toLowerCase() : (p: string) => p;

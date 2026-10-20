@@ -58,6 +58,12 @@ export interface MystApi {
   // permanently when asked (`trashed: false` means the trash wasn't available).
   createPage(rel: string, text: string): Promise<void>;
   deletePage(rel: string, permanently: boolean): Promise<{ trashed: boolean }>;
+  // An image pasted or dropped into a page, as the path to write in it: a file (its
+  // path from filePath), or a picture's bytes with a file name.
+  addImageFile(page: string, path: string): Promise<string>;
+  addImageData(page: string, name: string, bytes: Uint8Array): Promise<string>;
+  // Where a dropped or pasted File is on disk ('' for a clipboard picture).
+  filePath(file: File): string;
   // Pick an image for a page: its path relative to the page, or null if cancelled.
   // Images from outside the opened folder are copied into one.
   chooseImage(page: string): Promise<string | null>;
