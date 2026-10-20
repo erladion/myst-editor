@@ -299,6 +299,9 @@ Per-project environments, builds and logs live in `<userData>/sphinx/`.
   to `/opt/MyST Editor/` with a `mysteditor` command and a menu entry. The
   post-install script only makes Chromium's sandbox setuid on systems without user
   namespaces.
+- **Debian 12+, Ubuntu 22.04+, Mint:** `sudo apt install ./MyST-Editor-<version>-amd64.deb`.
+  It installs to `/opt/MyST Editor/` with a `mysteditor` command and a menu entry, and
+  recommends `git`.
 - **Anything else:** the AppImage. It needs `libfuse2`, or run it with
   `--appimage-extract-and-run`.
 - **Git features** need `git` installed (`dnf install git`). Without it the rest of

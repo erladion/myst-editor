@@ -1,5 +1,5 @@
 # Push a version tag (git tag v0.2.0 && git push origin v0.2.0) to test, build the
-# AppImage and RPM, and publish them as a GitHub release. The tag must match the
+# AppImage, RPM and .deb, and publish them as a GitHub release. The tag must match the
 # version in package.json.
 name: Release
 
@@ -40,11 +40,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends rpm
       - run: npm ci
-      - name: Build the AppImage and RPM
+      - name: Build the AppImage, RPM and .deb
         run: npm run dist
       - name: Checksums
         working-directory: release
-        run: sha256sum *.AppImage *.rpm | tee SHA256SUMS
+        run: sha256sum *.AppImage *.rpm *.deb | tee SHA256SUMS
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -53,4 +53,4 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --title "MyST Editor ${GITHUB_REF_NAME#v}" \
             --generate-notes \
-            release/*.AppImage release/*.rpm release/SHA256SUMS
+            release/*.AppImage release/*.rpm release/*.deb release/SHA256SUMS
