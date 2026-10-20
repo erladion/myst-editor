@@ -20,6 +20,8 @@ import { SourceEditor } from './components/SourceEditor';
 import { LivePreview } from './components/LivePreview';
 import { AdvancedBar } from './components/AdvancedBar';
 import { AskPassHost, CloneDialog, GitChip, GitPanel } from './components/GitUi';
+import { NewPageDialog, type NewPage } from './components/PageDialogs';
+import { addToContents, contentsPages, defaultContents, folderOf, listingPages, pageFolders, removeFromContents } from './pages';
 import type { GitInfo } from '../../shared/git';
 import { resolveRef } from './paths';
 import { docnameOf, problemsIn, resolveLink, resolveRole, suggestTargets } from './sphinx';
@@ -102,6 +104,8 @@ export function App() {
   const [gitPanel, setGitPanel] = useState(false);
   const [cloning, setCloning] = useState(false);
   const [opening, setOpening] = useState<OpenProgress | null>(null);
+  // The New page dialog, with the folder it starts in (null: the current page's).
+  const [newPage, setNewPage] = useState<{ folder: string | null } | null>(null);
   useEffect(() => api.onOpenProgress(setOpening), []);
   const dialogs = useRef<DialogApi>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -293,6 +297,64 @@ export function App() {
     [openPage, mode],
   );
 
+  // Delete a page: to the trash, and out of the tables of contents that list it.
+  const deletePage = useCallback(
+    async (path: string) => {
+      if (!ws) return;
+      const project = projectFor(ws.project.projects, path);
+      const info = (project && ctxRef.current.states[project.id]?.info) || null;
+      const listing = await listingPages(ws, project, info, path);
+      const title = ws.project.titles[path] ?? path;
+      const ok = await dialogs.current!.confirm({
+        title: 'Delete page',
+        message:
+          `Delete “${title}” (${path})? It goes to the trash, so it can be restored from there.` +
+          (listing.length ? ` It will also be taken out of the table of contents of ${listing.map((p) => `“${ws.project.titles[p] ?? p}”`).join(', ')}.` : '') +
+          ' Links to it from other pages will show as problems.',
+        confirm: 'Delete page',
+      });
+      if (!ok) return;
+      try {
+        const { trashed } = await api.deletePage(path, false);
+        if (!trashed) {
+          const forGood = await dialogs.current!.confirm({
+            title: 'No trash here',
+            message: `This system has no trash to move “${title}” to. Delete it permanently instead? This can’t be undone (unless it’s committed in git).`,
+            confirm: 'Delete permanently',
+          });
+          if (!forGood) return;
+          await api.deletePage(path, true);
+        }
+      } catch (e) {
+        dialogs.current?.notify(`Couldn’t delete ${path}: ${e instanceof Error ? e.message : e}`);
+        return;
+      }
+      const failed = await removeFromContents(ws, project, listing, path);
+      if (failed.length) dialogs.current?.notify(`Remove “${title}” from the contents of ${failed.join(', ')} yourself: those pages are open as Markdown or couldn’t be saved.`);
+      const wasCurrent = ws.current === path;
+      ws.close(path);
+      if (wasCurrent) {
+        const next = landingPage({ ...ws.project, files: ws.project.files.filter((f) => f !== path) });
+        if (next) void openPage(next);
+      }
+    },
+    [ws, openPage],
+  );
+
+  const createPage = useCallback(
+    async ({ title, path, contents }: NewPage) => {
+      if (!ws) return;
+      await api.createPage(path, `# ${title}\n`);
+      const project = projectFor(ws.project.projects, path);
+      setNewPage(null);
+      if (contents && !(await addToContents(ws, project, contents, path))) {
+        dialogs.current?.notify(`Add the new page to the contents of ${contents} yourself: it’s open as Markdown or couldn’t be saved.`);
+      }
+      await openPage(path);
+    },
+    [ws, openPage],
+  );
+
   // Menu commands, external file changes and window closing.
   useEffect(() => {
     const offMenu = api.onMenu((cmd) => {
@@ -300,6 +362,8 @@ export function App() {
       else if (cmd === 'clone') setCloning(true);
       else if (cmd === 'toggle-source') toggleMode();
       else if (cmd === 'save' && ws?.current) void ws.save(ws.current);
+      else if (cmd === 'new-page' && ws) setNewPage({ folder: null });
+      else if (cmd === 'delete-page' && ws?.current) void deletePage(ws.current);
     });
     const offFiles = api.onFilesChanged((e) => void ws?.externalChange(e.changed, e.files, e.titles));
     const offProject = api.onProjectChanged(({ project }) => {
@@ -360,6 +424,14 @@ export function App() {
   const onRevealed = useCallback(() => setReveal(null), []);
   const onGotoDone = useCallback(() => setGotoLine(null), []);
 
+  // Pages that could list a new page, worked out once when the dialog opens.
+  const newPageContents = useMemo(() => {
+    if (!newPage || !ws) return Promise.resolve([] as string[]);
+    const project = projectFor(ws.project.projects, ws.current ?? '') ?? ws.project.projects[0] ?? null;
+    const built = (project && sphinxStates[project.id]?.info) || null;
+    return contentsPages(ws, project, built, [ws.current]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newPage, ws]);
   const pageProblems = useMemo(() => problemsIn(info, session?.path ?? null), [info, session?.path]);
   // Hooks stay above the welcome screen's early return.
   const previewBuild = usePreviewBuild(pageProject?.id ?? null, info && session ? docnameOf(info, session.path) : null, info?.builtAt ?? null);
@@ -426,6 +498,8 @@ export function App() {
         unsaved={unsaved}
         onOpen={openPage}
         onOpenFolder={chooseFolder}
+        onNewPage={(folder) => setNewPage({ folder })}
+        onDeletePage={(path) => void deletePage(path)}
       />
       <main className="main">
         {mode === 'markdown' ? (
@@ -560,6 +634,18 @@ export function App() {
       )}
       {cloning && <CloneDialog onClose={() => setCloning(false)} onCloned={onCloned} />}
       <AskPassHost />
+      {newPage && (
+        <NewPageDialog
+          folders={pageFolders(ws.project)}
+          folder={newPage.folder ?? folderOf(ws.current, pageProject)}
+          files={new Set(ws.project.files)}
+          titles={ws.project.titles}
+          contentsPages={newPageContents}
+          contentsDefault={(folder, pages) => defaultContents(ws.project, folder, pages)}
+          onCreate={createPage}
+          onClose={() => setNewPage(null)}
+        />
+      )}
       {sphinxDialog === 'details' && (
         <SphinxDialog
           state={sphinx}

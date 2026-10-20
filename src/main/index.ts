@@ -229,6 +229,19 @@ async function addBuiltPages(p: ProjectInfo, info: SphinxInfo) {
   win?.webContents.send('files-changed', { files: p.files, titles, changed: [] });
 }
 
+// The page list changed by the app itself (a page added or deleted): tell the window
+// now rather than waiting for the watcher. `added` gets its title read.
+async function pagesChanged(p: ProjectInfo, files: string[], added?: string) {
+  p.files = [...new Set(files)].sort((a, b) => a.localeCompare(b));
+  p.titles = Object.fromEntries(Object.entries(p.titles).filter(([f]) => p.files.includes(f)));
+  if (added) {
+    const title = await readTitle(join(p.root, added));
+    if (title) p.titles[added] = title;
+  }
+  win?.webContents.send('files-changed', { files: p.files, titles: p.titles, changed: [] });
+  refreshGit();
+}
+
 async function existing(root: string, rels: Iterable<string>): Promise<string[]> {
   const out: string[] = [];
   for (const rel of rels) {
@@ -421,6 +434,43 @@ function registerIpc() {
     buildFor(requireProject(), rel, false);
     refreshGit();
   });
+  // A new page; refuses to replace a file that exists.
+  ipcMain.handle('create-page', async (_e, rel: string, text: string) => {
+    const p = requireProject();
+    if (!rel.endsWith('.md')) throw new Error('Pages are Markdown files ending in .md');
+    const path = resolveInside(p.root, rel);
+    await fs.mkdir(dirname(path), { recursive: true });
+    try {
+      await fs.writeFile(path, text, { flag: 'wx' });
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'EEXIST') throw new Error(`There’s already a file called ${rel}`);
+      throw e;
+    }
+    fingerprints.set(rel, fingerprintText(text));
+    await pagesChanged(p, [...p.files, rel], rel);
+    buildFor(p, rel, false);
+  });
+  // Delete a page: to the trash, or for good (when the trash isn't available).
+  ipcMain.handle('delete-page', async (_e, rel: string, permanently: boolean) => {
+    const p = requireProject();
+    const path = resolveInside(p.root, rel);
+    if (permanently) await fs.rm(path);
+    // MYSTEDITOR_TRASH=none: act as if there's no trash (tests, which shouldn't fill
+    // the desktop's).
+    else if (process.env.MYSTEDITOR_TRASH === 'none') return { trashed: false };
+    else {
+      try {
+        await shell.trashItem(path);
+      } catch {
+        return { trashed: false };
+      }
+    }
+    fingerprints.delete(rel);
+    builtPages.delete(rel);
+    await pagesChanged(p, p.files.filter((f) => f !== rel));
+    buildFor(p, rel, false);
+    return { trashed: true };
+  });
   ipcMain.handle('git-info', () => gitInfo());
   ipcMain.handle('choose-folder', async (_e, title: string) => {
     const r = await dialog.showOpenDialog(win!, { title, properties: ['openDirectory', 'createDirectory'] });
@@ -532,6 +582,9 @@ function buildMenu(theme: Theme = nativeTheme.themeSource) {
       submenu: [
         { label: 'Open Folder…', accelerator: 'CmdOrCtrl+O', click: () => send('open-folder') },
         { label: 'Clone Repository…', click: () => send('clone') },
+        { type: 'separator' },
+        { label: 'New Page…', accelerator: 'CmdOrCtrl+N', click: () => send('new-page') },
+        { label: 'Delete Page…', click: () => send('delete-page') },
         { label: 'Save', accelerator: 'CmdOrCtrl+S', click: () => send('save') },
         { type: 'separator' },
         { role: 'quit' },

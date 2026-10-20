@@ -1,5 +1,5 @@
 // Open documents, autosave and external-change handling, independent of React.
-import type { EditorState } from 'prosemirror-state';
+import type { EditorState, Transaction } from 'prosemirror-state';
 import { loadDocument, saveDocument } from '../../core/document';
 import type { SourceMap } from '../../core/sourcemap';
 import type { MystApi, ProjectInfo } from '../../shared/api';
@@ -50,7 +50,7 @@ export class Workspace {
   current: string | null = null;
 
   constructor(
-    private api: MystApi,
+    readonly api: MystApi,
     public project: ProjectInfo,
   ) {}
 
@@ -76,15 +76,41 @@ export class Workspace {
   }
 
   async open(path: string): Promise<Session> {
+    const session = await this.session(path);
+    this.current = path;
+    this.changed();
+    return session;
+  }
+
+  private async session(path: string): Promise<Session> {
     let session = this.sessions.get(path);
     if (!session) {
       const text = await this.api.readFile(path);
       session = this.load(path, text);
       this.sessions.set(path, session);
     }
-    this.current = path;
-    this.changed();
     return session;
+  }
+
+  // Change a page that may not be open (a parent page's table of contents, say) and
+  // save it now. `change` returns null to leave the page as it is. False if the page
+  // is being edited as Markdown text, or couldn't be saved.
+  async edit(path: string, change: (state: EditorState) => Transaction | null): Promise<boolean> {
+    const s = await this.session(path);
+    if (s.text !== null) return false;
+    const tr = change(s.state);
+    if (!tr?.docChanged) return true;
+    s.state = s.state.apply(tr);
+    s.dirty = true;
+    return this.save(path);
+  }
+
+  // Forget a page (it was deleted).
+  close(path: string) {
+    clearTimeout(this.timers.get(path));
+    this.sessions.delete(path);
+    if (this.current === path) this.current = null;
+    this.changed();
   }
 
   // `eol`: keep this line ending instead of the text's own (text from the Markdown view

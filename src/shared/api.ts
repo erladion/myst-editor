@@ -43,7 +43,7 @@ export interface ProjectChanged {
   project: ProjectInfo;
 }
 
-export type MenuCommand = 'open-folder' | 'save' | 'toggle-source' | 'clone';
+export type MenuCommand = 'open-folder' | 'save' | 'toggle-source' | 'clone' | 'new-page' | 'delete-page';
 
 export interface MystApi {
   // The project from the command line or the last session, if any.
@@ -54,6 +54,10 @@ export interface MystApi {
   // and the writer's own for the opened folder (which win). Setting them rebuilds.
   sphinxEnv(project: string): Promise<{ project: Record<string, string>; yours: Record<string, string> }>;
   setSphinxEnv(vars: Record<string, string>): Promise<void>;
+  // Create a page (never replacing a file), or delete one: to the trash, or
+  // permanently when asked (`trashed: false` means the trash wasn't available).
+  createPage(rel: string, text: string): Promise<void>;
+  deletePage(rel: string, permanently: boolean): Promise<{ trashed: boolean }>;
   // Pick an image for a page: its path relative to the page, or null if cancelled.
   // Images from outside the opened folder are copied into one.
   chooseImage(page: string): Promise<string | null>;

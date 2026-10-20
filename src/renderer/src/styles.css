@@ -411,6 +411,16 @@ button.toc-toggle:hover {
   position: relative;
 }
 
+/* Right-clicking a page in the sidebar. */
+.menu-items.page-menu {
+  position: fixed;
+  min-width: 170px;
+}
+
+.menu-items button.danger {
+  color: var(--tone-danger);
+}
+
 .menu-items {
   position: absolute;
   top: 34px;

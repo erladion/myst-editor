@@ -20,6 +20,12 @@ Open a documentation folder and edit its pages as formatted documents:
 - **Sidebar:** pages listed by their title, with folders and a filter, in one section
   per project when there are several (with the folder added when two projects have
   the same name). Once built, it follows the toctree, and entries fold away.
+- **Adding and removing pages:** **New page** in the sidebar (or File → New Page…,
+  Ctrl+N) asks for a title, a folder and which page's table of contents should list
+  it (the nearest index page by default); the entry is added at the end, unless a
+  `:glob:` pattern already takes the page in. **Delete page…** (right-click a page, or
+  File → Delete Page…) moves it to the trash and takes it out of every table of
+  contents that lists it.
 - **Editing:** headings, bold/italic/code/strike, links, lists, quotes. Markdown
   shortcuts (`# `, `- `, `1. `, `**bold**`, `` `code` ``) work while typing.
 - **MyST constructs:**

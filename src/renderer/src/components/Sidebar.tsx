@@ -16,6 +16,15 @@ interface Props {
   unsaved: Set<string>;
   onOpen: (path: string) => void;
   onOpenFolder: () => void;
+  onNewPage: (folder: string | null) => void; // null: next to the current page
+  onDeletePage: (path: string) => void;
+}
+
+// What right-clicking a page offers.
+interface PageMenu {
+  path: string;
+  x: number;
+  y: number;
 }
 
 interface Folder {
@@ -50,7 +59,24 @@ function buildTree(files: string[], base: string): Folder {
   return root;
 }
 
-export function Sidebar({ projectName, files, titles, projects, builds, current, unsaved, onOpen, onOpenFolder }: Props) {
+export function Sidebar({ projectName, files, titles, projects, builds, current, unsaved, onOpen, onOpenFolder, onNewPage, onDeletePage }: Props) {
+  const [menu, setMenu] = useState<PageMenu | null>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(null);
+    window.addEventListener('mousedown', close);
+    window.addEventListener('keydown', close);
+    return () => {
+      window.removeEventListener('mousedown', close);
+      window.removeEventListener('keydown', close);
+    };
+  }, [menu]);
+  // Right-click (or the context-menu key) on a page.
+  const onPageMenu = (e: React.MouseEvent, path: string) => {
+    e.preventDefault();
+    const box = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setMenu({ path, x: e.clientX || box.left + 16, y: e.clientY || box.bottom });
+  };
   const [mode, setMode] = useState<'contents' | 'files'>('contents');
   const [filter, setFilter] = useState('');
   const anyBuilt = projects.some((p) => builds[p.id]);
@@ -84,6 +110,7 @@ export function Sidebar({ projectName, files, titles, projects, builds, current,
         title={file}
         aria-current={file === current ? 'page' : undefined}
         onClick={() => onOpen(file)}
+        onContextMenu={(e) => onPageMenu(e, file)}
       >
         <span className="page-title">{titles[file] ?? basename(file).replace(/\.md$/, '')}</span>
         {unsaved.has(file) && <span className="unsaved-dot" title="Unsaved changes" />}
@@ -97,6 +124,9 @@ export function Sidebar({ projectName, files, titles, projects, builds, current,
         <span className="project-name" title={projectName}>
           {projectName}
         </span>
+        <button type="button" className="link-button" onClick={() => onNewPage(null)} title="Add a page next to the one that’s open (Ctrl+N)">
+          New page
+        </button>
         <button type="button" className="link-button" onClick={onOpenFolder} title="Open another documentation folder">
           Open…
         </button>
@@ -125,6 +155,7 @@ export function Sidebar({ projectName, files, titles, projects, builds, current,
                   </div>
                 )}
                 <ProjectPages
+                  onPageMenu={onPageMenu}
                   project={project}
                   files={sections.byProject.get(project.id) ?? []}
                   allFiles={allFiles}
@@ -146,11 +177,34 @@ export function Sidebar({ projectName, files, titles, projects, builds, current,
         )}
         {!files.length && <p className="muted pad">No Markdown pages found in this folder.</p>}
       </div>
+      {menu && (
+        <div className="menu-items page-menu" role="menu" style={{ left: menu.x, top: menu.y }} onMouseDown={(e) => e.stopPropagation()}>
+          {[
+            ['Open', () => onOpen(menu.path)],
+            ['New page here…', () => onNewPage(menu.path.includes('/') ? menu.path.slice(0, menu.path.lastIndexOf('/')) : '')],
+            ['Delete page…', () => onDeletePage(menu.path)],
+          ].map(([label, action]) => (
+            <button
+              key={label as string}
+              type="button"
+              role="menuitem"
+              className={label === 'Delete page…' ? 'danger' : undefined}
+              onClick={() => {
+                setMenu(null);
+                (action as () => void)();
+              }}
+            >
+              {label as string}
+            </button>
+          ))}
+        </div>
+      )}
     </nav>
   );
 }
 
 interface ProjectPagesProps {
+  onPageMenu: (e: React.MouseEvent, path: string) => void;
   project: SphinxProject;
   files: string[];
   allFiles: Set<string>;
@@ -161,7 +215,7 @@ interface ProjectPagesProps {
   fileItem: (file: string) => ReactElement;
 }
 
-function ProjectPages({ project, files, allFiles, info, current, unsaved, onOpen, fileItem }: ProjectPagesProps) {
+function ProjectPages({ onPageMenu, project, files, allFiles, info, current, unsaved, onOpen, fileItem }: ProjectPagesProps) {
   const toc = useMemo(() => (info ? tocTree(info) : null), [info]);
   // Entries the writer opened or closed; the rest show the top level, and the way to
   // the current page. Kept by page name, so a new build doesn't reset them.
@@ -178,6 +232,7 @@ function ProjectPages({ project, files, allFiles, info, current, unsaved, onOpen
     current,
     unsaved,
     onOpen,
+    onPageMenu,
     isOpen: (e, depth) => chosen[e.docname] ?? (depth === 0 || ancestors.includes(e.docname)),
     toggle: (e, open) => setChosen((c) => ({ ...c, [e.docname]: open })),
   };
@@ -214,6 +269,7 @@ interface TreeProps {
   current: string | null;
   unsaved: Set<string>;
   onOpen: (path: string) => void;
+  onPageMenu: (e: React.MouseEvent, path: string) => void;
   isOpen: (entry: TocEntry, depth: number) => boolean;
   toggle: (entry: TocEntry, open: boolean) => void;
 }
@@ -247,6 +303,7 @@ function tocItem(entry: TocEntry, tree: TreeProps, depth: number): ReactElement 
           aria-current={entry.source === current ? 'page' : undefined}
           disabled={!editable}
           onClick={() => onOpen(entry.source)}
+          onContextMenu={(e) => editable && tree.onPageMenu(e, entry.source)}
         >
           <span className="page-title">{entry.title}</span>
           {unsaved.has(entry.source) && <span className="unsaved-dot" title="Unsaved changes" />}
