@@ -122,6 +122,16 @@ describe('making content conditional', () => {
     expect(r.text).toContain('Everyone <!-- if-inline: CapabilityZ -->sees<!-- endif-inline --> this.');
   });
 
+  it('leaves spaces at the edges of the selection outside the condition', () => {
+    const { state, map } = load();
+    const from = textPos(state.doc, 'sees');
+    // "sees " as Windows selects a double-clicked word.
+    const s = state.apply(state.tr.setSelection(TextSelection.create(state.doc, from, from + 5)));
+    let next = s;
+    makeConditional(settings, 'CapabilityZ')(s, (tr) => (next = s.apply(tr)));
+    expect(saveDocument(next.doc, map, config).text).toContain('Everyone <!-- if-inline: CapabilityZ -->sees<!-- endif-inline --> this.');
+  });
+
   it('refuses an inline condition at the start of a line, which would read as an HTML block', () => {
     const { state } = load();
     const from = textPos(state.doc, 'Everyone');

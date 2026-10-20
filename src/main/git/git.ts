@@ -1,7 +1,7 @@
 // Git through the system's own `git`, which brings HTTPS and SSH, the writer's keys
 // and their credential helpers. Questions git or ssh ask go through AskPass.
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import type { GitChange, GitStatus } from '../../shared/git.js';
 import { run, type RunResult } from '../sphinx/run.js';
 
@@ -49,7 +49,8 @@ export class Git {
   async repoRoot(folder: string): Promise<string | null> {
     try {
       const r = await this.git(['rev-parse', '--show-toplevel'], folder);
-      return r.code === 0 ? r.output.trim() : null;
+      // Git for Windows prints C:/Users/…: make it a normal path for this system.
+      return r.code === 0 ? resolve(r.output.trim()) : null;
     } catch {
       return null;
     }
@@ -128,15 +129,16 @@ function changeKind(xy: string): GitChange['kind'] {
   return 'modified';
 }
 
-// https://, ssh://, git://, file:// links, scp-style git@host:path, or a local path.
+// https://, ssh://, git://, file:// links, scp-style git@host:path, or a local path
+// (/srv/docs.git, C:\repos\docs, \\server\share\docs).
 export function isCloneUrl(url: string): boolean {
   const u = url.trim();
   if (!u || u.startsWith('-') || /\s/.test(u)) return false;
-  return /^(https?|ssh|git|file):\/\/./.test(u) || /^[\w.-]+@[\w.-]+:./.test(u) || u.startsWith('/');
+  return /^(https?|ssh|git|file):\/\/./.test(u) || /^[\w.-]+@[\w.-]+:./.test(u) || u.startsWith('/') || /^([a-z]:)?[\\/]/i.test(u) || u.startsWith('\\\\');
 }
 
 export function repoName(url: string): string {
-  const last = url.trim().replace(/\/+$/, '').split(/[/:]/).pop() ?? 'repository';
+  const last = url.trim().replace(/[\\/]+$/, '').split(/[\\/:]/).pop() ?? 'repository';
   return last.replace(/\.git$/, '') || 'repository';
 }
 

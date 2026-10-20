@@ -1,5 +1,6 @@
 // Existing Python environments and offline behaviour, with real interpreters.
 import { describe, expect, it } from 'vitest';
+import { venvPython } from '../../src/main/sphinx/environment.js';
 import { cpSync, mkdtempSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -11,7 +12,7 @@ import type { EnvironmentChoice, SphinxState } from '../../src/shared/sphinx.js'
 
 const repo = join(import.meta.dirname, '..', '..');
 const shared = process.env.MYSTEDITOR_TEST_DATA ?? join(tmpdir(), 'mysteditor-sphinx-data');
-const uv = join(repo, 'resources', 'uv', 'uv');
+const uv = join(repo, 'resources', 'uv', process.platform === 'win32' ? 'uv.exe' : 'uv');
 const uvEnv = { ...process.env, UV_CACHE_DIR: join(shared, 'uv-cache'), UV_PYTHON_INSTALL_DIR: join(shared, 'python'), UV_PYTHON_PREFERENCE: 'only-managed' };
 
 // A copy of the fixture, optionally with a .venv made by hand (as an admin might).
@@ -21,7 +22,7 @@ async function project(venvPackages?: string[]) {
   cpSync(join(repo, 'e2e', 'fixture'), root, { recursive: true });
   if (venvPackages) {
     execFileSync(uv, ['venv', '-q', '--python', '3.12', join(root, '.venv')], { env: uvEnv });
-    if (venvPackages.length) execFileSync(uv, ['pip', 'install', '-q', '--python', join(root, '.venv', 'bin', 'python'), ...venvPackages], { env: uvEnv });
+    if (venvPackages.length) execFileSync(uv, ['pip', 'install', '-q', '--python', venvPython(join(root, '.venv')), ...venvPackages], { env: uvEnv });
   }
   return { root, work, info: await openProject(root) };
 }
@@ -58,16 +59,16 @@ function manager(info: Awaited<ReturnType<typeof openProject>>, dataDir: string,
 describe('existing environments', () => {
   it('finds a project .venv with Sphinx and builds with it, without uv', async () => {
     const { root, work, info } = await project(['sphinx', 'myst-parser', 'sphinx-design', 'furo']);
-    const venvPython = join(root, '.venv', 'bin', 'python');
+    const python = venvPython(join(root, '.venv'));
     const found = await findPythons(info.root, info.projects.map((x) => x.sourceDir));
-    expect(found[0]).toMatchObject({ python: venvPython, label: 'Project .venv' });
+    expect(found[0]).toMatchObject({ python, label: 'Project .venv' });
     expect(found[0].sphinx).toMatch(/^\d/);
 
-    const { m, settled } = manager(info, join(work, 'data'), { kind: 'existing', python: venvPython });
+    const { m, settled } = manager(info, join(work, 'data'), { kind: 'existing', python });
     m.start();
     const state = await settled();
     expect(state.status.kind).toBe('ready');
-    expect(state.environment).toMatchObject({ kind: 'existing', python: venvPython });
+    expect(state.environment).toMatchObject({ kind: 'existing', python });
     expect(state.info!.docs['guide/install'].title).toBe('Installing Widget');
     expect(m.getLog()).not.toMatch(/\buv (venv|pip)\b/);
     m.dispose();
@@ -75,7 +76,7 @@ describe('existing environments', () => {
 
   it('explains what is missing from an environment without Sphinx', async () => {
     const { root, work, info } = await project([]);
-    const { m, settled } = manager(info, join(work, 'data'), { kind: 'existing', python: join(root, '.venv', 'bin', 'python') });
+    const { m, settled } = manager(info, join(work, 'data'), { kind: 'existing', python: venvPython(join(root, '.venv')) });
     m.start();
     const state = await settled();
     expect(state.status).toMatchObject({ kind: 'error' });

@@ -1,6 +1,7 @@
 // A folder with two Sphinx projects sharing one virtualenv:
 //   .venv/   user-guide/conf.py   admin-guide/conf.py
 import { expect, test } from '@playwright/test';
+import { venvPython } from '../src/main/sphinx/environment.js';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -12,9 +13,9 @@ const shared = process.env.MYSTEDITOR_SPHINX_DATA ?? join(tmpdir(), 'mysteditor-
 
 function addSharedVenv(project: string) {
   const env = { ...process.env, UV_CACHE_DIR: join(shared, 'uv-cache'), UV_PYTHON_INSTALL_DIR: join(shared, 'python'), UV_PYTHON_PREFERENCE: 'only-managed' };
-  const uv = join(repo, 'resources', 'uv', 'uv');
+  const uv = join(repo, 'resources', 'uv', process.platform === 'win32' ? 'uv.exe' : 'uv');
   execFileSync(uv, ['venv', '-q', '--python', '3.12', join(project, '.venv')], { env });
-  execFileSync(uv, ['pip', 'install', '-q', '--python', join(project, '.venv', 'bin', 'python'), 'sphinx', 'myst-parser'], { env });
+  execFileSync(uv, ['pip', 'install', '-q', '--python', venvPython(join(project, '.venv')), 'sphinx', 'myst-parser'], { env });
 }
 
 let ctx: App;

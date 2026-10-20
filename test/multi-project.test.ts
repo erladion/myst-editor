@@ -49,7 +49,8 @@ describe('a folder with two Sphinx projects and a shared .venv', () => {
     expect(configFor(info, 'user-guide/index.md').extensions).toEqual(['colon_fence']);
   });
 
-  it('offers the shared .venv, also when only one project folder is opened', async () => {
+  // The stand-in interpreters are shell scripts, which Windows can't run as python.exe.
+  it.runIf(process.platform !== 'win32')('offers the shared .venv, also when only one project folder is opened', async () => {
     const root = topFolder();
     mkdirSync(join(root, '.git'));
     const whole = await openProject(root);
@@ -62,7 +63,7 @@ describe('a folder with two Sphinx projects and a shared .venv', () => {
     expect(fromOne[0]).toMatchObject({ python: join(whole.root, '.venv', 'bin', 'python'), label: 'Project ../.venv' });
   });
 
-  it('does not search above the opened folder outside a repository', async () => {
+  it.runIf(process.platform !== 'win32')('does not search above the opened folder outside a repository', async () => {
     const root = topFolder(); // no .git anywhere above
     const one = await openProject(join(root, 'admin-guide'));
     const found = await findPythons(one.root, one.projects.map((p) => p.sourceDir));

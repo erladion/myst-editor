@@ -13,7 +13,7 @@ asar: true
 extraResources:
   - from: resources/uv
     to: uv
-    filter: [uv]
+    filter: [uv, uv.exe]
   - from: resources/sphinx
     to: sphinx
     filter: ['*.py']
@@ -26,6 +26,16 @@ linux:
   icon: build/icon.png
   synopsis: WYSIWYG editor for Sphinx + MyST Markdown
   description: Edit Sphinx documentation written in MyST Markdown as formatted pages, saving only what you change.
+win:
+  target: [nsis]
+  icon: build/icon.png
+# A per-user installer: no administrator rights needed, Start menu and desktop
+# shortcuts, and an uninstaller in Settings → Apps.
+nsis:
+  oneClick: true
+  perMachine: false
+  artifactName: MyST-Editor-Setup-${version}.${ext}
+  shortcutName: MyST Editor
 deb:
   # The libraries Electron links against, by Debian/Ubuntu package name. Since
   # Debian 13 and Ubuntu 24.04 some are named …t64; either name will do.

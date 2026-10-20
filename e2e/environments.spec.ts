@@ -1,5 +1,6 @@
 // Choosing where Sphinx builds get Python from, and working without internet.
 import { expect, test } from '@playwright/test';
+import { venvPython } from '../src/main/sphinx/environment.js';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -12,9 +13,9 @@ const shared = process.env.MYSTEDITOR_SPHINX_DATA ?? join(tmpdir(), 'mysteditor-
 // A hand-made docs environment in the project, as an admin would set up offline.
 function addVenv(project: string) {
   const env = { ...process.env, UV_CACHE_DIR: join(shared, 'uv-cache'), UV_PYTHON_INSTALL_DIR: join(shared, 'python'), UV_PYTHON_PREFERENCE: 'only-managed' };
-  const uv = join(repo, 'resources', 'uv', 'uv');
+  const uv = join(repo, 'resources', 'uv', process.platform === 'win32' ? 'uv.exe' : 'uv');
   execFileSync(uv, ['venv', '-q', '--python', '3.12', join(project, '.venv')], { env });
-  execFileSync(uv, ['pip', 'install', '-q', '--python', join(project, '.venv', 'bin', 'python'), '-r', join(project, 'docs', 'requirements.txt')], { env });
+  execFileSync(uv, ['pip', 'install', '-q', '--python', venvPython(join(project, '.venv')), '-r', join(project, 'docs', 'requirements.txt')], { env });
 }
 
 let ctx: App;
@@ -31,7 +32,7 @@ test('offers a Python environment found in the project and builds with it', asyn
   await page.getByRole('button', { name: 'Use Project .venv' }).click();
   await expect(page.locator('.chip-button', { hasText: /problem/ })).toBeVisible({ timeout: 120_000 });
   await page.locator('.chip-button', { hasText: /Built in/ }).click();
-  await expect(page.getByRole('dialog', { name: 'Sphinx' })).toContainText(join(ctx.project, '.venv', 'bin', 'python'));
+  await expect(page.getByRole('dialog', { name: 'Sphinx' })).toContainText(venvPython(join(ctx.project, '.venv')));
 });
 
 test('without internet, says so and lets the writer pick an environment on the computer', async () => {

@@ -8,7 +8,7 @@ import { buildInputsOf, isBuildInput, listDocuments, openProject, readDocument, 
 import { FolderWatcher } from './watch.js';
 import { SphinxManager } from './sphinx/manager.js';
 import { ASSET_SCHEME, BUILD_SCHEME, type MenuCommand, type ProjectInfo } from '../shared/api.js';
-import type { EnvironmentChoice, SphinxState } from '../shared/sphinx.js';
+import type { EnvironmentChoice, SphinxInfo, SphinxState } from '../shared/sphinx.js';
 import { probePython } from './sphinx/pythons.js';
 import { fragmentPage } from './sphinx/fragments.js';
 import { Git, GitError } from './git/git.js';
@@ -136,6 +136,7 @@ async function useProject(folder: string): Promise<ProjectInfo> {
     openProgress(folder, null);
   }
   fingerprints.clear();
+  builtPages.clear();
   startWatching(project);
   win?.setTitle(`${project.name} — MyST Editor`);
   await updateSettings((s) => ({ ...s, lastProject: project!.root }));
@@ -162,11 +163,53 @@ async function startSphinx(p: ProjectInfo) {
       trusted: !!settings.trusted?.includes(p.root),
       buildInputs: () => p.buildInputs,
       environment: settings.environments?.[p.root] ?? null,
-      emit: (state: SphinxState) => win?.webContents.send('sphinx-state', { project: sp.id, state }),
+      emit: (state: SphinxState) => {
+        win?.webContents.send('sphinx-state', { project: sp.id, state });
+        if (state.info) void addBuiltPages(p, state.info);
+      },
     });
     sphinx.set(sp.id, manager);
     manager.start();
   }
+}
+
+// Pages Sphinx built that the folder scan didn't list (in a folder skipped by its name,
+// say): they're pages all the same, so add them and keep them when the list is re-read.
+const builtPages = new Set<string>();
+async function addBuiltPages(p: ProjectInfo, info: SphinxInfo) {
+  const listed = new Set(p.files);
+  const missing = [...new Set(Object.values(info.docs).map((d) => d.source))].filter((s) => s.endsWith('.md') && !listed.has(s));
+  const found: string[] = [];
+  for (const rel of missing) {
+    try {
+      if ((await fs.stat(resolveInside(p.root, rel))).isFile()) found.push(rel);
+    } catch {
+      // gone, or outside the folder
+    }
+  }
+  if (!found.length || project !== p) return;
+  const titles = { ...p.titles };
+  for (const rel of found) {
+    builtPages.add(rel);
+    const title = await readTitle(join(p.root, rel));
+    if (title) titles[rel] = title;
+  }
+  if (project !== p) return;
+  p.files = [...new Set([...p.files, ...found])].sort((a, b) => a.localeCompare(b));
+  p.titles = titles;
+  win?.webContents.send('files-changed', { files: p.files, titles, changed: [] });
+}
+
+async function existing(root: string, rels: Iterable<string>): Promise<string[]> {
+  const out: string[] = [];
+  for (const rel of rels) {
+    try {
+      if ((await fs.stat(join(root, rel))).isFile()) out.push(rel);
+    } catch {
+      // gone
+    }
+  }
+  return out;
 }
 
 // Re-read the folder's projects and settings, and tell the renderer if they changed.
@@ -250,7 +293,7 @@ function startWatching(p: ProjectInfo) {
 
     // Pages: only re-read what changed, which matters in a folder of thousands.
     const before = new Set(p.files);
-    let files = relist ? await listDocuments(p.root) : [...p.files];
+    let files = relist ? [...new Set([...(await listDocuments(p.root)), ...(await existing(p.root, builtPages))])] : [...p.files];
     if (!relist) {
       for (const rel of changed.filter((r) => r.endsWith('.md'))) {
         const exists = fingerprints.has(rel);

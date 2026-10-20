@@ -7,15 +7,31 @@ import { DEFAULT_CONFIG, readConfPy } from '../core/project-config.js';
 import { loadEditorConfig, SETTINGS_FILE, type SettingsSource } from '../core/editor-config.js';
 import type { ProjectInfo, SphinxProject } from '../shared/api.js';
 
-const SKIP_DIRS = new Set([
-  '_build', 'build', '_static', '_templates', 'node_modules', 'venv', '.venv', 'env', '__pycache__',
-  'site-packages', 'dist', 'jupyter_execute', '.ipynb_checkpoints',
-]);
+// Directories whose changes never matter to the app: hidden ones (.git, .venv),
+// dependencies, build output, and Python environments whatever they're called.
+// Names like build/ or env/ are also ordinary documentation sections ("Building",
+// "Environments"), so those only count when they look like what the name suggests.
+export const UNWATCHED_DIRS = new Set(['_build', 'node_modules', '__pycache__', 'site-packages', 'jupyter_execute']);
 
-// Directories never searched for pages or projects: build output, dependencies,
-// virtualenvs (recognised by pyvenv.cfg whatever they're called) and hidden folders.
+export async function unwatchedDir(parent: string, name: string): Promise<boolean> {
+  if (name.startsWith('.') || UNWATCHED_DIRS.has(name)) return true;
+  const dir = join(parent, name);
+  if ((await exists(join(dir, 'pyvenv.cfg'))) || (await exists(join(dir, 'conda-meta')))) return true;
+  // Build output (Python packaging, CMake, `sphinx-build docs build`), unless it holds pages.
+  if (name === 'build' || name === 'dist') {
+    try {
+      return !(await fs.readdir(dir)).some((f) => f.endsWith('.md'));
+    } catch {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Directories never searched for pages or projects: the above, and the theme
+// overrides and static files next to a conf.py.
 async function skipDir(dir: string, name: string): Promise<boolean> {
-  return name.startsWith('.') || SKIP_DIRS.has(name) || (await exists(join(dir, name, 'pyvenv.cfg')));
+  return name === '_static' || name === '_templates' || (await unwatchedDir(dir, name));
 }
 
 const MAX_DEPTH = 6; // how deep conf.py files are looked for
@@ -66,7 +82,11 @@ async function scanFolder(root: string, found: (pages: number) => void = () => {
   const files: string[] = [];
   const confDirs: string[] = [];
   const inputs: string[] = [];
-  const walk = async (dir: string, depth: number) => {
+  // Symlinked pages and folders count when they lead somewhere inside the folder: a
+  // shared section linked into two guides is a page of each, under each one's path.
+  // A link back up to a folder it's in would go round forever, so those are skipped.
+  const realRoot = realpathSync(root);
+  const walk = async (dir: string, depth: number, within: string[] = [realRoot]) => {
     let entries;
     try {
       entries = await fs.readdir(dir, { withFileTypes: true });
@@ -74,8 +94,20 @@ async function scanFolder(root: string, found: (pages: number) => void = () => {
       return;
     }
     const subdirs: string[] = [];
-    for (const e of entries) {
-      if (e.name.startsWith('.')) continue;
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue;
+      let e: { name: string; isFile(): boolean; isDirectory(): boolean } = entry;
+      if (entry.isSymbolicLink()) {
+        try {
+          const real = await fs.realpath(join(dir, entry.name));
+          if (!isInside(realRoot, real)) continue;
+          const st = await fs.stat(real);
+          if (st.isDirectory() && within.includes(real)) continue;
+          e = { name: entry.name, isFile: () => st.isFile(), isDirectory: () => st.isDirectory() };
+        } catch {
+          continue; // broken link
+        }
+      }
       if (e.isFile()) {
         if (e.name.endsWith('.md')) {
           files.push(relative(root, join(dir, e.name)).split(sep).join('/'));
@@ -87,7 +119,8 @@ async function scanFolder(root: string, found: (pages: number) => void = () => {
       } else if (e.isDirectory() && !(await skipDir(dir, e.name))) subdirs.push(join(dir, e.name));
     }
     // A few folders at a time: quick on slow (network) drives without opening thousands at once.
-    for (let i = 0; i < subdirs.length; i += 8) await Promise.all(subdirs.slice(i, i + 8).map((d) => walk(d, depth + 1)));
+    const next = async (d: string) => walk(d, depth + 1, [...within, await fs.realpath(d).catch(() => d)]);
+    for (let i = 0; i < subdirs.length; i += 8) await Promise.all(subdirs.slice(i, i + 8).map(next));
   };
   await walk(root, 0);
   found(files.length);
@@ -99,15 +132,6 @@ async function scanFolder(root: string, found: (pages: number) => void = () => {
 // manager files, which change when tools are installed.
 export function isBuildInput(name: string): boolean {
   return name.endsWith('.py') || (name.endsWith('.json') && !/^(package(-lock)?|tsconfig|composer)\.json$/.test(name));
-}
-
-// Directories whose changes never matter to the app: hidden ones (.git, .venv),
-// dependencies, build output and virtualenvs whatever they're called. Unlike page
-// listing, _static and _templates are watched: the build uses them.
-export const UNWATCHED_DIRS = new Set(['_build', 'build', 'node_modules', 'venv', 'env', '__pycache__', 'site-packages', 'dist', 'jupyter_execute']);
-
-export async function unwatchedDir(parent: string, name: string): Promise<boolean> {
-  return name.startsWith('.') || UNWATCHED_DIRS.has(name) || (await exists(join(parent, name, 'pyvenv.cfg')));
 }
 
 // The .mysteditor.toml files that apply to `dir`, from the opened folder down.
@@ -256,7 +280,7 @@ export async function placeImage(root: string, page: string, picked: string): Pr
   const real = realpathSync(picked);
   const realRoot = realpathSync(root);
   let target = real;
-  if (!real.startsWith(realRoot + sep)) {
+  if (!isInside(realRoot, real)) {
     const dir = join(pageDir, 'images');
     await fs.mkdir(dir, { recursive: true });
     const ext = real.slice(real.lastIndexOf('.'));
@@ -268,6 +292,13 @@ export async function placeImage(root: string, page: string, picked: string): Pr
   return relative(realpathSync(pageDir), target).split(sep).join('/');
 }
 
+// Whether `path` is `base` or inside it. Windows (and macOS) paths ignore case.
+export function isInside(base: string, path: string, orSame = false): boolean {
+  const fold = process.platform === 'win32' || process.platform === 'darwin' ? (p: string) => p.toLowerCase() : (p: string) => p;
+  const [b, p] = [fold(base), fold(path)];
+  return (orSame && p === b) || p.startsWith(b.endsWith(sep) ? b : b + sep);
+}
+
 // Resolve `rel` inside `base`, refusing anything that escapes it (including via
 // symlinks). Used for every path that comes from the renderer.
 export function resolveInside(base: string, rel: string): string {
@@ -277,7 +308,7 @@ export function resolveInside(base: string, rel: string): string {
   let probe = target;
   while (!existsSync(probe) && dirname(probe) !== probe) probe = dirname(probe);
   const real = join(realpathSync(probe), relative(probe, target));
-  if (real !== realBase && !real.startsWith(realBase + sep)) {
+  if (!isInside(realBase, real, true)) {
     throw new Error(`Path is outside the project: ${rel}`);
   }
   return target;
@@ -298,7 +329,24 @@ export async function writeDocument(project: ProjectInfo, rel: string, text: str
   } catch {
     // new file: keep default permissions
   }
-  await fs.rename(tmp, path);
+  await replace(tmp, path);
+}
+
+// Rename over the old file. On Windows that fails while something (a virus scanner, a
+// search indexer) has the file open, usually for a moment: try again briefly.
+async function replace(from: string, to: string) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fs.rename(from, to);
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code;
+      if (attempt >= 20 || (code !== 'EPERM' && code !== 'EBUSY' && code !== 'EACCES')) {
+        await fs.rm(from, { force: true });
+        throw e;
+      }
+      await new Promise((r) => setTimeout(r, 50 * (attempt + 1)));
+    }
+  }
 }
 
 function existsSync(path: string): boolean {

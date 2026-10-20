@@ -180,7 +180,13 @@ export function makeConditional(settings: ConditionsDef, expr: string): Command 
       if (!kind.ok) return false;
       const start = schema.nodes.html_inline.create({ value: startMarker(settings.inline[0], expr) });
       const end = schema.nodes.html_inline.create({ value: endMarker(settings.inline[1]) });
-      tr = tr.insert(to, end).insert(from, start);
+      // Spaces at the edges of the selection stay outside, so the text reads the same
+      // either way (double-clicking a word on Windows also selects the space after it).
+      const text = state.doc.textBetween(from, to, '\ufffc', '\ufffc');
+      const lead = text.length - text.trimStart().length;
+      const trail = text.length - text.trimEnd().length;
+      const [a, b] = lead + trail < text.length ? [from + lead, to - trail] : [from, to];
+      tr = tr.insert(b, end).insert(a, start);
     } else {
       const range = $from.blockRange($to);
       if (!range) return false;

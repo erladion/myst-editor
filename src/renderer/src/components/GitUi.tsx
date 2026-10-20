@@ -227,7 +227,8 @@ export function CloneDialog({ onCloned, onClose }: { onCloned: (folder: string) 
     void api.defaultCloneFolder().then((d) => setParent((p) => p || d));
     return api.onGitProgress(setProgress);
   }, []);
-  const name = useMemo(() => url.trim().replace(/\/+$/, '').split(/[/:]/).pop()?.replace(/\.git$/, '') ?? '', [url]);
+  const name = useMemo(() => url.trim().replace(/[\\/]+$/, '').split(/[\\/:]/).pop()?.replace(/\.git$/, '') ?? '', [url]);
+  const sep = parent.includes('\\') ? '\\' : '/';
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
@@ -257,7 +258,13 @@ export function CloneDialog({ onCloned, onClose }: { onCloned: (folder: string) 
               Choose…
             </button>
           </div>
-          {name && parent && <small>As {parent.replace(/\/$/, '')}/{name}</small>}
+          {name && parent && (
+            <small>
+              As {parent.replace(/[\\/]$/, '')}
+              {sep}
+              {name}
+            </small>
+          )}
         </div>
         {busy && <p className="muted" role="status">{progress ?? 'Contacting the server…'}</p>}
         {error && <p className="sphinx-error" role="alert">{error}</p>}

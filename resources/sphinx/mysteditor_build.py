@@ -258,10 +258,11 @@ def main():
     srcdir = os.path.abspath(args.srcdir)
     for w in warnings.items:
         path = w.pop("path")
-        if path and os.path.isabs(path.split(":")[0]):
-            # docutils sometimes reports "file.md:docstring of x"; keep the file part.
-            path = path.split(":")[0]
-            w["source"] = os.path.relpath(path, srcdir).replace(os.sep, "/")
+        # docutils sometimes reports "file.md:docstring of x"; keep the file part (with
+        # its drive letter on Windows: C:\docs\index.md).
+        file = re.match(r"(?:[A-Za-z]:)?[^:]*", path).group(0) if path else None
+        if file and os.path.isabs(file):
+            w["source"] = os.path.relpath(file, srcdir).replace(os.sep, "/")
         else:
             w["source"] = None
             if path:

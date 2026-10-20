@@ -51,6 +51,32 @@ describe('openProject', () => {
     expect(await buildInputsOf(root)).not.toBe(caps);
   });
 
+  it('lists pages in folders named like build output when they hold pages, and symlinked ones', async () => {
+    const root = project();
+    const docs = join(root, 'docs');
+    mkdirSync(join(docs, 'build'));
+    writeFileSync(join(docs, 'build', 'linux.md'), '# Building on Linux\n'); // a "Building" section
+    mkdirSync(join(docs, 'env'));
+    writeFileSync(join(docs, 'env', 'vars.md'), '# Environment variables\n');
+    mkdirSync(join(root, 'dist', 'pkg'), { recursive: true });
+    writeFileSync(join(root, 'dist', 'pkg', 'README.md'), '# Packaged copy\n'); // packaging output
+    mkdirSync(join(root, 'conda'));
+    mkdirSync(join(root, 'conda', 'conda-meta'));
+    writeFileSync(join(root, 'conda', 'notes.md'), '# In a conda env\n');
+    // A shared section linked into the guide, and a link leading out of the folder.
+    mkdirSync(join(root, 'shared'));
+    writeFileSync(join(root, 'shared', 'faq.md'), '# FAQ\n');
+    symlinkSync(join(root, 'shared'), join(docs, 'faq'), 'junction');
+    const elsewhere = mkdtempSync(join(tmpdir(), 'mysteditor-elsewhere-'));
+    writeFileSync(join(elsewhere, 'private.md'), '# Private\n');
+    symlinkSync(elsewhere, join(docs, 'private'), 'junction');
+    symlinkSync(docs, join(docs, 'guide', 'loop'), 'junction'); // a link back up
+    const files = await listDocuments(root);
+    // The shared page is a page of the guide too, under the guide's own path.
+    expect(files).toEqual(expect.arrayContaining(['docs/build/linux.md', 'docs/env/vars.md', 'docs/faq/faq.md', 'shared/faq.md']));
+    expect(files.some((f) => f.includes('private') || f.startsWith('dist/') || f.startsWith('conda/'))).toBe(false);
+  });
+
   it('skips build output', async () => {
     expect(await listDocuments(join(project(), 'docs'))).not.toContain('_build/junk.md');
   });
@@ -68,7 +94,7 @@ describe('resolveInside', () => {
     const base = join(root, 'docs');
     expect(() => resolveInside(base, '../outside/secret.md')).toThrow(/outside the project/);
     expect(() => resolveInside(base, '/etc/passwd')).toThrow(/outside the project/);
-    symlinkSync(join(root, 'outside'), join(base, 'link'));
+    symlinkSync(join(root, 'outside'), join(base, 'link'), 'junction'); // a junction needs no admin rights on Windows
     expect(() => resolveInside(base, 'link/secret.md')).toThrow(/outside the project/);
   });
 });

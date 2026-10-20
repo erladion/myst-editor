@@ -67,6 +67,9 @@ export function Sidebar({ projectName, files, titles, projects, builds, current,
     return { byProject, other };
   }, [files, projects]);
 
+  // A contents entry opens its page wherever it is in the folder (a page may sit in
+  // another project's folder and still be in this one's contents).
+  const allFiles = useMemo(() => new Set(files), [files]);
   const matches = filter ? files.filter((f) => `${titles[f] ?? ''} ${f}`.toLowerCase().includes(filter.toLowerCase())) : null;
   // Section headings only when there's more than one group of pages. Projects that
   // share a name (conf.py's `project`) are told apart by their folders.
@@ -124,6 +127,7 @@ export function Sidebar({ projectName, files, titles, projects, builds, current,
                 <ProjectPages
                   project={project}
                   files={sections.byProject.get(project.id) ?? []}
+                  allFiles={allFiles}
                   info={mode === 'contents' ? builds[project.id] : null}
                   current={current}
                   unsaved={unsaved}
@@ -149,6 +153,7 @@ export function Sidebar({ projectName, files, titles, projects, builds, current,
 interface ProjectPagesProps {
   project: SphinxProject;
   files: string[];
+  allFiles: Set<string>;
   info: SphinxInfo | null | undefined; // shown as contents when present
   current: string | null;
   unsaved: Set<string>;
@@ -156,7 +161,7 @@ interface ProjectPagesProps {
   fileItem: (file: string) => ReactElement;
 }
 
-function ProjectPages({ project, files, info, current, unsaved, onOpen, fileItem }: ProjectPagesProps) {
+function ProjectPages({ project, files, allFiles, info, current, unsaved, onOpen, fileItem }: ProjectPagesProps) {
   const toc = useMemo(() => (info ? tocTree(info) : null), [info]);
   // Entries the writer opened or closed; the rest show the top level, and the way to
   // the current page. Kept by page name, so a new build doesn't reset them.
@@ -169,7 +174,7 @@ function ProjectPages({ project, files, info, current, unsaved, onOpen, fileItem
   }, [ancestors]);
   if (!toc) return <FolderView folder={buildTree(files, project.dir)} depth={0} current={current} fileItem={fileItem} />;
   const tree: TreeProps = {
-    files,
+    files: allFiles,
     current,
     unsaved,
     onOpen,
@@ -205,7 +210,7 @@ function ancestorsOf(root: TocEntry | null, source: string): string[] {
 }
 
 interface TreeProps {
-  files: string[];
+  files: Set<string>;
   current: string | null;
   unsaved: Set<string>;
   onOpen: (path: string) => void;
@@ -215,7 +220,7 @@ interface TreeProps {
 
 function tocItem(entry: TocEntry, tree: TreeProps, depth: number): ReactElement {
   const { files, current, unsaved, onOpen } = tree;
-  const editable = files.includes(entry.source);
+  const editable = files.has(entry.source);
   const parent = entry.children.length > 0;
   const open = parent && tree.isOpen(entry, depth);
   return (

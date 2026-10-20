@@ -2,8 +2,11 @@
 //
 // git and ssh run a program named in GIT_ASKPASS / SSH_ASKPASS with the question as
 // its argument and read the answer from its output. Ours is a tiny Node script run
-// by Electron itself; it forwards the question over a private Unix socket (with a
-// random token) to the main process, which asks the writer.
+// by Electron itself; it forwards the question over a private Unix socket (a named
+// pipe on Windows), with a random token, to the main process, which asks the writer.
+//
+// The wrapper is a shell script on every system: Git for Windows runs scripts through
+// its own shell, as it does for its ssh.
 import { randomBytes } from 'node:crypto';
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:net';
@@ -41,7 +44,8 @@ export class AskPass {
     private ask: Asker,
   ) {
     this.dir = join(baseDir, 'git');
-    this.socketPath = join(this.dir, `askpass-${process.pid}.sock`);
+    this.socketPath =
+      process.platform === 'win32' ? `\\\\.\\pipe\\mysteditor-askpass-${process.pid}-${this.token.slice(0, 8)}` : join(this.dir, `askpass-${process.pid}.sock`);
     this.script = join(this.dir, 'askpass');
   }
 
@@ -50,13 +54,10 @@ export class AskPass {
     chmodSync(this.dir, 0o700);
     writeFileSync(join(this.dir, 'askpass.cjs'), HELPER, { mode: 0o600 });
     // GIT_ASKPASS must name a single program: a shell wrapper that runs the helper
-    // with Electron acting as Node.
-    writeFileSync(
-      this.script,
-      `#!/bin/sh\nELECTRON_RUN_AS_NODE=1 exec ${JSON.stringify(process.execPath)} ${JSON.stringify(join(this.dir, 'askpass.cjs'))} "$@"\n`,
-      { mode: 0o700 },
-    );
-    rmSync(this.socketPath, { force: true });
+    // with Electron acting as Node. The paths come from the environment, so no quoting
+    // rules (or Windows backslashes) get in the way.
+    writeFileSync(this.script, `#!/bin/sh\nELECTRON_RUN_AS_NODE=1 exec "$MYSTEDITOR_ASKPASS_NODE" "$MYSTEDITOR_ASKPASS_MAIN" "$@"\n`, { mode: 0o700 });
+    if (process.platform !== 'win32') rmSync(this.socketPath, { force: true });
     this.server = createServer((socket) => {
       let data = '';
       socket.on('data', async (chunk) => {
@@ -77,7 +78,7 @@ export class AskPass {
       this.server!.once('error', reject);
       this.server!.listen(this.socketPath, () => resolve());
     });
-    chmodSync(this.socketPath, 0o600);
+    if (process.platform !== 'win32') chmodSync(this.socketPath, 0o600);
   }
 
   // Environment for git commands, so every prompt comes to the app, never a terminal.
@@ -88,12 +89,14 @@ export class AskPass {
       SSH_ASKPASS_REQUIRE: 'force',
       GIT_TERMINAL_PROMPT: '0',
       MYSTEDITOR_ASKPASS_SOCKET: this.socketPath,
+      MYSTEDITOR_ASKPASS_NODE: process.execPath,
+      MYSTEDITOR_ASKPASS_MAIN: join(this.dir, 'askpass.cjs'),
       MYSTEDITOR_ASKPASS_TOKEN: this.token,
     };
   }
 
   stop() {
     this.server?.close();
-    rmSync(this.socketPath, { force: true });
+    if (process.platform !== 'win32') rmSync(this.socketPath, { force: true });
   }
 }

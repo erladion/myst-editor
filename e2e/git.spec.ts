@@ -8,8 +8,12 @@ import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { launch, workDir, type App } from './helpers';
 
+// An empty git config, so the developer's own settings stay out of it (Git for Windows
+// doesn't take NUL as a config file).
+const emptyConfig = join(workDir(), 'empty-gitconfig');
+writeFileSync(emptyConfig, '');
 const sh = (cwd: string, ...args: string[]) =>
-  execFileSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_AUTHOR_NAME: 'Dev', GIT_AUTHOR_EMAIL: 'dev@x', GIT_COMMITTER_NAME: 'Dev', GIT_COMMITTER_EMAIL: 'dev@x' } });
+  execFileSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_CONFIG_GLOBAL: emptyConfig, GIT_CONFIG_NOSYSTEM: '1', GIT_AUTHOR_NAME: 'Dev', GIT_AUTHOR_EMAIL: 'dev@x', GIT_COMMITTER_NAME: 'Dev', GIT_COMMITTER_EMAIL: 'dev@x' } });
 
 // A bare "server" repository holding the e2e fixture project.
 function serverRepo() {
@@ -46,7 +50,7 @@ test('clones a repository, then commits and pushes an edit', async () => {
   const clone = page.getByRole('dialog', { name: 'Clone a repository' });
   await clone.getByLabel('Repository link').fill(remote);
   await clone.getByLabel('Save in').fill(work);
-  await expect(clone).toContainText(`As ${work}/widget-docs`);
+  await expect(clone).toContainText(`As ${join(work, 'widget-docs')}`);
   await clone.getByRole('button', { name: 'Get repository' }).click();
   await expect(page.locator('.prose h1')).toHaveText('Widget documentation');
   await expect(page.locator('.chip-button', { hasText: 'main · no changes' })).toBeVisible();

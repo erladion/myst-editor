@@ -1,6 +1,7 @@
 // Cards show what the project's Sphinx build makes of blocks the editor can't render
 // itself: custom directives and tables.
 import { expect, test } from '@playwright/test';
+import { venvPython } from '../src/main/sphinx/environment.js';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,9 +12,9 @@ const shared = process.env.MYSTEDITOR_SPHINX_DATA ?? join(tmpdir(), 'mysteditor-
 
 function addVenv(project: string) {
   const env = { ...process.env, UV_CACHE_DIR: join(shared, 'uv-cache'), UV_PYTHON_INSTALL_DIR: join(shared, 'python'), UV_PYTHON_PREFERENCE: 'only-managed' };
-  const uv = join(repo, 'resources', 'uv', 'uv');
+  const uv = join(repo, 'resources', 'uv', process.platform === 'win32' ? 'uv.exe' : 'uv');
   execFileSync(uv, ['venv', '-q', '--python', '3.12', join(project, '.venv')], { env });
-  execFileSync(uv, ['pip', 'install', '-q', '--python', join(project, '.venv', 'bin', 'python'), 'sphinx', 'myst-parser'], { env });
+  execFileSync(uv, ['pip', 'install', '-q', '--python', venvPython(join(project, '.venv')), 'sphinx', 'myst-parser'], { env });
 }
 
 let ctx: App;

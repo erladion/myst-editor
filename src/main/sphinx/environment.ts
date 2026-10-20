@@ -14,13 +14,16 @@ export interface EnvPaths {
 const ENV_FORMAT = 1;
 const MARKER = '.mysteditor-env.json';
 
+const windows = process.platform === 'win32';
+
 // The uv binary: bundled with the app, fetched into resources/ for development, or on PATH.
 export function findUv(resourcesPath: string | null, appRoot: string): string | null {
+  const exe = windows ? 'uv.exe' : 'uv';
   const candidates = [
     process.env.MYSTEDITOR_UV,
-    resourcesPath && join(resourcesPath, 'uv', 'uv'),
-    join(appRoot, 'resources', 'uv', 'uv'),
-    ...(process.env.PATH ?? '').split(delimiter).map((d) => d && join(d, 'uv')),
+    resourcesPath && join(resourcesPath, 'uv', exe),
+    join(appRoot, 'resources', 'uv', exe),
+    ...(process.env.PATH ?? '').split(delimiter).map((d) => d && join(d, exe)),
   ];
   return candidates.find((c): c is string => !!c && existsSync(c)) ?? null;
 }
@@ -43,9 +46,12 @@ export function uvEnv(paths: EnvPaths): NodeJS.ProcessEnv {
   };
 }
 
-export function envPython(envDir: string): string {
-  return join(envDir, 'bin', 'python');
+// A virtual environment's interpreter: bin/python, or Scripts\python.exe on Windows.
+export function venvPython(envDir: string): string {
+  return windows ? join(envDir, 'Scripts', 'python.exe') : join(envDir, 'bin', 'python');
 }
+
+const envPython = venvPython;
 
 // A fingerprint of everything that decides the environment's contents.
 function fingerprint(plan: EnvPlan): string {

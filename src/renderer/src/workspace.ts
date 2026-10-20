@@ -26,7 +26,19 @@ export interface Session {
   // In the advanced (Markdown) view the text is the page: saved exactly as typed.
   // Null while the page is edited as formatted content.
   text: string | null;
+  // The file's line endings. Pages are edited with \n and saved with these, so a
+  // Windows (CRLF) file stays CRLF throughout and an edit changes only its own lines.
+  eol: '\n' | '\r\n';
 }
+
+// A file mostly written with CRLF is a CRLF file.
+export function lineEnding(text: string): '\n' | '\r\n' {
+  const crlf = text.split('\r\n').length - 1;
+  return crlf > 0 && crlf >= (text.split('\n').length - 1) / 2 ? '\r\n' : '\n';
+}
+
+const toLf = (text: string) => text.replace(/\r\n/g, '\n');
+const withEol = (text: string, eol: '\n' | '\r\n') => (eol === '\n' ? text : toLf(text).replace(/\n/g, '\r\n'));
 
 const AUTOSAVE_MS = 1000;
 
@@ -75,9 +87,11 @@ export class Workspace {
     return session;
   }
 
-  private load(path: string, text: string): Session {
-    const { doc, map } = loadDocument(text, configFor(this.project, path));
-    return { path, state: createEditorState(doc), map, savedText: text, dirty: false, status: { kind: 'saved' }, text: null };
+  // `eol`: keep this line ending instead of the text's own (text from the Markdown view
+  // has plain \n).
+  private load(path: string, text: string, eol = lineEnding(text)): Session {
+    const { doc, map } = loadDocument(toLf(text), configFor(this.project, path));
+    return { path, state: createEditorState(doc), map, savedText: text, dirty: false, status: { kind: 'saved' }, text: null, eol };
   }
 
   update(path: string, state: EditorState, docChanged: boolean) {
@@ -110,7 +124,8 @@ export class Workspace {
     if (s.status.kind === 'conflict' && !force) return false;
 
     // Typed Markdown is saved as it is; formatted edits are serialized and checked.
-    const result = s.text !== null ? { text: s.text, verified: true } : saveDocument(s.state.doc, s.map, configFor(this.project, path));
+    const saved = s.text !== null ? { text: s.text, verified: true } : saveDocument(s.state.doc, s.map, configFor(this.project, path));
+    const result = { ...saved, text: withEol(saved.text, s.eol) };
     if (!result.verified && !force) {
       s.status = { kind: 'unsafe', problem: result.problem! };
       this.changed();
@@ -149,11 +164,11 @@ export class Workspace {
     return [...this.sessions.values()].filter((s) => s.dirty).map((s) => s.path);
   }
 
-  // The Markdown the session would save right now.
+  // The Markdown the session would save right now (with \n line endings).
   sourceOf(path: string): string {
     const s = this.sessions.get(path)!;
     if (s.text !== null) return s.text;
-    return s.dirty ? saveDocument(s.state.doc, s.map, configFor(this.project, path)).text : s.savedText;
+    return s.dirty ? saveDocument(s.state.doc, s.map, configFor(this.project, path)).text : toLf(s.savedText);
   }
 
   // ---- the advanced (Markdown) view ----
@@ -170,7 +185,7 @@ export class Workspace {
     const s = this.sessions.get(path);
     if (!s || s.text === text) return;
     s.text = text;
-    s.dirty = text !== s.savedText;
+    s.dirty = withEol(text, s.eol) !== s.savedText;
     if (s.status.kind !== 'conflict') s.status = s.dirty ? { kind: 'pending' } : { kind: 'saved' };
     if (s.dirty) this.schedule(path);
     this.changed();
@@ -181,7 +196,7 @@ export class Workspace {
     const s = this.sessions.get(path);
     if (!s || s.text === null) return;
     const { text, dirty, status } = s;
-    const fresh = this.load(path, text);
+    const fresh = this.load(path, text, s.eol);
     this.sessions.set(path, { ...fresh, savedText: s.savedText, dirty, status });
     this.changed();
   }
@@ -216,7 +231,7 @@ export class Workspace {
   updateProject(project: ProjectInfo) {
     this.project = { ...project, files: this.project.files, titles: this.project.titles };
     for (const [path, s] of this.sessions) {
-      if (!s.dirty) this.sessions.set(path, { ...this.load(path, s.savedText), text: s.text });
+      if (!s.dirty) this.sessions.set(path, { ...this.load(path, s.savedText, s.eol), text: s.text });
     }
     this.changed();
   }

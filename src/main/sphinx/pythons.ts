@@ -1,9 +1,10 @@
 // Pythons already on this computer that could run a project's Sphinx build, for
 // machines without internet access or with a hand-made documentation environment.
-import { existsSync, realpathSync } from 'node:fs';
+import { existsSync, readdirSync, realpathSync } from 'node:fs';
 import { delimiter, dirname, join, relative, sep } from 'node:path';
 import type { PythonCandidate } from '../../shared/sphinx.js';
 import { run } from './run.js';
+import { venvPython as venv } from './environment.js';
 
 const PROBE = `
 import json, sys
@@ -61,10 +62,32 @@ function searchDirs(root: string, sourceDirs: string[]): string[] {
   return dirs;
 }
 
+// Where Python is usually installed on Windows: python.org's installers (for one user
+// or everyone) and PATH, which includes the Microsoft Store's python.exe if installed.
+function windowsPythons(): [string, string][] {
+  const places: [string, string][] = [];
+  const installs = [
+    process.env.LOCALAPPDATA && join(process.env.LOCALAPPDATA, 'Programs', 'Python'),
+    process.env.ProgramFiles,
+    process.env['ProgramFiles(x86)'],
+  ];
+  for (const base of installs) {
+    if (!base) continue;
+    try {
+      for (const name of readdirSync(base)) if (/^Python3\d+/i.test(name)) places.push([join(base, name, 'python.exe'), `Python (${name})`]);
+    } catch {
+      // not there
+    }
+  }
+  for (const dir of (process.env.PATH ?? '').split(delimiter)) {
+    if (dir) places.push([join(dir, 'python.exe'), `System Python (${dir})`]);
+  }
+  return places;
+}
+
 // Usual places for a documentation environment: virtualenvs in or above the projects,
 // the one the app was started from, and the system's Python.
 export async function findPythons(root: string, sourceDirs: string[]): Promise<PythonCandidate[]> {
-  const venv = (dir: string) => join(dir, 'bin', 'python');
   const places: [string, string][] = [];
   for (const dir of searchDirs(root, sourceDirs)) {
     const where = relative(root, dir).split(sep).join('/');
@@ -73,10 +96,13 @@ export async function findPythons(root: string, sourceDirs: string[]): Promise<P
     }
   }
   if (process.env.VIRTUAL_ENV) places.push([venv(process.env.VIRTUAL_ENV), 'Active virtual environment']);
-  for (const dir of (process.env.PATH ?? '').split(delimiter)) {
-    if (dir) places.push([join(dir, 'python3'), `System Python (${dir})`]);
+  if (process.platform === 'win32') places.push(...windowsPythons());
+  else {
+    for (const dir of (process.env.PATH ?? '').split(delimiter)) {
+      if (dir) places.push([join(dir, 'python3'), `System Python (${dir})`]);
+    }
+    places.push(['/usr/bin/python3', 'System Python'], ['/usr/libexec/platform-python', 'System Python (platform)']);
   }
-  places.push(['/usr/bin/python3', 'System Python'], ['/usr/libexec/platform-python', 'System Python (platform)']);
 
   // A venv's bin/python is a symlink to its base interpreter, so dedupe on the path
   // itself, not the resolved target; just skip ones that don't exist.
@@ -93,7 +119,7 @@ export async function findPythons(root: string, sourceDirs: string[]): Promise<P
     if (!c) continue;
     let key = c.python;
     try {
-      if (!/\/(\.?venv|\.?env)\//.test(c.python)) key = realpathSync(c.python);
+      if (!/[\\/](\.?venv|\.?env)[\\/]/.test(c.python)) key = realpathSync(c.python);
     } catch {
       // keep the path as the key
     }

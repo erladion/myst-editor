@@ -20,6 +20,7 @@
     "dist": "node scripts/fetch-uv.mjs && electron-vite build && electron-builder --linux AppImage rpm deb --publish never",
     "test:sphinx": "vitest run --config vitest.integration.config.ts",
     "fetch-uv": "node scripts/fetch-uv.mjs",
+    "dist:win": "node scripts/fetch-uv.mjs --platform win32 && electron-vite build && electron-builder --win nsis --publish never",
     "dist:appimage": "node scripts/fetch-uv.mjs && electron-vite build && electron-builder --linux AppImage --publish never"
   },
   "devDependencies": {

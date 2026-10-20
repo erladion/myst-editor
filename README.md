@@ -1,7 +1,7 @@
 # mysteditor
 
 A WYSIWYG editor for Sphinx + MyST Markdown, aimed at writers who shouldn't have to
-see Markdown syntax. An Electron app shipped as an AppImage.
+see Markdown syntax. An Electron app for Linux (AppImage, RPM, .deb) and Windows.
 
 ## Status: phase 8 — git
 
@@ -267,8 +267,9 @@ npm test                     # unit tests: round-trip, edits, save verification,
 npm run test:sphinx          # integration: real uv + Sphinx on the fixture (downloads packages once)
 npm run test:e2e             # build, then drive the real app with Playwright
 npm run typecheck
-npm run dist                 # AppImage and RPM in release/ (uv bundled in both)
+npm run dist                 # AppImage, RPM and .deb in release/ (uv bundled in each)
 npm run dist:appimage        # AppImage only (no rpmbuild needed)
+npm run dist:win             # Windows installer (run on Windows)
 ```
 
 Other tools:
@@ -302,10 +303,17 @@ Per-project environments, builds and logs live in `<userData>/sphinx/`.
 - **Debian 12+, Ubuntu 22.04+, Mint:** `sudo apt install ./MyST-Editor-<version>-amd64.deb`.
   It installs to `/opt/MyST Editor/` with a `mysteditor` command and a menu entry, and
   recommends `git`.
+- **Windows 10 and 11:** run `MyST-Editor-Setup-<version>.exe`. It installs for the
+  current user (no administrator rights), with Start menu and desktop shortcuts and
+  an uninstaller under Settings → Apps. The installer isn't code-signed yet, so
+  Windows shows "Windows protected your PC" the first time: choose **More info →
+  Run anyway**. Git features need [Git for Windows](https://git-scm.com/download/win);
+  its sign-in window (Git Credential Manager) handles HTTPS passwords and tokens.
+  Pages with Windows line endings (CRLF) keep them.
 - **Anything else:** the AppImage. It needs `libfuse2`, or run it with
   `--appimage-extract-and-run`.
-- **Git features** need `git` installed (`dnf install git`). Without it the rest of
-  the app works as before.
+- **Git features** need `git` installed (`dnf install git`, `apt install git`, or Git
+  for Windows). Without it the rest of the app works as before.
 
 Building the RPM needs `rpmbuild`: `sudo dnf install rpm-build` on Fedora/RHEL, or
 `sudo apt install rpm` on Debian/Ubuntu.

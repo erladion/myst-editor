@@ -368,7 +368,7 @@ export function App() {
     <div className="opening" role="status" aria-live="polite">
       <div className="welcome-card">
         <div className="spinner large" aria-hidden="true" />
-        <h2>Opening {opening.folder.split('/').pop()}</h2>
+        <h2>Opening {opening.folder.split(/[\\/]/).pop()}</h2>
         <p>
           {opening.step}…{opening.detail && <span className="muted"> {opening.detail}</span>}
         </p>

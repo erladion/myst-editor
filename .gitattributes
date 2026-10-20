@@ -1,0 +1,7 @@
+# Text files are checked out with LF everywhere, including Windows (where git often
+# converts to CRLF): tests compare files byte for byte. The app itself keeps whatever
+# line endings a documentation file has.
+* text=auto eol=lf
+*.png binary
+*.svg text eol=lf
+*.ico binary

@@ -2,8 +2,9 @@
 //
 // Node's recursive fs.watch on Linux walks and watches every file under the folder,
 // synchronously, including virtualenvs, node_modules and .git, which makes opening
-// a large repository slow. This watches directories only, one at a time, and never
-// descends into the ones whose changes don't matter.
+// a large repository slow. There, this watches directories only, one at a time, and
+// never descends into the ones whose changes don't matter. Windows and macOS watch a
+// whole tree natively and cheaply, so there one recursive watch is filtered instead.
 import { watch, promises as fs, type FSWatcher } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 
@@ -22,7 +23,45 @@ export class FolderWatcher {
 
   // Resolves once the folder's current directories are all watched.
   async start(): Promise<void> {
+    if (process.platform === 'win32' || process.platform === 'darwin') return this.watchTree();
     await this.add(this.root);
+  }
+
+  // Directories known to be skipped or not, by path (see `skip`).
+  private skipped = new Map<string, Promise<boolean>>();
+
+  private watchTree() {
+    const watcher = watch(this.root, { recursive: true }, async (_event, name) => {
+      if (!name || this.closed) return;
+      const parts = name.toString().split(/[\\/]/);
+      // Skip anything inside a skipped directory.
+      let dir = this.root;
+      for (const part of parts.slice(0, -1)) {
+        const path = join(dir, part);
+        let skip = this.skipped.get(path);
+        if (!skip) this.skipped.set(path, (skip = this.skip(dir, part)));
+        if (await skip) return;
+        dir = path;
+      }
+      // Windows also reports a skipped directory itself when something in it changes.
+      const last = parts[parts.length - 1];
+      if (this.skipped.has(join(dir, last)) ? await this.skipped.get(join(dir, last)) : await this.skippedDir(dir, last)) return;
+      this.onChange(parts.join('/'));
+    });
+    watcher.on('error', () => {});
+    this.watchers.set(this.root, watcher);
+  }
+
+  // A directory that's skipped (files are never skipped here: .mysteditor.toml counts).
+  private async skippedDir(parent: string, name: string): Promise<boolean> {
+    try {
+      if (!(await fs.stat(join(parent, name))).isDirectory()) return false;
+    } catch {
+      return false;
+    }
+    const skip = this.skip(parent, name);
+    this.skipped.set(join(parent, name), skip);
+    return skip;
   }
 
   close() {

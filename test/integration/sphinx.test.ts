@@ -84,7 +84,7 @@ describe('SphinxManager', () => {
     const ready = await again.until((s) => s.status.kind === 'ready');
     expect(again.states[0].info?.builtAt).toBe(built.info!.builtAt);
     expect(ready.info!.warnings).toEqual(built.info!.warnings);
-    expect(ready.info!.duration).toBeLessThan(built.info!.duration);
+    expect(again.manager.getLog()).toMatch(/0 added, 0 changed, 0 removed/); // nothing re-read
     again.manager.dispose();
 
     // A local extension appeared: its effect on pages is unknown, so start afresh.
