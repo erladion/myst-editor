@@ -51,7 +51,11 @@ test.describe('with span roles configured', () => {
   test('Tab moves between cells and Enter adds a row at the bottom', async () => {
     const { page } = ctx;
     await cell(page, 'Basic').click();
+    // The table toolbar shows once the editor has the click: keys pressed sooner can
+    // land before it, and End is then lost (Playwright is quicker than any writer).
+    await expect(page.getByRole('button', { name: 'Row below' })).toBeVisible();
     await page.keyboard.press('Tab');
+    await expect.poll(() => page.evaluate(() => getSelection()?.toString())).toBe('Free');
     await page.keyboard.press('End');
     await page.keyboard.type(' tier');
     await page.keyboard.press('Enter');
