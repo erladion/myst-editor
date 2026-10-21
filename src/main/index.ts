@@ -812,7 +812,16 @@ function buildMenu(theme: Theme = nativeTheme.themeSource) {
     {
       // Undo/redo belong to the editor, so they are handled by its keymap, not here.
       label: 'Edit',
-      submenu: [{ role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'pasteAndMatchStyle' }, { role: 'selectAll' }],
+      submenu: [
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'pasteAndMatchStyle' },
+        { role: 'selectAll' },
+        { type: 'separator' },
+        // The page handles Ctrl+F itself: the Markdown view has its own search.
+        { id: 'find', label: 'Find…', accelerator: 'CmdOrCtrl+F', registerAccelerator: false, click: () => send('find') },
+      ],
     },
     {
       label: 'View',

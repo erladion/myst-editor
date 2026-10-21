@@ -24,6 +24,7 @@ import { NewPageDialog, RenamePageDialog, type NewPage, type PageRename } from '
 import { GoToPage, Outline, markdownHeadings, type Heading } from './components/Navigation';
 import { loadPlaces, rememberPage, rememberScroll } from './places';
 import { HistoryDialog, when } from './components/History';
+import { FindBar } from './components/FindBar';
 import type { PageVersion } from '../../shared/git';
 import { addToContents, contentsPages, defaultContents, folderOf, listingPages, moveInContents, pageFolders, removeFromContents, renameReferences, retitle, type ContentsMove } from './pages';
 import type { GitInfo } from '../../shared/git';
@@ -117,6 +118,9 @@ export function App() {
   const [gitPanel, setGitPanel] = useState(false);
   const [conflicts, setConflicts] = useState(false); // settling what clashed when getting the latest
   const [branchesOpen, setBranchesOpen] = useState(false);
+  // The find bar over the formatted view: what was selected when it opened, and a
+  // counter that refocuses it when Ctrl+F is pressed again.
+  const [find, setFind] = useState<{ initial: string; focus: number } | null>(null);
   const [cloning, setCloning] = useState(false);
   const [opening, setOpening] = useState<OpenProgress | null>(null);
   const [goTo, setGoTo] = useState(false);
@@ -483,6 +487,15 @@ export function App() {
     [ws, openPage],
   );
 
+  // Ctrl+F finds in the formatted view (the Markdown view's editor has its own search).
+  const openFind = useCallback(() => {
+    const v = viewRef.current;
+    if (!v || mode !== 'rich') return false;
+    const { from, to } = v.state.selection;
+    const selected = v.state.doc.textBetween(from, to, ' ');
+    setFind((f) => ({ initial: selected && !selected.includes('\n') ? selected : (f?.initial ?? ''), focus: (f?.focus ?? 0) + 1 }));
+    return true;
+  }, [mode]);
   // Menu commands, external file changes and window closing.
   useEffect(() => {
     const offMenu = api.onMenu((cmd) => {
@@ -496,6 +509,7 @@ export function App() {
       else if (cmd === 'page-history' && ws?.current) setHistory(ws.current);
       else if (cmd === 'switch-branch' && ws) setBranchesOpen(true);
       else if (cmd === 'rename-page' && ws?.current) setRenaming(ws.current);
+      else if (cmd === 'find') openFind();
       else if (cmd === 'toggle-outline') setOutline((o) => (o === 'shown' ? 'hidden' : 'shown'));
     });
     const offRecent = api.onOpenFolderPath((folder) => void openFolder(folder));
@@ -520,7 +534,16 @@ export function App() {
       offProject();
       offClose();
     };
-  }, [ws, chooseFolder, openFolder, toggleMode, deletePage, setOutline]);
+  }, [ws, chooseFolder, openFolder, toggleMode, deletePage, setOutline, openFind]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f' && openFind()) e.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [openFind]);
+  useEffect(() => setFind(null), [session?.path, mode]);
 
   // Ctrl+/ switches between formatted editing and the Markdown view, wherever focus is.
   useEffect(() => {
@@ -763,6 +786,7 @@ export function App() {
         ) : (
         <div className={`workarea${showPreview && info ? ' with-preview' : ''}`}>
           <div className="scroll" ref={scrollRef} onScroll={onScroll}>
+            {find && view && <FindBar view={view} initial={find.initial} focusKey={find.focus} onClose={() => setFind(null)} />}
             {session && (
               <Editor
                 key={session.path}

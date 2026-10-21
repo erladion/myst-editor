@@ -56,7 +56,7 @@ and come back when you return. Pull requests stay in your git server.
 | Ctrl+N | New page |
 | Ctrl+Shift+O | Outline of the page |
 | Ctrl+/ | Markdown view |
-| Ctrl+F | Find and replace (Markdown view) |
+| Ctrl+F | Find and replace in the page |
 | Ctrl+Shift+B | Switch branch |
 
 View → Appearance switches between light and dark.
@@ -117,7 +117,8 @@ written, shown as cards with a preview from the build, and editable as source.
 
 - `{list-table}`, grid tables, definition lists and footnotes are cards, edited as
   source. Table cells hold one line.
-- No find and replace across pages.
+- Find and replace works in one page at a time, and in the formatted view it skips
+  blocks shown as cards (the Markdown view finds those).
 - Syntax an extension finds in the raw text (say `[[...]]`), rather than through a
   role or directive, is ordinary text to the editor and may get escaped when its
   paragraph is edited.

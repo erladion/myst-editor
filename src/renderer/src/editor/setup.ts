@@ -125,6 +125,7 @@ const syncSelectionOnKey = new Plugin({
 });
 
 import { inlineHtmlPlugin } from './html';
+import { findPlugin } from './find';
 
 export function createEditorState(doc: PMNode): EditorState {
   return EditorState.create({
@@ -146,6 +147,7 @@ export function createEditorState(doc: PMNode): EditorState {
       conditionsPlugin,
       previewsPlugin,
       inlineHtmlPlugin(),
+      findPlugin,
     ],
   });
 }

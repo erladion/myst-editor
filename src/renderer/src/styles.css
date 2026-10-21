@@ -2475,3 +2475,44 @@ button.secondary {
 .branch-search input {
   flex: 1;
 }
+
+/* ---- find in page ---- */
+
+.find-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 12px;
+  background: var(--bg-soft);
+  border-bottom: 1px solid var(--border);
+}
+
+.find-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.find-row input {
+  width: min(320px, 40vw);
+}
+
+.find-count {
+  min-width: 76px;
+  font-size: 12px;
+  color: var(--fg-muted);
+  text-align: center;
+}
+
+.find-match {
+  background: color-mix(in srgb, var(--tone-warning) 30%, transparent);
+  border-radius: 2px;
+}
+
+.find-current {
+  background: color-mix(in srgb, var(--tone-warning) 70%, transparent);
+  outline: 1px solid var(--tone-warning);
+}
