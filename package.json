@@ -1,7 +1,7 @@
 {
   "name": "mysteditor",
   "productName": "MyST Editor",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "WYSIWYG editor for Sphinx + MyST Markdown",
   "author": "erladion",
   "license": "UNLICENSED",
