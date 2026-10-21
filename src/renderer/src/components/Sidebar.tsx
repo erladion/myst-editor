@@ -6,6 +6,7 @@ import { projectFor } from '../../../shared/projects';
 import { basename } from '../paths';
 import { tocTree, type TocEntry } from '../sphinx';
 import type { ContentsMove } from '../pages';
+import { SearchPanel } from './SearchPanel';
 
 interface Props {
   projectName: string;
@@ -22,6 +23,11 @@ interface Props {
   onMoveInContents: (move: ContentsMove) => Promise<string | null>; // an error, or null
   onHistory: (path: string) => void;
   onRename: (path: string) => void;
+  // Search all pages, when open (focusKey refocuses its field).
+  search: { focusKey: number } | null;
+  saveAll: () => Promise<boolean>;
+  onSearchResult: (path: string, line: number, query: string, caseSensitive: boolean) => void;
+  onCloseSearch: () => void;
 }
 
 interface MenuItem {
@@ -69,7 +75,7 @@ function buildTree(files: string[], base: string): Folder {
   return root;
 }
 
-export function Sidebar({ projectName, files, titles, projects, builds, current, unsaved, onOpen, onOpenFolder, onNewPage, onDeletePage, onMoveInContents, onHistory, onRename }: Props) {
+export function Sidebar({ projectName, files, titles, projects, builds, current, unsaved, onOpen, onOpenFolder, onNewPage, onDeletePage, onMoveInContents, onHistory, onRename, search, saveAll, onSearchResult, onCloseSearch }: Props) {
   const [menu, setMenu] = useState<PageMenu | null>(null);
   useEffect(() => {
     if (!menu) return;
@@ -141,7 +147,8 @@ export function Sidebar({ projectName, files, titles, projects, builds, current,
           Open…
         </button>
       </div>
-      {anyBuilt && (
+      {search && <SearchPanel titles={titles} focusKey={search.focusKey} saveAll={saveAll} onOpen={onSearchResult} onClose={onCloseSearch} />}
+      {!search && anyBuilt && (
         <div className="sidebar-modes" role="tablist" aria-label="Show pages as">
           <button type="button" role="tab" aria-selected={mode === 'contents'} onClick={() => setMode('contents')}>
             Contents
@@ -151,8 +158,8 @@ export function Sidebar({ projectName, files, titles, projects, builds, current,
           </button>
         </div>
       )}
-      <input className="filter" placeholder="Find a page" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Find a page" />
-      <div className="tree">
+      {!search && <input className="filter" placeholder="Find a page" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Find a page" />}
+      <div className="tree" hidden={!!search}>
         {matches ? (
           <ul>{matches.map(fileItem)}</ul>
         ) : (

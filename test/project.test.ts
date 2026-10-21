@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildInputsOf, firstHeading, placeImage, saveImage, listDocuments, openProject, resolveInside, unwatchedDir } from '../src/main/project.js';
+import { buildInputsOf, firstHeading, placeImage, saveImage, searchPages, listDocuments, openProject, resolveInside, unwatchedDir } from '../src/main/project.js';
 import { FolderWatcher } from '../src/main/watch.js';
 
 function project() {
@@ -178,5 +178,28 @@ describe('saveImage', () => {
     expect(readFileSync(join(root, 'docs', 'guide', 'images', 'screenshot-2.png'))).toEqual(Buffer.from(png));
     await expect(saveImage(root, 'docs/guide/a.md', 'notes.txt', png)).rejects.toThrow(/Not an image/);
     await expect(saveImage(root, '../outside.md', 'x.png', png)).rejects.toThrow(/outside the project/);
+  });
+});
+
+describe('searchPages', () => {
+  it('finds every match, line by line, ignoring case unless asked, and stops at a limit', async () => {
+    const root = project();
+    writeFileSync(join(root, 'docs', 'guide', 'b.md'), '# Widgets\n\nA widget, and another Widget.\n');
+    const files = await listDocuments(root);
+    const all = await searchPages(root, files, 'widget', false);
+    expect(all.truncated).toBe(false);
+    expect(all.results).toEqual([
+      {
+        path: 'docs/guide/b.md',
+        matches: [
+          { line: 1, text: '# Widgets', from: 2, to: 8 },
+          { line: 3, text: 'A widget, and another Widget.', from: 2, to: 8 },
+          { line: 3, text: 'A widget, and another Widget.', from: 22, to: 28 },
+        ],
+      },
+    ]);
+    expect((await searchPages(root, files, 'Widget', true)).results[0].matches.map((m) => m.line)).toEqual([1, 3]);
+    expect(await searchPages(root, files, 'widget', false, 2)).toMatchObject({ truncated: true });
+    expect((await searchPages(root, files, '', false)).results).toEqual([]);
   });
 });

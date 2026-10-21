@@ -9,7 +9,7 @@ import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { Buffer } from 'node:buffer';
 import { DEFAULT_CONFIG, readConfPy } from '../core/project-config.js';
 import { loadEditorConfig, SETTINGS_FILE, type SettingsSource } from '../core/editor-config.js';
-import type { ProjectInfo, SphinxProject } from '../shared/api.js';
+import type { PageMatches, ProjectInfo, SphinxProject } from '../shared/api.js';
 
 // Directories whose changes never matter to the app: hidden ones (.git, .venv),
 // dependencies, build output, and Python environments whatever they're called.
@@ -272,6 +272,40 @@ function plain(text: string): string {
 // Markdown files under `base`, as sorted POSIX paths relative to it.
 export async function listDocuments(base: string): Promise<string[]> {
   return (await scanFolder(base)).files;
+}
+
+// Where `query` appears in the folder's pages (their Markdown), line by line, up to
+// `limit` matches in all.
+export async function searchPages(root: string, files: string[], query: string, caseSensitive: boolean, limit = 2000): Promise<{ results: PageMatches[]; truncated: boolean }> {
+  const needle = caseSensitive ? query : query.toLowerCase();
+  const results: PageMatches[] = [];
+  let total = 0;
+  for (const rel of files) {
+    if (!needle) break;
+    let text: string;
+    try {
+      text = await fs.readFile(join(root, rel), 'utf8');
+    } catch {
+      continue;
+    }
+    const hay = caseSensitive ? text : text.toLowerCase();
+    if (!hay.includes(needle)) continue;
+    const lines = text.split(/\r?\n/);
+    const page: PageMatches = { path: rel, matches: [] };
+    for (let i = 0; i < lines.length; i++) {
+      const line = caseSensitive ? lines[i] : lines[i].toLowerCase();
+      for (let at = line.indexOf(needle); at >= 0; at = line.indexOf(needle, at + needle.length)) {
+        if (total >= limit) {
+          if (page.matches.length) results.push(page);
+          return { results, truncated: true };
+        }
+        page.matches.push({ line: i + 1, text: lines[i], from: at, to: at + needle.length });
+        total++;
+      }
+    }
+    if (page.matches.length) results.push(page);
+  }
+  return { results, truncated: false };
 }
 
 export const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'];

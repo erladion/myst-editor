@@ -6,13 +6,14 @@ import { closeFind, findKey, move, replace, search } from '../editor/find';
 interface Props {
   view: EditorView;
   initial: string; // the selected text when it opened
+  caseSensitive?: boolean; // to start with (from a search of all pages)
   focusKey: number; // changes when Ctrl+F is pressed again: focus the field
   onClose: () => void;
 }
 
-export function FindBar({ view, initial, focusKey, onClose }: Props) {
+export function FindBar({ view, initial, caseSensitive: startCase = false, focusKey, onClose }: Props) {
   const [query, setQuery] = useState(initial);
-  const [caseSensitive, setCaseSensitive] = useState(false);
+  const [caseSensitive, setCaseSensitive] = useState(startCase);
   const [replacing, setReplacing] = useState(false);
   const [replacement, setReplacement] = useState('');
   const input = useRef<HTMLInputElement>(null);

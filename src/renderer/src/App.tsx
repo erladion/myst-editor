@@ -125,7 +125,10 @@ export function App() {
   const [echo, setEcho] = useState<string | null>(null); // a pending Emacs prefix, like C-x-
   // The find bar over the formatted view: what was selected when it opened, and a
   // counter that refocuses it when Ctrl+F is pressed again.
-  const [find, setFind] = useState<{ initial: string; focus: number } | null>(null);
+  const [find, setFind] = useState<{ initial: string; focus: number; caseSensitive?: boolean } | null>(null);
+  // Search all pages in the sidebar, and a search to show in the page being opened from it.
+  const [searchAll, setSearchAll] = useState<{ focusKey: number } | null>(null);
+  const pendingFind = useRef<{ path: string; query: string; caseSensitive: boolean } | null>(null);
   const [cloning, setCloning] = useState(false);
   const [opening, setOpening] = useState<OpenProgress | null>(null);
   const [goTo, setGoTo] = useState(false);
@@ -515,6 +518,7 @@ export function App() {
       else if (cmd === 'switch-branch' && ws) setBranchesOpen(true);
       else if (cmd === 'rename-page' && ws?.current) setRenaming(ws.current);
       else if (cmd === 'find') openFind();
+      else if (cmd === 'search-pages' && ws) setSearchAll((s) => ({ focusKey: (s?.focusKey ?? 0) + 1 }));
       else if (cmd === 'toggle-emacs') setKeyMode((k) => (k === 'emacs' ? 'standard' : 'emacs'));
       else if (cmd === 'toggle-outline') setOutline((o) => (o === 'shown' ? 'hidden' : 'shown'));
     });
@@ -577,7 +581,14 @@ export function App() {
     const proxy = new Proxy({} as EmacsApp, { get: (_t, key: keyof EmacsApp) => (...args: never[]) => (emacsApp.current[key] as (...a: never[]) => unknown)(...args) });
     return startEmacs(() => viewRef.current, proxy);
   }, [emacs]);
-  useEffect(() => setFind(null), [session?.path, mode]);
+  // A new page (or view) starts without the find bar, unless it was opened from a search.
+  useEffect(() => {
+    const pending = pendingFind.current;
+    if (pending && pending.path === session?.path && mode === 'rich') {
+      pendingFind.current = null;
+      setFind((f) => ({ initial: pending.query, caseSensitive: pending.caseSensitive, focus: (f?.focus ?? 0) + 1 }));
+    } else setFind(null);
+  }, [session?.path, mode]);
 
   // Ctrl+/ switches between formatted editing and the Markdown view, wherever focus is.
   useEffect(() => {
@@ -742,6 +753,17 @@ export function App() {
         onMoveInContents={moveInContentsOf}
         onHistory={(path) => void openPage(path).then(() => setHistory(path))}
         onRename={(path) => setRenaming(path)}
+        search={searchAll}
+        saveAll={() => ws.saveAll()}
+        onCloseSearch={() => setSearchAll(null)}
+        onSearchResult={(path, line, query, caseSensitive) => {
+          // The page, at that line; in the formatted view with the find bar showing the matches.
+          if (mode === 'rich') {
+            if (path === ws.current) setFind((f) => ({ initial: query, caseSensitive, focus: (f?.focus ?? 0) + 1 }));
+            else pendingFind.current = { path, query, caseSensitive };
+          }
+          void openPage(path).then(() => (mode === 'rich' ? setReveal(line) : setGotoLine(line)));
+        }}
       />
       <main className="main">
         {mode === 'markdown' ? (
@@ -820,7 +842,7 @@ export function App() {
         ) : (
         <div className={`workarea${showPreview && info ? ' with-preview' : ''}`}>
           <div className="scroll" ref={scrollRef} onScroll={onScroll}>
-            {find && view && <FindBar view={view} initial={find.initial} focusKey={find.focus} onClose={() => setFind(null)} />}
+            {find && view && <FindBar key={`${find.initial}|${find.caseSensitive}`} view={view} initial={find.initial} caseSensitive={find.caseSensitive} focusKey={find.focus} onClose={() => setFind(null)} />}
             {session && (
               <Editor
                 key={session.path}

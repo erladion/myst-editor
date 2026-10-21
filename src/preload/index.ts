@@ -16,6 +16,7 @@ const api: MystApi = {
   setEmacsKeys: (on) => ipcRenderer.send('set-emacs-keys', on),
   onOpenFolderPath: (cb) => on('open-folder-path', cb),
   chooseImage: (page) => ipcRenderer.invoke('choose-image', page),
+  searchPages: (query, caseSensitive) => ipcRenderer.invoke('search-pages', query, caseSensitive),
   pageHistory: (rel) => ipcRenderer.invoke('page-history', rel),
   pageVersion: (rel, version) => ipcRenderer.invoke('page-version', rel, version),
   snapshotPage: (rel) => ipcRenderer.invoke('snapshot-page', rel),

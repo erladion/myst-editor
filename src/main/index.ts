@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, promises as fs, statSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { buildInputsOf, firstHeading, isBuildInput, listDocuments, openProject, readDocument, readTitle, IMAGE_EXTENSIONS, placeImage, resolveInside, saveImage, UNWATCHED_DIRS, unwatchedDir, writeDocument } from './project.js';
+import { buildInputsOf, firstHeading, isBuildInput, listDocuments, openProject, readDocument, readTitle, IMAGE_EXTENSIONS, placeImage, resolveInside, saveImage, searchPages, UNWATCHED_DIRS, unwatchedDir, writeDocument } from './project.js';
 import { FolderWatcher } from './watch.js';
 import { Snapshots } from './history.js';
 import { SphinxManager } from './sphinx/manager.js';
@@ -521,6 +521,10 @@ function registerIpc() {
     return placeImage(requireProject().root, page, path);
   });
   ipcMain.handle('add-image-data', (_e, page: string, name: string, bytes: Uint8Array) => saveImage(requireProject().root, page, name, bytes));
+  ipcMain.handle('search-pages', (_e, query: string, caseSensitive: boolean) => {
+    const p = requireProject();
+    return searchPages(p.root, p.files, String(query), !!caseSensitive);
+  });
   ipcMain.handle('choose-image', async (_e, page: string) => {
     const p = requireProject();
     const pagePath = resolveInside(p.root, page);
@@ -851,6 +855,7 @@ function buildMenu(theme: Theme = nativeTheme.themeSource) {
         { type: 'separator' },
         // The page handles Ctrl+F itself: the Markdown view has its own search.
         { id: 'find', label: withKeys('Find…', 'C-s'), accelerator: emacsKeys ? undefined : 'CmdOrCtrl+F', registerAccelerator: false, click: () => send('find') },
+        { id: 'search-pages', label: 'Search All Pages…', accelerator: 'CmdOrCtrl+Shift+F', click: () => send('search-pages') },
         { type: 'separator' },
         // The window keeps the choice and tells the menu (see set-emacs-keys).
         { id: 'emacs-keys', label: 'Emacs Keys', type: 'checkbox', checked: emacsKeys, click: () => send('toggle-emacs') },
@@ -886,6 +891,36 @@ function buildMenu(theme: Theme = nativeTheme.themeSource) {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+// The right-click menu for a place in the page: editing commands where text can be
+// typed, Copy where text is selected. Null where there's nothing to offer.
+export function contextMenu(params: Electron.ContextMenuParams, page: Electron.WebContents): Menu | null {
+  const { isEditable, editFlags, selectionText } = params;
+  // Each acts on the app's page itself (a role would act on whichever window has focus).
+  const item = (id: string, label: string, accelerator: string, enabled: boolean, act: () => void): MenuItemConstructorOptions => ({
+    id,
+    label,
+    accelerator,
+    registerAccelerator: false,
+    enabled,
+    click: act,
+  });
+  const items: MenuItemConstructorOptions[] = [];
+  if (isEditable) {
+    items.push(
+      item('cut', 'Cut', 'CmdOrCtrl+X', editFlags.canCut && !!selectionText, () => page.cut()),
+      item('copy', 'Copy', 'CmdOrCtrl+C', editFlags.canCopy && !!selectionText, () => page.copy()),
+      item('paste', 'Paste', 'CmdOrCtrl+V', editFlags.canPaste, () => page.paste()),
+      { type: 'separator' },
+      item('selectall', 'Select All', 'CmdOrCtrl+A', editFlags.canSelectAll, () => page.selectAll()),
+    );
+  } else if (selectionText.trim()) items.push(item('copy', 'Copy', 'CmdOrCtrl+C', true, () => page.copy()));
+  if (!items.length) return null;
+  const menu = Menu.buildFromTemplate(items);
+  // For the tests, which can't open a native menu.
+  (globalThis as { lastContextMenu?: Menu }).lastContextMenu = menu;
+  return menu;
+}
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1280,
@@ -902,6 +937,12 @@ function createWindow() {
   });
   win.once('ready-to-show', () => win?.show());
   win.on('focus', checkOnFocus);
+
+  // Right-click: cut, copy and paste, as far as they apply where it was clicked.
+  win.webContents.on('context-menu', (_e, params) => {
+    const menu = win && contextMenu(params, win.webContents);
+    if (menu) menu.popup({ window: win! });
+  });
 
   // Links open in the system browser; the app window never navigates away.
   win.webContents.setWindowOpenHandler(({ url }) => {

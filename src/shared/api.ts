@@ -26,6 +26,12 @@ export interface ProjectInfo {
   buildInputs: string;
 }
 
+// Search results in one page: each match with its line (1-based) and where in it.
+export interface PageMatches {
+  path: string;
+  matches: { line: number; text: string; from: number; to: number }[];
+}
+
 export interface OpenProgress {
   folder: string;
   step: string; // e.g. "Reading page titles"
@@ -43,7 +49,7 @@ export interface ProjectChanged {
   project: ProjectInfo;
 }
 
-export type MenuCommand = 'open-folder' | 'save' | 'toggle-source' | 'clone' | 'new-page' | 'delete-page' | 'go-to-page' | 'toggle-outline' | 'page-history' | 'switch-branch' | 'rename-page' | 'find' | 'toggle-emacs';
+export type MenuCommand = 'open-folder' | 'save' | 'toggle-source' | 'clone' | 'new-page' | 'delete-page' | 'go-to-page' | 'toggle-outline' | 'page-history' | 'switch-branch' | 'rename-page' | 'find' | 'toggle-emacs' | 'search-pages';
 
 export interface MystApi {
   // The project from the command line or the last session, if any.
@@ -77,6 +83,8 @@ export interface MystApi {
   pageHistory(rel: string): Promise<PageVersion[]>;
   pageVersion(rel: string, version: PageVersion): Promise<string | null>;
   snapshotPage(rel: string): Promise<void>;
+  // Search every page's Markdown for some text.
+  searchPages(query: string, caseSensitive: boolean): Promise<{ results: PageMatches[]; truncated: boolean }>;
   // Pick an image for a page: its path relative to the page, or null if cancelled.
   // Images from outside the opened folder are copied into one.
   chooseImage(page: string): Promise<string | null>;

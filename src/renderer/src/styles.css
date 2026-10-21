@@ -2522,3 +2522,96 @@ button.secondary {
   color: var(--accent);
   padding: 0 6px;
 }
+
+/* ---- search all pages ---- */
+
+.search-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.search-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.search-row {
+  display: flex;
+  gap: 4px;
+  padding: 0 12px;
+}
+
+.search-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.search-summary {
+  margin: 6px 12px;
+  font-size: 12px;
+}
+
+.search-results {
+  overflow: auto;
+  flex: 1;
+  padding-bottom: 12px;
+}
+
+.search-page-title {
+  padding: 6px 12px 2px;
+  font-weight: 600;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-page ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.search-match {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+  border: none;
+  background: none;
+  border-radius: 0;
+  text-align: left;
+  padding: 3px 12px 3px 18px;
+  font-size: 12.5px;
+}
+
+.search-match:hover {
+  background: var(--border);
+}
+
+.search-line {
+  flex: none;
+  color: var(--fg-muted);
+  min-width: 2.5em;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding-top: 1px;
+}
+
+.search-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-text mark {
+  background: color-mix(in srgb, var(--tone-warning) 40%, transparent);
+  color: inherit;
+  border-radius: 2px;
+}
