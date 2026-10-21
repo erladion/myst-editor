@@ -837,6 +837,9 @@ function buildMenu(theme: Theme = nativeTheme.themeSource) {
         { type: 'separator' },
         // The page handles Ctrl+F itself: the Markdown view has its own search.
         { id: 'find', label: withKeys('Find…', 'C-s'), accelerator: emacsKeys ? undefined : 'CmdOrCtrl+F', registerAccelerator: false, click: () => send('find') },
+        { type: 'separator' },
+        // The window keeps the choice and tells the menu (see set-emacs-keys).
+        { id: 'emacs-keys', label: 'Emacs Keys', type: 'checkbox', checked: emacsKeys, click: () => send('toggle-emacs') },
       ],
     },
     {

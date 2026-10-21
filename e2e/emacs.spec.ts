@@ -10,15 +10,17 @@ const saved = (page: Page) => expect(page.locator('.save-status')).toHaveText('A
 const keys = async (page: Page, ...combos: string[]) => {
   for (const k of combos) await page.keyboard.press(k);
 };
+// Edit → Emacs Keys.
+const emacsKeys = () => ctx.app.evaluate(({ Menu }) => Menu.getApplicationMenu()!.getMenuItemById('emacs-keys')!.click());
 test.beforeEach(async () => {
   ctx = await launch();
   const { page } = ctx;
   await page.getByRole('button', { name: 'Not now' }).click();
   await page.getByRole('button', { name: 'guide' }).click();
   await page.getByRole('button', { name: 'Installing Widget' }).click();
-  await page.getByRole('button', { name: 'Emacs' }).click();
-  await expect(page.getByRole('button', { name: 'Emacs' })).toHaveAttribute('aria-pressed', 'true');
-  // The menu leaves Emacs' keys alone and shows the Emacs ones.
+  await emacsKeys();
+  // The menu ticks the item, leaves Emacs' keys alone and shows the Emacs ones.
+  await expect.poll(() => ctx.app.evaluate(({ Menu }) => Menu.getApplicationMenu()!.getMenuItemById('emacs-keys')!.checked)).toBe(true);
   await expect
     .poll(() => ctx.app.evaluate(({ Menu }) => {
       const item = Menu.getApplicationMenu()!.getMenuItemById('go-to-page')!;
@@ -94,8 +96,8 @@ test('the same keys in the Markdown view, and the usual ones back when off', asy
   expect(file()).toContain('Install the package with pip: Or uv.\n');
 
   // Off again: Ctrl+/ goes back to the formatted view, and Ctrl+B is bold.
-  await page.getByRole('button', { name: 'Emacs' }).click();
-  await expect(page.getByRole('button', { name: 'Emacs' })).toHaveAttribute('aria-pressed', 'false');
+  await emacsKeys();
+  await expect.poll(() => ctx.app.evaluate(({ Menu }) => Menu.getApplicationMenu()!.getMenuItemById('emacs-keys')!.checked)).toBe(false);
   await page.locator('.cm-content').click();
   await keys(page, 'Control+/');
   await expect(page.locator('.prose')).toBeVisible();

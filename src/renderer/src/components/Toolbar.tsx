@@ -29,21 +29,6 @@ async function makeConditionalInteractive(ctx: EditorContext, view: EditorView) 
   view.focus();
 }
 
-// Emacs keys on or off, in both views' bars.
-export function EmacsToggle({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
-  return (
-    <button
-      type="button"
-      className={`tb wide${on ? ' active' : ''}`}
-      aria-pressed={on}
-      title={on ? 'Emacs keys are on (C-f, C-x C-s…). Click for the usual keys.' : 'Use Emacs keys (C-f, C-k, C-x C-s…)'}
-      onClick={() => onChange(!on)}
-    >
-      Emacs
-    </button>
-  );
-}
-
 export function ViewAsMenu({ settings, viewAs, onViewAs }: { settings: ConditionsDef; viewAs: string[] | null; onViewAs: (v: string[] | null) => void }) {
   const capabilities = settings.capabilities;
   const [open, setOpen] = useState(false);
@@ -100,13 +85,11 @@ interface Props {
   previewOpen: boolean;
   onTogglePreview: () => void;
   onHistory: () => void; // the page's earlier versions
-  emacs: boolean;
-  onEmacs: (on: boolean) => void;
   viewAs: string[] | null;
   onViewAs: (capabilities: string[] | null) => void;
 }
 
-export function Toolbar({ view, ctx, onMarkdown, previewAvailable, previewOpen, onTogglePreview, onHistory, emacs, onEmacs, viewAs, onViewAs }: Props) {
+export function Toolbar({ view, ctx, onMarkdown, previewAvailable, previewOpen, onTogglePreview, onHistory, viewAs, onViewAs }: Props) {
   const conditions = ctx.config.editor.conditions;
   const state = view?.state;
   const run = (cmd: Command) => {
@@ -222,8 +205,6 @@ export function Toolbar({ view, ctx, onMarkdown, previewAvailable, previewOpen, 
       <button type="button" className="tb wide" title="Earlier versions of this page, and what changed" disabled={!view} onClick={onHistory}>
         History
       </button>
-      <span className="tb-sep" />
-      <EmacsToggle on={emacs} onChange={onEmacs} />
     </div>
     {inTable && (
       <div className="toolbar toolbar-table" role="toolbar" aria-label="Table">

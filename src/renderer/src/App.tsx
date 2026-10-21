@@ -515,6 +515,7 @@ export function App() {
       else if (cmd === 'switch-branch' && ws) setBranchesOpen(true);
       else if (cmd === 'rename-page' && ws?.current) setRenaming(ws.current);
       else if (cmd === 'find') openFind();
+      else if (cmd === 'toggle-emacs') setKeyMode((k) => (k === 'emacs' ? 'standard' : 'emacs'));
       else if (cmd === 'toggle-outline') setOutline((o) => (o === 'shown' ? 'hidden' : 'shown'));
     });
     const offRecent = api.onOpenFolderPath((folder) => void openFolder(folder));
@@ -539,7 +540,7 @@ export function App() {
       offProject();
       offClose();
     };
-  }, [ws, chooseFolder, openFolder, toggleMode, deletePage, setOutline, openFind]);
+  }, [ws, chooseFolder, openFolder, toggleMode, deletePage, setOutline, openFind, setKeyMode]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -753,8 +754,6 @@ export function App() {
             viewAs={viewAs}
             onViewAs={setViewAs}
             onHistory={() => ws.current && setHistory(ws.current)}
-            emacs={emacs}
-            onEmacs={(on) => setKeyMode(on ? 'emacs' : 'standard')}
           />
         ) : (
         <Toolbar
@@ -765,8 +764,6 @@ export function App() {
           previewOpen={showPreview}
           onTogglePreview={() => setShowPreview(!showPreview)}
           onHistory={() => ws.current && setHistory(ws.current)}
-          emacs={emacs}
-          onEmacs={(on) => setKeyMode(on ? 'emacs' : 'standard')}
           viewAs={viewAs}
           onViewAs={setViewAs}
         />

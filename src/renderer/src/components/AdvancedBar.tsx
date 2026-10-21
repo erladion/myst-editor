@@ -1,6 +1,6 @@
 // The advanced view's bar: back to formatted editing, and what the preview shows.
 import type { ConditionsDef } from '../../../core/editor-config';
-import { EmacsToggle, ViewAsMenu } from './Toolbar';
+import { ViewAsMenu } from './Toolbar';
 
 interface Props {
   preview: 'live' | 'built' | 'off';
@@ -11,11 +11,9 @@ interface Props {
   viewAs: string[] | null;
   onViewAs: (v: string[] | null) => void;
   onHistory: () => void; // the page's earlier versions
-  emacs: boolean;
-  onEmacs: (on: boolean) => void;
 }
 
-export function AdvancedBar({ preview, onPreview, built, onRich, conditions, viewAs, onViewAs, onHistory, emacs, onEmacs }: Props) {
+export function AdvancedBar({ preview, onPreview, built, onRich, conditions, viewAs, onViewAs, onHistory }: Props) {
   const option = (value: Props['preview'], label: string, title: string, disabled = false) => (
     <button type="button" aria-pressed={preview === value} title={title} disabled={disabled} onClick={() => onPreview(value)}>
       {label}
@@ -39,8 +37,6 @@ export function AdvancedBar({ preview, onPreview, built, onRich, conditions, vie
       <button type="button" className="tb wide" title="Earlier versions of this page, and what changed" onClick={onHistory}>
         History
       </button>
-      <span className="tb-sep" />
-      <EmacsToggle on={emacs} onChange={onEmacs} />
     </div>
   );
 }
