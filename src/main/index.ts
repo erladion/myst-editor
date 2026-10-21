@@ -72,19 +72,32 @@ let gitBusy = false;
 // A clash with set-aside edits being settled: nothing on disk says so once the files
 // are settled (see Git.continue).
 let finishing: GitInfo['operation'] = null;
+let checking = false;
 async function checkServer() {
-  if (gitBusy || !project) return;
+  if (gitBusy || checking || !project) return;
   const root = await git.repoRoot(project.root);
   if (!root || gitBusy) return;
   const status = await git.status(root).catch(() => null);
   if (!status?.upstream) return;
+  checking = true;
   try {
-    await git.fetch(root);
+    await exclusive(() => git.fetch(root));
     lastCheck = { at: Date.now(), error: null };
   } catch (e) {
     lastCheck = { at: Date.now(), error: e instanceof Error ? e.message : String(e) };
+  } finally {
+    checking = false;
   }
   refreshGit();
+}
+
+// Git commands that change the repository take turns: two at once (a background
+// check fetching while the writer gets the latest, say) can trip over git's locks.
+let gitLock: Promise<unknown> = Promise.resolve();
+function exclusive<T>(fn: () => Promise<T>): Promise<T> {
+  const turn = gitLock.then(fn, fn);
+  gitLock = turn.catch(() => {});
+  return turn;
 }
 setInterval(() => void checkServer(), CHECK_EVERY_MS).unref();
 let lastFocusCheck = 0;
@@ -99,7 +112,8 @@ function checkOnFocus() {
 async function gitAction<T>(fn: (root: string) => Promise<T>): Promise<T> {
   gitBusy = true;
   try {
-    return await fn(await requireRepo());
+    const root = await requireRepo();
+    return await exclusive(() => fn(root));
   } finally {
     gitBusy = false;
     refreshGit();

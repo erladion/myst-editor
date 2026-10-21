@@ -90,7 +90,9 @@ export class Git {
 
   // Branch, upstream and changed files. Paths are relative to the repository root.
   async status(root: string): Promise<GitStatus> {
-    const out = await this.checked(['status', '--porcelain=v2', '--branch', '-z', '--untracked-files=all'], root);
+    // --no-optional-locks: reading the status doesn't take git's index lock, so it never
+    // gets in the way of a commit or a rebase running at the same time.
+    const out = await this.checked(['--no-optional-locks', 'status', '--porcelain=v2', '--branch', '-z', '--untracked-files=all'], root);
     const status: GitStatus = { branch: null, upstream: null, ahead: 0, behind: 0, changes: [] };
     const entries = out.split('\0');
     for (let i = 0; i < entries.length; i++) {
@@ -390,6 +392,9 @@ export function explain(output: string): string {
   }
   if (/\[rejected\]|non-fast-forward|fetch first/.test(o)) return 'The server has newer commits. Get the latest version first, then push again.';
   if (/nothing to commit/.test(o)) return 'There’s nothing to commit.';
+  if (/cannot lock ref|unable to create .*\.lock|index\.lock.*exists/.test(o)) {
+    return 'Another git command was busy with the repository (perhaps in a terminal). Try again in a moment.';
+  }
   const last = output.trim().split('\n').filter((l) => /^(fatal|error):/.test(l)).pop();
   return last ? last.replace(/^(fatal|error):\s*/, '') : 'Git reported a problem; see the details.';
 }

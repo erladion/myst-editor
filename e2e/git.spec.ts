@@ -99,7 +99,12 @@ test('gets the latest version from the server', async () => {
   // No name or email is needed just to get the latest version.
   await page.locator('.chip-button', { hasText: 'no changes' }).click();
   const panel = page.getByRole('dialog', { name: 'Changes' });
-  await panel.getByRole('button', { name: 'Get latest' }).click();
+  // Background checks of the server running at the same moment (opening the panel
+  // starts one) must wait their turn rather than trip over git's locks.
+  await Promise.all([
+    ...Array.from({ length: 3 }, () => page.evaluate(() => window.myst.gitCheck())),
+    panel.getByRole('button', { name: 'Get latest' }).click(),
+  ]);
   await expect(panel).toContainText('Up to date with the server.');
   await panel.getByRole('button', { name: 'Close' }).click();
   await expect(page.locator('.prose')).toContainText('Rewritten by a colleague.');
