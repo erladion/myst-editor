@@ -61,6 +61,14 @@ and come back when you return. Pull requests stay in your git server.
 
 View → Appearance switches between light and dark.
 
+**Emacs keys:** the **Emacs** button at the right of the toolbar switches them on, in
+both views: C-f/b/n/p, M-f/b, C-a/e, M-</>, C-v/M-v to move; C-SPC sets the mark;
+C-d, M-d, M-DEL, C-k, C-w, M-w and C-y (one kill ring for both views); C-o, C-t,
+C-x h, C-/ to undo; C-s and C-r to find; C-g to cancel; C-x C-s to save, C-x b to go
+to a page, C-x C-f to open a folder; C-c C-s b / i / c for bold, italic and code, and
+C-c m for the Markdown view. The menu then leaves those keys alone. Fields in dialogs
+keep their usual keys.
+
 ## Project settings
 
 A `.mysteditor.toml` next to `conf.py` (or at the top of the folder, for all its

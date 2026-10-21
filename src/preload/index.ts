@@ -13,6 +13,7 @@ const api: MystApi = {
   chooseProject: () => ipcRenderer.invoke('choose-project'),
   openProject: (folder) => ipcRenderer.invoke('open-project', folder),
   recentFolders: () => ipcRenderer.invoke('recent-folders'),
+  setEmacsKeys: (on) => ipcRenderer.send('set-emacs-keys', on),
   onOpenFolderPath: (cb) => on('open-folder-path', cb),
   chooseImage: (page) => ipcRenderer.invoke('choose-image', page),
   pageHistory: (rel) => ipcRenderer.invoke('page-history', rel),

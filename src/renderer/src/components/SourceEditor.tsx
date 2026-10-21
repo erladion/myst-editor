@@ -22,6 +22,7 @@ import { highlightSelectionMatches, search, searchKeymap } from '@codemirror/sea
 import { lintGutter, setDiagnostics, type Diagnostic } from '@codemirror/lint';
 import { tags } from '@lezer/highlight';
 import { imageFiles } from '../editor/images';
+import { registerSourceView } from '../emacs';
 import type { SphinxWarning } from '../../../shared/sphinx';
 
 interface Props {
@@ -169,9 +170,11 @@ export function SourceEditor({ text, onChange, problems, onLine, goto, onGotoDon
     };
     view.scrollDOM.addEventListener('scroll', onScroll);
     viewRef.current = view;
+    registerSourceView(view);
     view.focus();
     return () => {
       cancelAnimationFrame(frame);
+      registerSourceView(null);
       view.destroy();
       viewRef.current = null;
     };

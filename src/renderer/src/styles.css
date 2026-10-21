@@ -2516,3 +2516,9 @@ button.secondary {
   background: color-mix(in srgb, var(--tone-warning) 70%, transparent);
   outline: 1px solid var(--tone-warning);
 }
+
+.emacs-echo {
+  font: 600 12px var(--font-mono);
+  color: var(--accent);
+  padding: 0 6px;
+}

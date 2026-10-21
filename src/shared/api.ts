@@ -50,6 +50,8 @@ export interface MystApi {
   initialProject(): Promise<ProjectInfo | null>;
   chooseProject(): Promise<ProjectInfo | null>;
   openProject(folder: string): Promise<ProjectInfo>;
+  // Emacs keys on or off (the menu then leaves Emacs' keys alone).
+  setEmacsKeys(on: boolean): void;
   // Folders opened lately that still exist, most recent first.
   recentFolders(): Promise<string[]>;
   // File → Open Recent asked for a folder.

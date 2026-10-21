@@ -25,6 +25,8 @@ import { GoToPage, Outline, markdownHeadings, type Heading } from './components/
 import { loadPlaces, rememberPage, rememberScroll } from './places';
 import { HistoryDialog, when } from './components/History';
 import { FindBar } from './components/FindBar';
+import { startEmacs, type EmacsApp } from './emacs';
+import { move as moveFind } from './editor/find';
 import type { PageVersion } from '../../shared/git';
 import { addToContents, contentsPages, defaultContents, folderOf, listingPages, moveInContents, pageFolders, removeFromContents, renameReferences, retitle, type ContentsMove } from './pages';
 import type { GitInfo } from '../../shared/git';
@@ -118,6 +120,9 @@ export function App() {
   const [gitPanel, setGitPanel] = useState(false);
   const [conflicts, setConflicts] = useState(false); // settling what clashed when getting the latest
   const [branchesOpen, setBranchesOpen] = useState(false);
+  const [keyMode, setKeyMode] = useStoredState<'standard' | 'emacs'>('mysteditor.keys', 'standard');
+  const emacs = keyMode === 'emacs';
+  const [echo, setEcho] = useState<string | null>(null); // a pending Emacs prefix, like C-x-
   // The find bar over the formatted view: what was selected when it opened, and a
   // counter that refocuses it when Ctrl+F is pressed again.
   const [find, setFind] = useState<{ initial: string; focus: number } | null>(null);
@@ -538,24 +543,52 @@ export function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f' && openFind()) e.preventDefault();
+      if (!emacs && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f' && openFind()) e.preventDefault();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [openFind]);
+  }, [openFind, emacs]);
+
+  // Emacs keys: the menu leaves them alone, and the window reads them (see emacs.ts).
+  // The app's side goes through a ref, so the keys always reach the current state.
+  const emacsApp = useRef<EmacsApp>(null!);
+  emacsApp.current = {
+    save: () => void (ws?.current && ws.save(ws.current)),
+    goToPage: () => ws && setGoTo(true),
+    openFolder: () => void chooseFolder(),
+    toggleMarkdown: () => ws?.current && toggleMode(),
+    findInPage: (forward) => {
+      const v = viewRef.current;
+      if (find && v) v.dispatch(moveFind(v.state, forward ? 1 : -1));
+      else openFind();
+    },
+    closeFind: () => {
+      if (!find) return false;
+      setFind(null);
+      viewRef.current?.focus();
+      return true;
+    },
+    prefix: setEcho,
+  };
+  useEffect(() => {
+    api.setEmacsKeys(emacs);
+    if (!emacs) return;
+    const proxy = new Proxy({} as EmacsApp, { get: (_t, key: keyof EmacsApp) => (...args: never[]) => (emacsApp.current[key] as (...a: never[]) => unknown)(...args) });
+    return startEmacs(() => viewRef.current, proxy);
+  }, [emacs]);
   useEffect(() => setFind(null), [session?.path, mode]);
 
   // Ctrl+/ switches between formatted editing and the Markdown view, wherever focus is.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === '/' && ws?.current) {
+      if (!emacs && (e.ctrlKey || e.metaKey) && e.key === '/' && ws?.current) {
         e.preventDefault();
         toggleMode();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [ws, toggleMode]);
+  }, [ws, toggleMode, emacs]);
 
   // Ctrl+K for links (needs the dialog, so it lives here rather than in the keymap).
   useEffect(() => {
@@ -720,6 +753,8 @@ export function App() {
             viewAs={viewAs}
             onViewAs={setViewAs}
             onHistory={() => ws.current && setHistory(ws.current)}
+            emacs={emacs}
+            onEmacs={(on) => setKeyMode(on ? 'emacs' : 'standard')}
           />
         ) : (
         <Toolbar
@@ -730,6 +765,8 @@ export function App() {
           previewOpen={showPreview}
           onTogglePreview={() => setShowPreview(!showPreview)}
           onHistory={() => ws.current && setHistory(ws.current)}
+          emacs={emacs}
+          onEmacs={(on) => setKeyMode(on ? 'emacs' : 'standard')}
           viewAs={viewAs}
           onViewAs={setViewAs}
         />
@@ -832,6 +869,11 @@ export function App() {
             >
               Settings: {settingsProblems.length} problem{settingsProblems.length === 1 ? '' : 's'}
             </button>
+          )}
+          {echo && (
+            <span className="emacs-echo" aria-live="polite" title="Waiting for the rest of an Emacs key (C-g cancels)">
+              {echo}
+            </span>
           )}
           <GitChip info={gitInfo} onOpen={() => (gitInfo?.operation ? setConflicts(true) : setGitPanel(true))} onBranches={() => setBranchesOpen(true)} />
           <SphinxChip

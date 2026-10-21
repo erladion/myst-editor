@@ -154,6 +154,15 @@ interface Settings {
 
 // Settings.recent, for the File → Open Recent menu.
 let recentFolders: string[] = [];
+// Emacs keys (set from the window): the menu then leaves the keys Emacs uses alone.
+let emacsKeys = false;
+
+// A menu item's shortcut, unless Emacs keys are on: then the window handles the keys,
+// and the label shows the Emacs ones (see withKeys; Electron can't show a chord).
+function keys(accelerator: string, _emacs: string | null): Partial<MenuItemConstructorOptions> {
+  return emacsKeys ? { registerAccelerator: false } : { accelerator };
+}
+const withKeys = (label: string, emacs: string | null) => (emacsKeys && emacs ? `${label}    ${emacs}` : label);
 
 // The writer's variables for the open folder (see Settings.sphinxEnv).
 let userEnv: Record<string, string> = {};
@@ -475,6 +484,11 @@ function registerIpc() {
   });
   ipcMain.handle('open-project', (_e, folder: string) => useProject(folder));
   // Recent folders that are still there, for the welcome screen.
+  ipcMain.on('set-emacs-keys', (_e, on: boolean) => {
+    if (emacsKeys === !!on) return;
+    emacsKeys = !!on;
+    buildMenu();
+  });
   ipcMain.handle('recent-folders', async () => {
     const out: string[] = [];
     for (const folder of (await loadSettings()).recent ?? []) {
@@ -787,7 +801,7 @@ function buildMenu(theme: Theme = nativeTheme.themeSource) {
     {
       label: 'File',
       submenu: [
-        { label: 'Open Folder…', accelerator: 'CmdOrCtrl+O', click: () => send('open-folder') },
+        { label: withKeys('Open Folder…', 'C-x C-f'), ...keys('CmdOrCtrl+O', 'C-x C-f'), click: () => send('open-folder') },
         {
           label: 'Open Recent',
           submenu: recentFolders.length
@@ -796,15 +810,15 @@ function buildMenu(theme: Theme = nativeTheme.themeSource) {
         },
         { label: 'Clone Repository…', click: () => send('clone') },
         { type: 'separator' },
-        { id: 'go-to-page', label: 'Go to Page…', accelerator: 'CmdOrCtrl+P', click: () => send('go-to-page') },
+        { id: 'go-to-page', label: withKeys('Go to Page…', 'C-x b'), ...keys('CmdOrCtrl+P', 'C-x b'), click: () => send('go-to-page') },
         { type: 'separator' },
-        { label: 'New Page…', accelerator: 'CmdOrCtrl+N', click: () => send('new-page') },
+        { label: 'New Page…', ...keys('CmdOrCtrl+N', null), click: () => send('new-page') },
         { label: 'Delete Page…', click: () => send('delete-page') },
         { id: 'page-history', label: 'Page History…', click: () => send('page-history') },
         { id: 'rename-page', label: 'Rename Page…', click: () => send('rename-page') },
         { type: 'separator' },
         { id: 'switch-branch', label: 'Switch Branch…', accelerator: 'CmdOrCtrl+Shift+B', click: () => send('switch-branch') },
-        { label: 'Save', accelerator: 'CmdOrCtrl+S', click: () => send('save') },
+        { label: withKeys('Save', 'C-x C-s'), ...keys('CmdOrCtrl+S', 'C-x C-s'), click: () => send('save') },
         { type: 'separator' },
         { role: 'quit' },
       ],
@@ -813,14 +827,16 @@ function buildMenu(theme: Theme = nativeTheme.themeSource) {
       // Undo/redo belong to the editor, so they are handled by its keymap, not here.
       label: 'Edit',
       submenu: [
-        { role: 'cut' },
-        { role: 'copy' },
-        { role: 'paste' },
-        { role: 'pasteAndMatchStyle' },
-        { role: 'selectAll' },
+        // With Emacs keys, C-x and C-c start chords, C-v moves down and C-a goes to the
+        // start of the line: these items keep their roles but not those keys.
+        { role: 'cut', ...(emacsKeys ? { label: 'Cut    C-w', registerAccelerator: false } : {}) },
+        { role: 'copy', ...(emacsKeys ? { label: 'Copy    M-w', registerAccelerator: false } : {}) },
+        { role: 'paste', ...(emacsKeys ? { label: 'Paste    C-y', registerAccelerator: false } : {}) },
+        { role: 'pasteAndMatchStyle', ...(emacsKeys ? { registerAccelerator: false } : {}) },
+        { role: 'selectAll', ...(emacsKeys ? { label: 'Select All    C-x h', registerAccelerator: false } : {}) },
         { type: 'separator' },
         // The page handles Ctrl+F itself: the Markdown view has its own search.
-        { id: 'find', label: 'Find…', accelerator: 'CmdOrCtrl+F', registerAccelerator: false, click: () => send('find') },
+        { id: 'find', label: withKeys('Find…', 'C-s'), accelerator: emacsKeys ? undefined : 'CmdOrCtrl+F', registerAccelerator: false, click: () => send('find') },
       ],
     },
     {
@@ -828,7 +844,7 @@ function buildMenu(theme: Theme = nativeTheme.themeSource) {
       submenu: [
         // The page handles Ctrl+/ itself (so it also works over the source editor);
         // the menu only shows the shortcut.
-        { label: 'Markdown View', accelerator: 'CmdOrCtrl+/', registerAccelerator: false, click: () => send('toggle-source') },
+        { label: withKeys('Markdown View', 'C-c m'), accelerator: emacsKeys ? undefined : 'CmdOrCtrl+/', registerAccelerator: false, click: () => send('toggle-source') },
         { id: 'outline', label: 'Outline', accelerator: 'CmdOrCtrl+Shift+O', click: () => send('toggle-outline') },
         {
           label: 'Appearance',
