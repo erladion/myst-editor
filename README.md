@@ -41,6 +41,12 @@ Builds then run in the background after every save, for links, problems and
 previews. Right-click a page in the sidebar to see its history, delete it, or move it
 in the contents (or drag it).
 
+**Git:** the status bar shows the branch and your changes, and checks the server
+every few minutes ("↓2 new"). Click it to commit, push, see or discard changes, and
+**Get latest**: your commits go on top of what's new (a rebase) and uncommitted edits
+are kept. Where you and a colleague changed the same lines, the app asks, place by
+place, what to keep. Branches and pull requests are left to git and your server.
+
 | Shortcut | |
 |---|---|
 | Ctrl+P | Go to page |
@@ -109,8 +115,6 @@ written, shown as cards with a preview from the build, and editable as source.
   source. Table cells hold one line.
 - No find and replace across pages, and pages can't be renamed or moved to another
   folder from the app.
-- **Get latest** only fast-forwards: if a colleague pushed while you have commits of
-  your own, someone has to merge them with git.
 - Syntax an extension finds in the raw text (say `[[...]]`), rather than through a
   role or directive, is ordinary text to the editor and may get escaped when its
   paragraph is edited.

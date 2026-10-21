@@ -7,7 +7,15 @@ import { join } from 'node:path';
 import { Git, isCloneUrl, repoName, explain } from '../../src/main/git/git.js';
 import { AskPass } from '../../src/main/git/askpass.js';
 
-const sh = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 'T', GIT_AUTHOR_EMAIL: 't@x', GIT_COMMITTER_NAME: 'T', GIT_COMMITTER_EMAIL: 't@x' } });
+// The machine's own git settings stay out (Git for Windows' system config turns line
+// endings into CRLF on checkout, say).
+const isolated = (() => {
+  const dir = mkdtempSync(join(tmpdir(), 'mysteditor-gitconfig-'));
+  writeFileSync(join(dir, 'gitconfig'), '');
+  return { GIT_CONFIG_GLOBAL: join(dir, 'gitconfig'), GIT_CONFIG_NOSYSTEM: '1' };
+})();
+const sh = (cwd: string, ...args: string[]) =>
+  execFileSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, ...isolated, GIT_AUTHOR_NAME: 'T', GIT_AUTHOR_EMAIL: 't@x', GIT_COMMITTER_NAME: 'T', GIT_COMMITTER_EMAIL: 't@x' } });
 
 // A "server" repository with one page, plus a scratch dir.
 function server() {
@@ -23,7 +31,7 @@ function server() {
   return { work, remote, seed };
 }
 
-const git = new Git(() => ({ GIT_TERMINAL_PROMPT: '0' }));
+const git = new Git(() => ({ GIT_TERMINAL_PROMPT: '0', ...isolated }));
 
 // Run a program without blocking this process (the askpass server lives here).
 function runAsync(cmd: string, args: string[], env: NodeJS.ProcessEnv, input = ''): Promise<{ status: number | null; stdout: string }> {
@@ -144,5 +152,98 @@ describe('helpers', () => {
     expect(explain('fatal: Authentication failed for ...')).toMatch(/didn’t accept the sign-in/);
     expect(explain('ssh: Could not resolve hostname x: Name or service not known')).toMatch(/couldn’t be reached/);
     expect(explain(' ! [rejected]  main -> main (fetch first)')).toMatch(/Get the latest version first/);
+  });
+});
+
+describe('Getting the latest', () => {
+  // A server with a page of three lines, a colleague's clone and the writer's.
+  function team() {
+    const { work, remote, seed } = server();
+    writeFileSync(join(seed, 'page.md'), 'one\ntwo\nthree\n');
+    sh(seed, 'add', '.');
+    sh(seed, 'commit', '-qm', 'Page');
+    sh(seed, 'push', '-q', 'origin', 'HEAD:main');
+    const clone = (name: string) => {
+      const dir = join(work, name);
+      sh(work, 'clone', '-q', remote, dir);
+      sh(dir, 'config', 'user.name', name);
+      sh(dir, 'config', 'user.email', `${name}@x`);
+      return dir;
+    };
+    const colleague = clone('colleague');
+    const me = clone('me');
+    const edit = (dir: string, text: string, message?: string) => {
+      writeFileSync(join(dir, 'page.md'), text);
+      if (message) {
+        sh(dir, 'commit', '-qam', message);
+        if (dir === colleague) sh(dir, 'push', '-q');
+      }
+    };
+    const log = () => sh(me, 'log', '--format=%s', '-n', '3').trim().split('\n');
+    return { me, colleague, edit, log, read: () => readFileSync(join(me, 'page.md'), 'utf8') };
+  }
+
+  it('notices new commits on the server, and puts the writer’s commits on top of them', async () => {
+    const { me, colleague, edit, log, read } = team();
+    edit(colleague, 'one\ntwo\nthree\nfour from colleague\n', 'Colleague adds four');
+    edit(me, 'zero from me\none\ntwo\nthree\n', 'I add zero');
+    expect((await git.status(me)).behind).toBe(0); // not fetched yet
+    await git.fetch(me);
+    expect(await git.status(me)).toMatchObject({ ahead: 1, behind: 1 });
+    expect(await git.getLatest(me)).toBeNull();
+    expect(log()).toEqual(['I add zero', 'Colleague adds four', 'Page']); // no merge commit
+    expect(read()).toBe('zero from me\none\ntwo\nthree\nfour from colleague\n');
+    expect(await git.status(me)).toMatchObject({ ahead: 1, behind: 0 });
+  });
+
+  it('keeps uncommitted edits that don’t clash', async () => {
+    const { me, colleague, edit, read } = team();
+    edit(colleague, 'one\ntwo\nthree\nfour\n', 'Colleague adds four');
+    edit(me, 'ONE\ntwo\nthree\n'); // not committed
+    expect(await git.getLatest(me)).toBeNull();
+    expect(read()).toBe('ONE\ntwo\nthree\nfour\n');
+    expect((await git.status(me)).changes).toEqual([{ path: 'page.md', kind: 'modified' }]);
+  });
+
+  it('stops at a clash between commits; settling it carries on, or cancelling puts things back', async () => {
+    const { me, colleague, edit, log, read } = team();
+    edit(colleague, 'one\nTWO by colleague\nthree\n', 'Colleague');
+    edit(me, 'one\ntwo by me\nthree\n', 'Mine');
+    expect(await git.getLatest(me)).toBe('rebase');
+    expect(read()).toContain('<<<<<<<');
+
+    await git.abort(me);
+    expect(await git.operation(me)).toBeNull();
+    expect(log()).toEqual(['Mine', 'Page', 'First']);
+    expect(read()).toBe('one\ntwo by me\nthree\n');
+
+    expect(await git.getLatest(me)).toBe('rebase');
+    await git.resolve(me, 'page.md', 'one\nTWO by colleague, two by me\nthree\n');
+    expect(await git.continue(me, 'rebase')).toBeNull();
+    expect(log()).toEqual(['Mine', 'Colleague', 'Page']);
+    expect(read()).toBe('one\nTWO by colleague, two by me\nthree\n');
+  });
+
+  it('stops when set-aside edits clash on the way back, and keeps them once settled', async () => {
+    const { me, colleague, edit, read } = team();
+    edit(colleague, 'one\nTWO by colleague\nthree\n', 'Colleague');
+    edit(me, 'one\ntwo by me, not committed\nthree\n');
+    expect(await git.getLatest(me)).toBe('stash');
+    await git.takeSide(me, 'page.md', 'yours', 'stash');
+    expect(await git.continue(me, 'stash')).toBeNull();
+    expect(read()).toBe('one\ntwo by me, not committed\nthree\n');
+    // An ordinary uncommitted change again, and nothing left in the stash.
+    expect((await git.status(me)).changes).toEqual([{ path: 'page.md', kind: 'modified' }]);
+    expect(sh(me, 'stash', 'list')).toBe('');
+  });
+
+  it('discards uncommitted changes, and new files', async () => {
+    const { me, edit, read } = team();
+    edit(me, 'changed\n');
+    writeFileSync(join(me, 'new.md'), '# New\n');
+    await git.discard(me, 'page.md');
+    await git.discard(me, 'new.md');
+    expect(read()).toBe('one\ntwo\nthree\n');
+    expect((await git.status(me)).changes).toEqual([]);
   });
 });

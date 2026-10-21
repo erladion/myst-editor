@@ -3,7 +3,7 @@
 // so it works with any git host and needs no network.
 import { expect, test } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
-import { cpSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { launch, workDir, type App } from './helpers';
@@ -139,4 +139,103 @@ test('asks for a username and password when the server wants them, and sends the
   } finally {
     server.close();
   }
+});
+
+// The writer's clone of the server, open in the app, and a colleague's clone.
+async function team() {
+  const { work, remote } = serverRepo();
+  const colleague = join(work, 'colleague');
+  sh(work, 'clone', '-q', remote, colleague);
+  const prepare = (project: string) => {
+    rmSync(project, { recursive: true, force: true });
+    sh(work, 'clone', '-q', remote, project);
+    sh(project, 'config', 'user.name', 'Wendy Writer');
+    sh(project, 'config', 'user.email', 'wendy@example.com');
+  };
+  ctx = await launch({ prepare, env: isolated(work) });
+  await ctx.page.getByRole('button', { name: 'Not now' }).click();
+  const push = (file: string, from: string, to: string, message: string) => {
+    const path = join(colleague, 'docs', file);
+    writeFileSync(path, readFileSync(path, 'utf8').replace(from, to));
+    sh(colleague, 'commit', '-qam', message);
+    sh(colleague, 'push', '-q');
+  };
+  const log = () => sh(ctx.project, 'log', '--format=%s').trim().split('\n');
+  return { push, log, file: (rel: string) => readFileSync(join(ctx.project, 'docs', rel), 'utf8') };
+}
+
+const panel = () => ctx.page.getByRole('dialog', { name: 'Changes' });
+
+test('notices a colleague’s push, and puts the writer’s commit on top of it', async () => {
+  const { push, log, file } = await team();
+  const { page } = ctx;
+  // The writer commits an edit, without pushing.
+  await page.locator('.prose').getByText('Widgets require Python').click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' Use 3.12.');
+  await expect(page.locator('.chip-button', { hasText: '1 change' })).toBeVisible({ timeout: 10_000 });
+  await page.locator('.chip-button', { hasText: '1 change' }).click();
+  await panel().getByLabel('What did you change?').fill('Recommend 3.12');
+  await panel().getByRole('button', { name: 'Commit', exact: true }).click();
+  await expect(panel()).toContainText('Committed.');
+  await panel().getByRole('button', { name: 'Close' }).click();
+
+  // A colleague pushes; the app notices at its next check of the server (every few
+  // minutes; here, straight away).
+  push('guide/install.md', 'Install the package with pip:', 'Install the package with pip or uv:', 'Mention uv');
+  await page.evaluate(() => window.myst.gitCheck());
+  const chip = page.locator('.chip-button.has-news');
+  await expect(chip).toContainText('↓1 new', { timeout: 15_000 });
+  await chip.click();
+  await panel().getByRole('button', { name: 'Get latest (1 new)' }).click();
+  await expect(panel()).toContainText('Up to date with the server.');
+  expect(log()).toEqual(['Recommend 3.12', 'Mention uv', 'Initial docs']);
+  expect(file('guide/install.md')).toContain('with pip or uv:');
+});
+
+test('settles a clash spot by spot', async () => {
+  const { push, log, file } = await team();
+  const { page } = ctx;
+  push('index.md', 'Widgets require Python 3.10 or newer.', 'Widgets require Python 3.11 or newer.', 'Require 3.11');
+  // The writer changes the same line and commits.
+  await page.locator('.prose').getByText('Widgets require Python').click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' Use 3.12.');
+  await expect(page.locator('.chip-button', { hasText: '1 change' })).toBeVisible({ timeout: 10_000 });
+  await page.locator('.chip-button', { hasText: '1 change' }).click();
+  await panel().getByLabel('What did you change?').fill('Recommend 3.12');
+  await panel().getByRole('button', { name: 'Commit', exact: true }).click();
+  await expect(panel()).toContainText('Committed.');
+  await panel().getByRole('button', { name: /^Get latest/ }).click();
+
+  const dialog = page.getByRole('dialog', { name: 'Settle what clashed' });
+  const spot = dialog.getByRole('group', { name: 'Place 1' });
+  await expect(spot.locator('.conflict-side').first()).toContainText('Widgets require Python 3.10 or newer. Use 3.12.');
+  await expect(spot.locator('.conflict-side').nth(1)).toContainText('Widgets require Python 3.11 or newer.');
+  await expect(dialog.getByRole('button', { name: 'Done' })).toBeDisabled();
+  await spot.getByLabel('Keep both').check();
+  await dialog.getByRole('button', { name: 'Done' }).click();
+  await expect(page.getByRole('dialog', { name: 'Settle what clashed' })).toHaveCount(0);
+  expect(log()).toEqual(['Recommend 3.12', 'Require 3.11', 'Initial docs']);
+  expect(file('index.md')).toContain('Widgets require Python 3.11 or newer.\nWidgets require Python 3.10 or newer. Use 3.12.\n');
+  await expect(page.locator('.prose')).toContainText('Widgets require Python 3.11 or newer.');
+  await expect(page.locator('.chip-button', { hasText: 'main · no changes' })).toBeVisible();
+});
+
+test('shows what changed in a file, and discards it', async () => {
+  const { file } = await team();
+  const { page } = ctx;
+  await page.locator('.prose').getByText('Widgets require Python').click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' Use 3.12.');
+  await expect(page.locator('.chip-button', { hasText: '1 change' })).toBeVisible({ timeout: 10_000 });
+  await page.locator('.chip-button', { hasText: '1 change' }).click();
+  await panel().getByRole('button', { name: 'Show changes' }).click();
+  await expect(panel().locator('.diff-add')).toHaveText('+ Widgets require Python 3.10 or newer. Use 3.12.');
+  await panel().getByRole('button', { name: 'Discard…' }).click();
+  await page.getByRole('dialog', { name: 'Discard changes' }).getByRole('button', { name: 'Discard changes' }).click();
+  await expect(panel()).toContainText('Discarded your changes');
+  expect(file('index.md')).not.toContain('Use 3.12.');
+  await panel().getByRole('button', { name: 'Close' }).click();
+  await expect(page.locator('.prose')).not.toContainText('Use 3.12.');
 });

@@ -27,4 +27,17 @@ export interface GitInfo {
   prefix: string;
   status: GitStatus | null;
   identity: { name: string; email: string } | null;
+  // Half done: a rebase or merge stopped at conflicts, or set-aside edits that clashed.
+  operation: GitOperation;
+  // The last background check of the server: when, and why it failed if it did.
+  checked: { at: number; error: string | null } | null;
+}
+
+export type GitOperation = 'rebase' | 'merge' | 'stash' | null;
+
+// A file with conflicts to settle. `text` has git's conflict markers; null for a file
+// that can only be taken whole (a picture, or one side deleted it).
+export interface ConflictFile {
+  path: string; // relative to the repository root
+  text: string | null;
 }

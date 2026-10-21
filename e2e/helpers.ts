@@ -1,8 +1,11 @@
 import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
-import { cpSync, mkdirSync, mkdtempSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { WORK_DIR } from './global-setup';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+
+// The folders of tests run earlier in this worker (see launch).
+const earlier: string[] = [];
 
 // Where a test's own files go (see global-setup.ts).
 export function workDir(): string {
@@ -29,7 +32,11 @@ export interface LaunchOptions {
 
 // Launch the built app (`npm run build` first) on a fresh copy of the fixture project.
 export async function launch(opts: LaunchOptions = {}): Promise<App> {
+  // The previous test's files go (its app is closed by now), so a run never holds
+  // more than one test's projects and environments at a time.
+  if (!opts.again) for (const old of earlier.splice(0)) rmSync(old, { recursive: true, force: true });
   const work = opts.again ? dirname(opts.again.project) : mkdtempSync(join(workDir(), 'mysteditor-e2e-'));
+  if (!opts.again) earlier.push(work);
   const project = join(work, 'project');
   if (!opts.again) {
     cpSync(join(import.meta.dirname, opts.fixture ?? 'fixture'), project, { recursive: true });

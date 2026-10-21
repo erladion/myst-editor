@@ -1,6 +1,8 @@
 // Git in the UI: the status chip, the changes panel, cloning and git's questions.
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import type { GitChange, GitInfo } from '../../../shared/git';
+import type { ConflictFile, GitChange, GitInfo } from '../../../shared/git';
+import { conflictCount, parseConflicts, resolveConflicts, type Choice } from '../../../core/conflicts';
+import { Changes } from './History';
 
 const api = window.myst;
 
@@ -25,12 +27,24 @@ function Modal({ label, onClose, children }: { label: string; onClose: () => voi
 export function GitChip({ info, onOpen }: { info: GitInfo | null; onOpen: () => void }) {
   if (!info?.repoRoot || !info.status) return null;
   const { branch, ahead, behind, changes } = info.status;
+  if (info.operation) {
+    return (
+      <button type="button" className="chip-button failed" onClick={onOpen} title="Getting the latest stopped where your changes and the server’s clash">
+        <span aria-hidden="true">⎇</span> Finish getting the latest…
+      </button>
+    );
+  }
   const parts = [branch ?? 'detached', changes.length ? `${changes.length} change${changes.length === 1 ? '' : 's'}` : 'no changes'];
+  const checked = info.checked
+    ? info.checked.error
+      ? `Couldn’t check the server: ${info.checked.error}`
+      : `Server checked at ${new Date(info.checked.at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`
+    : 'The server hasn’t been checked yet';
   return (
-    <button type="button" className={`chip-button${changes.length ? ' has-changes' : ''}`} onClick={onOpen} title="Changes and version history (git)">
+    <button type="button" className={`chip-button${changes.length ? ' has-changes' : ''}${behind ? ' has-news' : ''}`} onClick={onOpen} title={`Changes and version history (git). ${checked}.`}>
       <span aria-hidden="true">⎇</span> {parts.join(' · ')}
       {ahead > 0 && <span title={`${ahead} commit${ahead === 1 ? '' : 's'} not pushed yet`}> ↑{ahead}</span>}
-      {behind > 0 && <span title={`${behind} new commit${behind === 1 ? '' : 's'} on the server`}> ↓{behind}</span>}
+      {behind > 0 && <span title={`${behind} new commit${behind === 1 ? '' : 's'} on the server`}> ↓{behind} new</span>}
     </button>
   );
 }
@@ -41,10 +55,34 @@ interface PanelProps {
   info: GitInfo;
   titles: Record<string, string>; // page titles by path relative to the opened folder
   saveAll: () => Promise<boolean>;
+  onConflicts: () => void; // getting the latest stopped at a clash
+  confirm: (opts: { title: string; message: string; confirm: string }) => Promise<boolean>;
   onClose: () => void;
 }
 
-export function GitPanel({ info, titles, saveAll, onClose }: PanelProps) {
+export function GitPanel({ info, titles, saveAll, onConflicts, confirm, onClose }: PanelProps) {
+  const [open, setOpen] = useState<string | null>(null); // the file whose changes are shown
+  // Opening the panel is when an up-to-date "new on the server" matters most.
+  useEffect(() => {
+    void api.gitCheck();
+  }, []);
+  const getLatest = () =>
+    act(
+      'Getting the latest version…',
+      async () => {
+        if (!(await saveAll())) throw new Error('Some pages couldn’t be saved. Fix them first.');
+        if (await api.gitGetLatest()) onConflicts();
+      },
+      'Up to date with the server.',
+    );
+  const discard = async (path: string, label: string) => {
+    const ok = await confirm({
+      title: 'Discard changes',
+      message: `Throw away your changes to ${label} since the last commit? A page’s text as it is now is kept in its history, so you can get it back.`,
+      confirm: 'Discard changes',
+    });
+    if (ok) await act('Discarding…', () => api.gitDiscard(path), `Discarded your changes to ${label}.`);
+  };
   const status = info.status!;
   const [selected, setSelected] = useState<Set<string>>(() => new Set(status.changes.map((c) => c.path)));
   const [text, setText] = useState('');
@@ -62,6 +100,7 @@ export function GitPanel({ info, titles, saveAll, onClose }: PanelProps) {
   }, [paths]);
 
   const shown = (path: string) => (info.prefix && path.startsWith(info.prefix + '/') ? path.slice(info.prefix.length + 1) : path);
+  const inFolder = (path: string) => !info.prefix || path.startsWith(info.prefix + '/');
   const act = async (label: string, fn: () => Promise<unknown>, success: string) => {
     setBusy(label);
     setError(null);
@@ -105,6 +144,7 @@ export function GitPanel({ info, titles, saveAll, onClose }: PanelProps) {
         {status.upstream ? ` (tracking ${status.upstream})` : ' (not on the server yet)'}
         {status.ahead > 0 && ` · ${status.ahead} commit${status.ahead === 1 ? '' : 's'} to push`}
         {status.behind > 0 && ` · ${status.behind} new on the server`}.
+        {info.checked?.error && ` Couldn’t check the server: ${info.checked.error}`}
         {info.identity && ` Committing as ${info.identity.name} <${info.identity.email}>.`}
       </p>
       {status.changes.length ? (
@@ -129,6 +169,17 @@ export function GitPanel({ info, titles, saveAll, onClose }: PanelProps) {
                   <span className={`git-kind ${c.kind}`}>{KIND_LABEL[c.kind]}</span>
                   <span className="git-path">{titles[rel] ? `${titles[rel]} — ${rel}` : rel}</span>
                 </label>
+                <span className="git-file-actions">
+                  {c.kind !== 'deleted' && c.kind !== 'conflict' && inFolder(c.path) && (
+                    <button type="button" className="link-button" aria-expanded={open === c.path} onClick={() => setOpen(open === c.path ? null : c.path)}>
+                      {open === c.path ? 'Hide changes' : 'Show changes'}
+                    </button>
+                  )}
+                  <button type="button" className="link-button danger" disabled={!!busy} onClick={() => void discard(c.path, titles[rel] ?? rel)}>
+                    Discard…
+                  </button>
+                </span>
+                {open === c.path && <FileChanges path={c.path} rel={rel} />}
               </li>
             );
           })}
@@ -146,8 +197,8 @@ export function GitPanel({ info, titles, saveAll, onClose }: PanelProps) {
       {error && <p className="sphinx-error" role="alert">{error}</p>}
       {done && <p className="git-done" role="status">{done}</p>}
       <div className="modal-actions">
-        <button type="button" disabled={!!busy} onClick={() => act('Getting the latest version…', () => api.gitPull(), 'Up to date with the server.')}>
-          Get latest
+        <button type="button" className={status.behind ? 'primary' : undefined} disabled={!!busy} onClick={() => void getLatest()}>
+          Get latest{status.behind ? ` (${status.behind} new)` : ''}
         </button>
         <span className="spacer" />
         {status.changes.length === 0 && status.ahead > 0 && (
@@ -326,6 +377,179 @@ export function AskPassHost() {
           </div>
         </form>
       )}
+    </Modal>
+  );
+}
+
+// A file's uncommitted changes: as last committed, against now.
+function FileChanges({ path, rel }: { path: string; rel: string }) {
+  const [texts, setTexts] = useState<{ before: string; now: string } | null>(null);
+  useEffect(() => {
+    void Promise.all([api.gitCommitted(path), api.readFile(rel)]).then(([before, now]) => setTexts({ before: before ?? '', now }));
+  }, [path, rel]);
+  if (!texts) return <p className="muted">Loading…</p>;
+  return (
+    <div className="git-file-changes">
+      <Changes from={texts.before} to={texts.now} labels={['As last committed', 'Your changes']} />
+    </div>
+  );
+}
+
+// Settling what clashed when getting the latest: for each spot, keep yours, take the
+// server's, or keep both; pictures and deleted files are taken whole.
+export function ConflictsDialog({ info, titles, onDone, onClose }: { info: GitInfo; titles: Record<string, string>; onDone: (message: string) => void; onClose: () => void }) {
+  const [files, setFiles] = useState<ConflictFile[] | null>(null);
+  const [choices, setChoices] = useState<Record<string, (Choice | 'yours' | 'server' | undefined)[]>>({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const load = () => {
+    setChoices({});
+    void api.gitConflicts().then(setFiles);
+  };
+  useEffect(load, []);
+  // In a rebase (and when putting set-aside edits back) the top side is the server's.
+  const topIsServer = info.operation !== 'merge';
+  const yours: Choice = topIsServer ? 'bottom' : 'top';
+  const server: Choice = topIsServer ? 'top' : 'bottom';
+  const shown = (path: string) => (info.prefix && path.startsWith(info.prefix + '/') ? path.slice(info.prefix.length + 1) : path);
+  const parsed = useMemo(() => Object.fromEntries((files ?? []).map((f) => [f.path, f.text === null ? null : parseConflicts(f.text)])), [files]);
+  const spots = (f: ConflictFile) => {
+    const p = parsed[f.path];
+    return p ? conflictCount(p) : 1;
+  };
+  const choose = (path: string, i: number, c: Choice | 'yours' | 'server') => setChoices((all) => ({ ...all, [path]: Object.assign([...(all[path] ?? [])], { [i]: c }) }));
+  const complete = !!files && files.every((f) => Array.from({ length: spots(f) }, (_, i) => choices[f.path]?.[i]).every(Boolean));
+
+  const finish = async () => {
+    if (!files) return;
+    setBusy(true);
+    setError(null);
+    try {
+      for (const f of files) {
+        const p = parsed[f.path];
+        if (p) await api.gitResolve(f.path, resolveConflicts(p, choices[f.path] as Choice[]));
+        else await api.gitTakeSide(f.path, choices[f.path]![0] as 'yours' | 'server');
+      }
+      if (await api.gitContinue()) {
+        // The next of your commits clashes too.
+        load();
+        setBusy(false);
+        return;
+      }
+      onDone('Up to date with the server, with your changes on top.');
+    } catch (e) {
+      setError(message(e));
+      setBusy(false);
+    }
+  };
+  const cancel = async () => {
+    setBusy(true);
+    try {
+      await api.gitAbort();
+      onDone('Back as it was before getting the latest.');
+    } catch (e) {
+      setError(message(e));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal label="Settle what clashed" onClose={() => !busy && onClose()}>
+      <h2>Your changes and the server’s clash</h2>
+      <p className="modal-help">
+        {info.operation === 'stash'
+          ? 'The latest version is in, but some of your uncommitted edits changed the same lines. Choose what to keep in each place.'
+          : 'You and a colleague changed the same lines. Choose what to keep in each place; the rest of both sets of changes is already combined.'}
+      </p>
+      {files === null && <p className="muted">Looking…</p>}
+      <div className="conflict-files">
+        {files?.map((f) => {
+          const rel = shown(f.path);
+          const p = parsed[f.path];
+          return (
+            <section key={f.path} className="conflict-file" aria-label={titles[rel] ?? rel}>
+              <h3>
+                {titles[rel] ?? rel} <span className="muted">{rel}</span>
+              </h3>
+              {p ? (
+                p.parts.map((part, k) => {
+                  if (part.kind === 'same') return null;
+                  const i = p.parts.slice(0, k).filter((x) => x.kind === 'conflict').length;
+                  const before = p.parts[k - 1]?.kind === 'same' ? (p.parts[k - 1] as { lines: string[] }).lines.slice(-2) : [];
+                  const after = p.parts[k + 1]?.kind === 'same' ? (p.parts[k + 1] as { lines: string[] }).lines.slice(0, 2) : [];
+                  const mine = topIsServer ? part.bottom : part.top;
+                  const theirs = topIsServer ? part.top : part.bottom;
+                  const picked = choices[f.path]?.[i];
+                  return (
+                    <div key={k} className="conflict-spot" role="group" aria-label={`Place ${i + 1}`}>
+                      {before.length > 0 && <pre className="conflict-context">{before.join('\n')}</pre>}
+                      <div className="conflict-sides">
+                        <div className={`conflict-side${picked === yours || picked === 'both' ? ' picked' : ''}`}>
+                          <div className="conflict-label">Yours</div>
+                          <pre>{mine.join('\n') || '(nothing: you removed it)'}</pre>
+                        </div>
+                        <div className={`conflict-side${picked === server || picked === 'both' ? ' picked' : ''}`}>
+                          <div className="conflict-label">From the server</div>
+                          <pre>{theirs.join('\n') || '(nothing: removed there)'}</pre>
+                        </div>
+                      </div>
+                      {after.length > 0 && <pre className="conflict-context">{after.join('\n')}</pre>}
+                      <div className="conflict-choices">
+                        {(
+                          [
+                            [yours, 'Keep yours'],
+                            [server, 'Take the server’s'],
+                            ['both', 'Keep both'],
+                          ] as const
+                        ).map(([c, label]) => (
+                          <label key={label} className="check" title={c === 'both' ? (topIsServer ? 'The server’s text first, then yours' : 'Your text first, then the server’s') : undefined}>
+                            <input type="radio" name={`${f.path}-${i}`} checked={picked === c} onChange={() => choose(f.path, i, c)} />
+                            {label}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="conflict-choices">
+                  <span className="muted">This file can only be taken whole.</span>
+                  {(
+                    [
+                      ['yours', 'Keep yours'],
+                      ['server', 'Take the server’s'],
+                    ] as const
+                  ).map(([c, label]) => (
+                    <label key={c} className="check">
+                      <input type="radio" name={f.path} checked={choices[f.path]?.[0] === c} onChange={() => choose(f.path, 0, c)} />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </section>
+          );
+        })}
+      </div>
+      {error && (
+        <p className="sphinx-error" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="modal-actions">
+        {info.operation !== 'stash' && (
+          <button type="button" disabled={busy} onClick={() => void cancel()}>
+            Cancel getting the latest
+          </button>
+        )}
+        <span className="spacer" />
+        <button type="button" onClick={onClose} disabled={busy}>
+          Later
+        </button>
+        <button type="button" className="primary" disabled={busy || !complete} onClick={() => void finish()}>
+          {busy ? 'Finishing…' : 'Done'}
+        </button>
+      </div>
     </Modal>
   );
 }

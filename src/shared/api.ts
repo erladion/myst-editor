@@ -1,7 +1,7 @@
 // The API the preload script exposes to the renderer as `window.myst`.
 import type { MystConfig } from '../core/project-config.js';
 import type { EnvironmentChoice, PythonCandidate, SphinxState } from './sphinx.js';
-import type { GitInfo, PageVersion } from './git.js';
+import type { ConflictFile, GitInfo, GitOperation, PageVersion } from './git.js';
 
 // One Sphinx project (a conf.py and the pages under it) inside the opened folder.
 export interface SphinxProject {
@@ -120,7 +120,20 @@ export interface MystApi {
   defaultCloneFolder(): Promise<string>;
   gitCommit(paths: string[], message: string, push: boolean): Promise<void>;
   gitPush(): Promise<void>;
-  gitPull(): Promise<void>;
+  // Check the server for new commits now (quietly; the result comes as git info).
+  gitCheck(): Promise<void>;
+  // Get the latest from the server (rebasing the writer's commits onto it). Returns
+  // what's left to settle if something clashed.
+  gitGetLatest(): Promise<GitOperation>;
+  gitConflicts(): Promise<ConflictFile[]>;
+  gitResolve(path: string, text: string | null): Promise<void>;
+  gitTakeSide(path: string, side: 'server' | 'yours'): Promise<void>;
+  gitContinue(): Promise<GitOperation>;
+  gitAbort(): Promise<void>;
+  // Throw away a file's uncommitted changes (paths relative to the repository root),
+  // and a file as last committed (null if it's new).
+  gitDiscard(path: string): Promise<void>;
+  gitCommitted(path: string): Promise<string | null>;
   gitSetIdentity(name: string, email: string, global: boolean): Promise<void>;
   // Questions from git or ssh (passwords, passphrases, host keys).
   onAskPass(cb: (q: { id: number; question: string }) => void): () => void;

@@ -1,9 +1,9 @@
 // Git through the system's own `git`, which brings HTTPS and SSH, the writer's keys
 // and their credential helpers. Questions git or ssh ask go through AskPass.
 import { execFile } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, promises as fs } from 'node:fs';
 import { join, resolve } from 'node:path';
-import type { GitChange, GitStatus } from '../../shared/git.js';
+import type { GitChange, GitOperation, GitStatus } from '../../shared/git.js';
 import { run, type RunResult } from '../sphinx/run.js';
 
 export interface FileCommit {
@@ -30,10 +30,10 @@ const SAFE = ['-c', 'protocol.ext.allow=never', '-c', 'core.quotepath=false'];
 export class Git {
   constructor(private env: () => NodeJS.ProcessEnv) {}
 
-  private async git(args: string[], cwd: string, log?: (t: string) => void): Promise<RunResult> {
+  private async git(args: string[], cwd: string, log?: (t: string) => void, extraEnv: NodeJS.ProcessEnv = {}): Promise<RunResult> {
     return run('git', [...SAFE, ...args], {
       cwd,
-      env: { ...process.env, ...this.env(), LC_ALL: 'C', ELECTRON_RUN_AS_NODE: undefined },
+      env: { ...process.env, ...this.env(), LC_ALL: 'C', ELECTRON_RUN_AS_NODE: undefined, ...extraEnv },
       log,
       timeoutMs: 30 * 60_000,
     });
@@ -149,7 +149,7 @@ export class Git {
 
   // A file as it was in a commit (null if it didn't exist there).
   async fileAt(root: string, commit: string, path: string): Promise<string | null> {
-    if (!/^[0-9a-f]{7,64}$/i.test(commit)) return null;
+    if (commit !== 'HEAD' && !/^[0-9a-f]{7,64}$/i.test(commit)) return null;
     return this.stdout(['show', `${commit}:${path}`], root);
   }
 
@@ -164,7 +164,108 @@ export class Git {
   async pull(root: string, log?: (t: string) => void): Promise<void> {
     await this.checked(['pull', '--ff-only'], root, log);
   }
+
+  // Ask the server what's new, without asking the writer anything: a background check
+  // must never pop up a sign-in prompt, so it just fails if one would be needed.
+  async fetch(root: string): Promise<void> {
+    const quiet = { GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: '', SSH_ASKPASS: '', SSH_ASKPASS_REQUIRE: 'never', GCM_INTERACTIVE: 'never' };
+    const r = await this.git(['fetch', '--quiet', '--prune'], root, undefined, quiet);
+    if (r.code !== 0) throw new GitError(explain(r.output), r.output);
+  }
+
+  // What's half done in the repository: a rebase stopped at conflicts, a merge (made
+  // outside the app), or the writer's set-aside edits that clashed when put back.
+  async operation(root: string, status?: GitStatus): Promise<GitOperation> {
+    const path = async (p: string) => {
+      const r = await this.git(['rev-parse', '--git-path', p], root);
+      return r.code === 0 ? resolve(root, r.output.trim()) : null;
+    };
+    for (const dir of ['rebase-merge', 'rebase-apply']) {
+      const p = await path(dir);
+      if (p && existsSync(p)) return 'rebase';
+    }
+    const merge = await path('MERGE_HEAD');
+    if (merge && existsSync(merge)) return 'merge';
+    const s = status ?? (await this.status(root));
+    return s.changes.some((c) => c.kind === 'conflict') ? 'stash' : null;
+  }
+
+  // Get the latest from the server: the writer's own commits go on top of what's new
+  // (a rebase), and uncommitted edits are set aside and put back (autostash). Returns
+  // what's left to resolve, if anything clashed.
+  async getLatest(root: string, log?: (t: string) => void): Promise<GitOperation> {
+    const { upstream } = await this.status(root);
+    if (!upstream) throw new GitError('This branch isn’t on the server yet, so there’s nothing new to get. Push it first.', '');
+    const r = await this.git(['-c', 'merge.conflictStyle=merge', 'pull', '--rebase', '--autostash'], root, log, { GIT_EDITOR: 'true' });
+    const op = await this.operation(root);
+    if (op) return op;
+    if (r.code !== 0) throw new GitError(explain(r.output), r.output);
+    return null;
+  }
+
+  // A conflicted file settled: with this text, or deleted (null).
+  async resolve(root: string, path: string, text: string | null): Promise<void> {
+    if (text === null) await this.checked(['rm', '-q', '--', path], root);
+    else {
+      await fs.writeFile(join(root, path), text);
+      await this.checked(['add', '--', path], root);
+    }
+  }
+
+  // A conflicted file settled by taking one side whole (for pictures and the like).
+  async takeSide(root: string, path: string, side: 'server' | 'yours', op: GitOperation): Promise<void> {
+    // In a rebase or when putting set-aside edits back, git's "ours" is the server's
+    // side; in a merge it's the writer's.
+    const ours = op === 'merge' ? side === 'yours' : side === 'server';
+    const r = await this.git(['checkout', ours ? '--ours' : '--theirs', '--', path], root);
+    // The side chosen may not have the file at all: then it goes.
+    if (r.code !== 0) await this.checked(['rm', '-q', '--', path], root);
+    else await this.checked(['add', '--', path], root);
+  }
+
+  // Carry on once every conflict is settled. May stop again (the next commit of a
+  // rebase can clash too). Returns what's left, if anything. `finishing` is what was
+  // reported before: settled set-aside edits leave nothing to tell that apart by.
+  async continue(root: string, finishing: GitOperation, log?: (t: string) => void): Promise<GitOperation> {
+    const op = (await this.operation(root)) ?? finishing;
+    const editor = { GIT_EDITOR: 'true' };
+    if (op === 'rebase') {
+      const r = await this.git(['-c', 'merge.conflictStyle=merge', 'rebase', '--continue'], root, log, editor);
+      const next = await this.operation(root);
+      if (!next && r.code !== 0) throw new GitError(explain(r.output), r.output);
+      return next;
+    }
+    if (op === 'merge') {
+      await this.checked(['commit', '--no-edit'], root, log);
+      return this.operation(root);
+    }
+    if (op === 'stash') {
+      // The writer's edits are back in the files: unstaged again, as they were, and the
+      // copy git kept aside is no longer needed.
+      await this.checked(['reset', '-q'], root);
+      const top = await this.git(['stash', 'list', '-1', '--format=%gs'], root);
+      if (top.code === 0 && top.output.trim() === 'autostash') await this.checked(['stash', 'drop', '-q'], root);
+      return this.operation(root);
+    }
+    return null;
+  }
+
+  // Give up on a rebase or merge: everything as it was before (set-aside edits too).
+  async abort(root: string): Promise<void> {
+    const op = await this.operation(root);
+    if (op === 'rebase') await this.checked(['rebase', '--abort'], root);
+    else if (op === 'merge') await this.checked(['merge', '--abort'], root);
+  }
+
+  // Throw away uncommitted changes to a file: back to the last commit, or (for a file
+  // that was never committed) gone.
+  async discard(root: string, path: string): Promise<void> {
+    const tracked = await this.git(['ls-files', '--error-unmatch', '--', path], root);
+    if (tracked.code === 0) await this.checked(['restore', '--source=HEAD', '--staged', '--worktree', '--', path], root);
+    else await fs.rm(join(root, path), { force: true });
+  }
 }
+
 
 function changeKind(xy: string): GitChange['kind'] {
   if (xy.includes('D')) return 'deleted';

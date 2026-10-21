@@ -14,7 +14,7 @@ import { probePython } from './sphinx/pythons.js';
 import { fragmentPage } from './sphinx/fragments.js';
 import { Git, GitError } from './git/git.js';
 import { AskPass } from './git/askpass.js';
-import type { GitInfo, PageVersion } from '../shared/git.js';
+import type { ConflictFile, GitInfo, PageVersion } from '../shared/git.js';
 import { projectFor } from '../shared/projects.js';
 import { ENV_NAME, SETTINGS_FILE } from '../core/editor-config.js';
 
@@ -56,10 +56,54 @@ function askWriter(question: string): Promise<string | null> {
 async function gitInfo(): Promise<GitInfo> {
   const available = !!(await git.available());
   const repoRoot = project && available ? await git.repoRoot(project.root) : null;
-  if (!project || !repoRoot) return { available, repoRoot: null, prefix: '', status: null, identity: null };
+  if (!project || !repoRoot) return { available, repoRoot: null, prefix: '', status: null, identity: null, operation: null, checked: null };
   const [status, identity] = await Promise.all([git.status(repoRoot).catch(() => null), git.identity(repoRoot)]);
   const prefix = relative(repoRoot, project.root).split(sep).join('/');
-  return { available, repoRoot, prefix, status, identity };
+  const operation = status ? await git.operation(repoRoot, status) : null;
+  return { available, repoRoot, prefix, status, identity, operation: operation ?? finishing, checked: lastCheck };
+}
+
+// The background check of the server (git fetch), so "N new on the server" is true:
+// every few minutes, and when the window comes back to the front. Skipped while the
+// writer is doing something with git.
+const CHECK_EVERY_MS = 3 * 60_000;
+let lastCheck: { at: number; error: string | null } | null = null;
+let gitBusy = false;
+// A clash with set-aside edits being settled: nothing on disk says so once the files
+// are settled (see Git.continue).
+let finishing: GitInfo['operation'] = null;
+async function checkServer() {
+  if (gitBusy || !project) return;
+  const root = await git.repoRoot(project.root);
+  if (!root || gitBusy) return;
+  const status = await git.status(root).catch(() => null);
+  if (!status?.upstream) return;
+  try {
+    await git.fetch(root);
+    lastCheck = { at: Date.now(), error: null };
+  } catch (e) {
+    lastCheck = { at: Date.now(), error: e instanceof Error ? e.message : String(e) };
+  }
+  refreshGit();
+}
+setInterval(() => void checkServer(), CHECK_EVERY_MS).unref();
+let lastFocusCheck = 0;
+function checkOnFocus() {
+  if (Date.now() - lastFocusCheck < 60_000) return;
+  lastFocusCheck = Date.now();
+  void checkServer();
+}
+
+// A git action the writer started: no background check meanwhile, and the window
+// hears about the result.
+async function gitAction<T>(fn: (root: string) => Promise<T>): Promise<T> {
+  gitBusy = true;
+  try {
+    return await fn(await requireRepo());
+  } finally {
+    gitBusy = false;
+    refreshGit();
+  }
 }
 
 let gitTimer: NodeJS.Timeout | undefined;
@@ -172,7 +216,10 @@ async function useProject(folder: string): Promise<ProjectInfo> {
   }
   fingerprints.clear();
   builtPages.clear();
+  finishing = null;
+  lastCheck = null;
   startWatching(project);
+  setTimeout(() => void checkServer(), 2000);
   win?.setTitle(`${project.name} — MyST Editor`);
   const root = project.root;
   await updateSettings((s) => ({ ...s, lastProject: root, recent: [root, ...(s.recent ?? []).filter((r) => r !== root)].slice(0, 10) }));
@@ -542,18 +589,61 @@ function registerIpc() {
     plain(() => git.clone(url, parent, (line) => win?.webContents.send('git-progress', line))),
   );
   ipcMain.handle('git-commit', (_e, paths: string[], message: string, push: boolean) =>
-    plain(async () => {
-      const root = await requireRepo();
-      try {
+    plain(() =>
+      gitAction(async (root) => {
         await git.commit(root, paths, message);
         if (push) await git.push(root);
-      } finally {
-        refreshGit();
+      }),
+    ),
+  );
+  // Check the server now (the Changes panel was opened).
+  ipcMain.handle('git-check', () => checkServer());
+  ipcMain.handle('git-push', () => plain(() => gitAction((root) => git.push(root))));
+  // Get the latest: rebase onto the server, setting uncommitted edits aside meanwhile.
+  ipcMain.handle('git-get-latest', () => plain(() => gitAction(async (root) => (finishing = await git.getLatest(root)))));
+  ipcMain.handle('git-conflicts', () =>
+    plain(async (): Promise<ConflictFile[]> => {
+      const root = await requireRepo();
+      const status = await git.status(root);
+      const files: ConflictFile[] = [];
+      for (const c of status.changes.filter((x) => x.kind === 'conflict')) {
+        const text = await fs.readFile(join(root, c.path), 'utf8').catch(() => null);
+        // Only text git marked up can be settled spot by spot.
+        files.push({ path: c.path, text: text !== null && !text.includes('\0') && text.includes('<<<<<<<') ? text : null });
       }
+      return files;
     }),
   );
-  ipcMain.handle('git-push', () => plain(async () => git.push(await requireRepo()).finally(refreshGit)));
-  ipcMain.handle('git-pull', () => plain(async () => git.pull(await requireRepo()).finally(refreshGit)));
+  ipcMain.handle('git-resolve', (_e, path: string, text: string | null) => plain(() => gitAction((root) => git.resolve(root, path, text))));
+  ipcMain.handle('git-take-side', (_e, path: string, side: 'server' | 'yours') => plain(() => gitAction(async (root) => git.takeSide(root, path, side, (await git.operation(root)) ?? finishing))));
+  ipcMain.handle('git-continue', () => plain(() => gitAction(async (root) => (finishing = await git.continue(root, finishing)))));
+  ipcMain.handle('git-abort', () =>
+    plain(() =>
+      gitAction(async (root) => {
+        await git.abort(root);
+        finishing = null;
+      }),
+    ),
+  );
+  // Throw away a file's uncommitted changes; a page's text is kept in its history first.
+  ipcMain.handle('git-discard', (_e, path: string) =>
+    plain(() =>
+      gitAction(async (root) => {
+        const p = requireProject();
+        const rel = relative(p.root, join(root, path)).split(sep).join('/');
+        if (!rel.startsWith('..') && rel.endsWith('.md')) {
+          const now = await readDocument(p, rel).catch(() => null);
+          if (now !== null) await snapshots.keep(p.root, rel, now, { force: true });
+        }
+        await git.discard(root, path);
+      }),
+    ),
+  );
+  // A file as last committed (relative to the repository root), to show what changed.
+  ipcMain.handle('git-committed', async (_e, path: string) => {
+    const root = await requireRepo();
+    return git.fileAt(root, 'HEAD', path);
+  });
   ipcMain.handle('git-set-identity', (_e, name: string, email: string, global: boolean) =>
     plain(async () => git.setIdentity(await requireRepo(), name, email, global).finally(refreshGit)),
   );
@@ -710,6 +800,7 @@ function createWindow() {
     },
   });
   win.once('ready-to-show', () => win?.show());
+  win.on('focus', checkOnFocus);
 
   // Links open in the system browser; the app window never navigates away.
   win.webContents.setWindowOpenHandler(({ url }) => {

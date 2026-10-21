@@ -109,7 +109,7 @@ export function HistoryDialog({ path, title, current, ctx, onRestore, onClose }:
 
 // What changed from an earlier version to now, line by line, with unchanged stretches
 // folded away except a little around each change.
-function Changes({ from, to }: { from: string; to: string }) {
+export function Changes({ from, to, labels = ['Only in this version', 'Added since'] }: { from: string; to: string; labels?: [string, string] }) {
   const parts = useMemo(() => diffLines(from.replace(/\r\n/g, '\n'), to.replace(/\r\n/g, '\n')), [from, to]);
   const CONTEXT = 2;
   const rows: { kind: 'add' | 'del' | 'same' | 'fold'; text: string }[] = [];
@@ -132,7 +132,7 @@ function Changes({ from, to }: { from: string; to: string }) {
   return (
     <div className="history-changes" aria-label="Changes since this version">
       <p className="history-legend">
-        <span className="del">Only in this version</span> <span className="add">Added since</span>
+        <span className="del">{labels[0]}</span> <span className="add">{labels[1]}</span>
       </p>
       <pre>
         {rows.map((r, i) => (

@@ -19,7 +19,7 @@ import { EnvironmentDialog, Preview, ProblemsPanel, SphinxChip, SphinxDialog, Tr
 import { SourceEditor } from './components/SourceEditor';
 import { LivePreview } from './components/LivePreview';
 import { AdvancedBar } from './components/AdvancedBar';
-import { AskPassHost, CloneDialog, GitChip, GitPanel } from './components/GitUi';
+import { AskPassHost, CloneDialog, ConflictsDialog, GitChip, GitPanel } from './components/GitUi';
 import { NewPageDialog, type NewPage } from './components/PageDialogs';
 import { GoToPage, Outline, markdownHeadings, type Heading } from './components/Navigation';
 import { loadPlaces, rememberPage, rememberScroll } from './places';
@@ -115,6 +115,7 @@ export function App() {
   const [viewAs, setViewAs] = useState<string[] | null>(null);
   const [gitInfo, setGitInfo] = useState<GitInfo | null>(null);
   const [gitPanel, setGitPanel] = useState(false);
+  const [conflicts, setConflicts] = useState(false); // settling what clashed when getting the latest
   const [cloning, setCloning] = useState(false);
   const [opening, setOpening] = useState<OpenProgress | null>(null);
   const [goTo, setGoTo] = useState(false);
@@ -782,7 +783,7 @@ export function App() {
               Settings: {settingsProblems.length} problem{settingsProblems.length === 1 ? '' : 's'}
             </button>
           )}
-          <GitChip info={gitInfo} onOpen={() => setGitPanel(true)} />
+          <GitChip info={gitInfo} onOpen={() => (gitInfo?.operation ? setConflicts(true) : setGitPanel(true))} />
           <SphinxChip
             state={sphinx}
             project={projects.length > 1 ? activeProject?.name : undefined}
@@ -794,7 +795,28 @@ export function App() {
         </StatusBar>
       </main>
       {gitPanel && gitInfo?.status && (
-        <GitPanel info={gitInfo} titles={ws.project.titles} saveAll={() => ws.saveAll()} onClose={() => setGitPanel(false)} />
+        <GitPanel
+          info={gitInfo}
+          titles={ws.project.titles}
+          saveAll={() => ws.saveAll()}
+          confirm={(o) => dialogs.current!.confirm(o)}
+          onConflicts={() => {
+            setGitPanel(false);
+            setConflicts(true);
+          }}
+          onClose={() => setGitPanel(false)}
+        />
+      )}
+      {conflicts && gitInfo?.repoRoot && (
+        <ConflictsDialog
+          info={gitInfo}
+          titles={ws.project.titles}
+          onDone={(m) => {
+            setConflicts(false);
+            dialogs.current?.notify(m);
+          }}
+          onClose={() => setConflicts(false)}
+        />
       )}
       {cloning && <CloneDialog onClose={() => setCloning(false)} onCloned={onCloned} />}
       <AskPassHost />
