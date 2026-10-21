@@ -1,7 +1,7 @@
 // Runs a project's Sphinx build in the background: environment setup, debounced
 // incremental builds, and merged results for the renderer.
 import { createHash } from 'node:crypto';
-import { createWriteStream, existsSync, mkdirSync, promises as fs, readFileSync, rmSync, type WriteStream } from 'node:fs';
+import { createWriteStream, existsSync, mkdirSync, promises as fs, readFileSync, renameSync, rmSync, writeFileSync, type WriteStream } from 'node:fs';
 import { join } from 'node:path';
 import type { SphinxProject } from '../../shared/api.js';
 import { fromProject } from '../../shared/projects.js';
@@ -327,7 +327,15 @@ export class SphinxManager {
     this.state = { ...this.state, status: { kind: 'ready' }, info };
     this.opts.emit(this.state);
     const saved: SavedState = { version: 1, key: this.buildKey(), info };
-    fs.writeFile(this.savedFile, JSON.stringify(saved)).catch(() => {});
+    // Written at once, under another name and then moved into place: the app may close
+    // (or another session start) right after a build, and must find all of it or none.
+    try {
+      const tmp = `${this.savedFile}.${process.pid}.tmp`;
+      writeFileSync(tmp, JSON.stringify(saved));
+      renameSync(tmp, this.savedFile);
+    } catch {
+      // not saved: the next session builds afresh
+    }
   }
 
   private driverPath(): string {
