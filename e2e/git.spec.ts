@@ -53,14 +53,14 @@ test('clones a repository, then commits and pushes an edit', async () => {
   await expect(clone).toContainText(`As ${join(work, 'widget-docs')}`);
   await clone.getByRole('button', { name: 'Get repository' }).click();
   await expect(page.locator('.prose h1')).toHaveText('Widget documentation');
-  await expect(page.locator('.chip-button', { hasText: 'main · no changes' })).toBeVisible();
+  await expect(page.locator('.chip-button', { hasText: 'no changes' })).toBeVisible();
   await page.getByRole('button', { name: 'Not now' }).click(); // no Sphinx here
 
   // Edit, then commit and push from the changes panel.
   await page.locator('.prose').getByText('Widgets require Python').click();
   await page.keyboard.press('End');
   await page.keyboard.type(' Python 3.12 is recommended.');
-  await expect(page.locator('.chip-button', { hasText: 'main · 1 change' })).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('.chip-button', { hasText: '1 change' })).toBeVisible({ timeout: 10_000 });
   await page.locator('.chip-button', { hasText: '1 change' }).click();
 
   const panel = page.getByRole('dialog', { name: 'Changes' });
@@ -75,7 +75,7 @@ test('clones a repository, then commits and pushes an edit', async () => {
   await who.getByRole('button', { name: 'Continue' }).click();
   await expect(panel).toContainText('Committed and pushed.');
   expect(sh(remote, 'log', '--format=%s|%an <%ae>', 'main')).toBe('Recommend Python 3.12|Wendy Writer <wendy@example.com>\nInitial docs|Dev <dev@x>\n');
-  await expect(page.locator('.chip-button', { hasText: 'main · no changes' })).toBeVisible();
+  await expect(page.locator('.chip-button', { hasText: 'no changes' })).toBeVisible();
 });
 
 test('gets the latest version from the server', async () => {
@@ -97,7 +97,7 @@ test('gets the latest version from the server', async () => {
   sh(seed, 'push', 'origin', 'HEAD:main');
 
   // No name or email is needed just to get the latest version.
-  await page.locator('.chip-button', { hasText: 'main' }).click();
+  await page.locator('.chip-button', { hasText: 'no changes' }).click();
   const panel = page.getByRole('dialog', { name: 'Changes' });
   await panel.getByRole('button', { name: 'Get latest' }).click();
   await expect(panel).toContainText('Up to date with the server.');
@@ -219,7 +219,7 @@ test('settles a clash spot by spot', async () => {
   expect(log()).toEqual(['Recommend 3.12', 'Require 3.11', 'Initial docs']);
   expect(file('index.md')).toContain('Widgets require Python 3.11 or newer.\nWidgets require Python 3.10 or newer. Use 3.12.\n');
   await expect(page.locator('.prose')).toContainText('Widgets require Python 3.11 or newer.');
-  await expect(page.locator('.chip-button', { hasText: 'main · no changes' })).toBeVisible();
+  await expect(page.locator('.chip-button', { hasText: 'no changes' })).toBeVisible();
 });
 
 test('shows what changed in a file, and discards it', async () => {
@@ -238,4 +238,76 @@ test('shows what changed in a file, and discards it', async () => {
   expect(file('index.md')).not.toContain('Use 3.12.');
   await panel().getByRole('button', { name: 'Close' }).click();
   await expect(page.locator('.prose')).not.toContainText('Use 3.12.');
+});
+
+test('switches branch, leaving uncommitted changes on the branch they belong to', async () => {
+  const { work, remote, seed } = serverRepo();
+  // A colleague's feature branch on the server.
+  sh(seed, 'remote', 'add', 'origin', remote);
+  sh(seed, 'switch', '-q', '-c', 'feature-uv');
+  writeFileSync(join(seed, 'docs', 'index.md'), '# Widget documentation\n\nThe uv edition.\n');
+  sh(seed, 'commit', '-qam', 'uv edition');
+  sh(seed, 'push', '-q', 'origin', 'feature-uv');
+  const prepare = (project: string) => {
+    rmSync(project, { recursive: true, force: true });
+    sh(work, 'clone', '-q', remote, project);
+    sh(project, 'config', 'user.name', 'Wendy Writer');
+    sh(project, 'config', 'user.email', 'wendy@example.com');
+  };
+  ctx = await launch({ prepare, env: isolated(work) });
+  const { page } = ctx;
+  await page.getByRole('button', { name: 'Not now' }).click();
+  // Work in progress on main.
+  await page.locator('.prose').getByText('Widgets require Python').click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' Draft.');
+  await expect(page.locator('.chip-button', { hasText: '1 change' })).toBeVisible({ timeout: 10_000 });
+
+  await page.locator('.git-branch').click();
+  const dialog = page.getByRole('dialog', { name: 'Branches' });
+  await expect(dialog.getByRole('list', { name: 'Your branches' })).toContainText('mainyou’re on this one');
+  await dialog.getByRole('list', { name: 'Branches on the server' }).getByRole('button', { name: /feature-uv/ }).click();
+  await expect(dialog).toContainText('You have 1 uncommitted change on main');
+  await dialog.getByRole('button', { name: 'Switch to feature-uv' }).click();
+  await expect(page.locator('.git-branch')).toHaveText(/feature-uv/);
+  await expect(page.locator('.prose')).toContainText('The uv edition.');
+  await expect(page.locator('.chip-button', { hasText: 'no changes' })).toBeVisible();
+
+  // Back on main, the draft is back.
+  await page.locator('.git-branch').click();
+  await dialog.getByRole('list', { name: 'Your branches' }).getByRole('button', { name: /^main/ }).click();
+  await expect(page.locator('.git-branch')).toHaveText(/main/);
+  await expect(page.locator('.prose')).toContainText('Widgets require Python 3.10 or newer. Draft.');
+  await expect(page.locator('.chip-button', { hasText: '1 change' })).toBeVisible();
+});
+
+test('starts a new branch from the server’s main, and pushes it', async () => {
+  const { work, remote } = serverRepo();
+  const prepare = (project: string) => {
+    rmSync(project, { recursive: true, force: true });
+    sh(work, 'clone', '-q', remote, project);
+    sh(project, 'config', 'user.name', 'Wendy Writer');
+    sh(project, 'config', 'user.email', 'wendy@example.com');
+  };
+  ctx = await launch({ prepare, env: isolated(work) });
+  const { page } = ctx;
+  await page.getByRole('button', { name: 'Not now' }).click();
+  await page.locator('.git-branch').click();
+  const dialog = page.getByRole('dialog', { name: 'Branches' });
+  await dialog.getByRole('button', { name: 'New branch…' }).click();
+  await dialog.getByLabel('Name').fill('install guide: v2');
+  await expect(dialog).toContainText('As install-guide-v2');
+  await expect(dialog.getByLabel('Start from the latest main on the server')).toBeChecked();
+  await dialog.getByRole('button', { name: 'Create branch' }).click();
+  await expect(page.locator('.git-branch')).toHaveText(/install-guide-v2/);
+
+  await page.locator('.prose').getByText('Widgets require Python').click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' New.');
+  await expect(page.locator('.chip-button', { hasText: '1 change' })).toBeVisible({ timeout: 10_000 });
+  await page.locator('.chip-button', { hasText: '1 change' }).click();
+  await panel().getByLabel('What did you change?').fill('Start the guide');
+  await panel().getByRole('button', { name: 'Commit and push' }).click();
+  await expect(panel()).toContainText('Committed and pushed.');
+  expect(sh(remote, 'log', '--format=%s', 'install-guide-v2').trim().split('\n')).toEqual(['Start the guide', 'Initial docs']);
 });

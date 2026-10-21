@@ -247,3 +247,62 @@ describe('Getting the latest', () => {
     expect((await git.status(me)).changes).toEqual([]);
   });
 });
+
+describe('Branches', () => {
+  function repo() {
+    const { work, remote, seed } = server();
+    sh(seed, 'switch', '-q', '-c', 'feature-a');
+    writeFileSync(join(seed, 'index.md'), '# Docs\n\nFeature A.\n');
+    sh(seed, 'commit', '-qam', 'Feature A');
+    sh(seed, 'push', '-q', 'origin', 'feature-a');
+    const me = join(work, 'me');
+    sh(work, 'clone', '-q', remote, me);
+    sh(me, 'config', 'user.name', 'Me');
+    sh(me, 'config', 'user.email', 'me@x');
+    return { me, read: () => readFileSync(join(me, 'index.md'), 'utf8') };
+  }
+
+  it('lists local branches and the server’s, and where new ones start', async () => {
+    const { me } = repo();
+    const b = await git.branches(me);
+    expect(b.current).toBe('main');
+    expect(b.local.map((x) => [x.name, x.upstream])).toEqual([['main', 'origin/main']]);
+    expect(b.remote.map((x) => x.branch)).toEqual(['feature-a']);
+    expect(b.base).toBe('origin/main');
+  });
+
+  it('switches to a server branch, leaving uncommitted changes behind until coming back', async () => {
+    const { me, read } = repo();
+    writeFileSync(join(me, 'index.md'), '# Docs\n\nWork in progress on main.\n');
+    expect(await git.switchTo(me, 'origin/feature-a', true)).toBeNull();
+    expect((await git.status(me)).branch).toBe('feature-a');
+    expect(read()).toBe('# Docs\n\nFeature A.\n');
+    expect((await git.status(me)).changes).toEqual([]);
+    expect(await git.switchTo(me, 'main', true)).toBeNull();
+    expect(read()).toBe('# Docs\n\nWork in progress on main.\n');
+    expect(sh(me, 'stash', 'list')).toBe('');
+  });
+
+  it('takes uncommitted changes along when they don’t clash, and says so when they do', async () => {
+    const { me, read } = repo();
+    writeFileSync(join(me, 'new.md'), '# New page\n');
+    expect(await git.switchTo(me, 'origin/feature-a', false)).toBeNull();
+    expect((await git.status(me)).changes).toEqual([{ path: 'new.md', kind: 'added' }]);
+    writeFileSync(join(me, 'index.md'), '# Docs\n\nChanged on feature-a.\n');
+    await expect(git.switchTo(me, 'main', false)).rejects.toThrow(/clash with that branch/);
+    expect((await git.status(me)).branch).toBe('feature-a');
+    expect(read()).toBe('# Docs\n\nChanged on feature-a.\n');
+  });
+
+  it('starts a new branch from the server’s main', async () => {
+    const { me } = repo();
+    await git.switchTo(me, 'origin/feature-a', false);
+    await git.createBranch(me, 'feature-b', 'origin/main');
+    const status = await git.status(me);
+    expect(status.branch).toBe('feature-b');
+    expect(status.upstream).toBeNull(); // on the server once pushed
+    expect(sh(me, 'log', '--format=%s', '-1').trim()).toBe('First');
+    await expect(git.createBranch(me, 'feature-b', null)).rejects.toThrow(/already/);
+    await expect(git.createBranch(me, 'bad name..', null)).rejects.toThrow(/can’t be a branch name/);
+  });
+});

@@ -1,7 +1,7 @@
 // The API the preload script exposes to the renderer as `window.myst`.
 import type { MystConfig } from '../core/project-config.js';
 import type { EnvironmentChoice, PythonCandidate, SphinxState } from './sphinx.js';
-import type { ConflictFile, GitInfo, GitOperation, PageVersion } from './git.js';
+import type { Branches, ConflictFile, GitInfo, GitOperation, PageVersion } from './git.js';
 
 // One Sphinx project (a conf.py and the pages under it) inside the opened folder.
 export interface SphinxProject {
@@ -43,7 +43,7 @@ export interface ProjectChanged {
   project: ProjectInfo;
 }
 
-export type MenuCommand = 'open-folder' | 'save' | 'toggle-source' | 'clone' | 'new-page' | 'delete-page' | 'go-to-page' | 'toggle-outline' | 'page-history';
+export type MenuCommand = 'open-folder' | 'save' | 'toggle-source' | 'clone' | 'new-page' | 'delete-page' | 'go-to-page' | 'toggle-outline' | 'page-history' | 'switch-branch';
 
 export interface MystApi {
   // The project from the command line or the last session, if any.
@@ -120,6 +120,11 @@ export interface MystApi {
   defaultCloneFolder(): Promise<string>;
   gitCommit(paths: string[], message: string, push: boolean): Promise<void>;
   gitPush(): Promise<void>;
+  // Branches; switching (`leave`: uncommitted changes stay with the branch left) and
+  // starting one (from `base`, e.g. origin/main, or from what's checked out: null).
+  gitBranches(): Promise<Branches>;
+  gitSwitch(branch: string, leave: boolean): Promise<GitOperation>;
+  gitCreateBranch(name: string, base: string | null): Promise<void>;
   // Check the server for new commits now (quietly; the result comes as git info).
   gitCheck(): Promise<void>;
   // Get the latest from the server (rebasing the writer's commits onto it). Returns

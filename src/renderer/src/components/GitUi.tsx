@@ -1,6 +1,6 @@
 // Git in the UI: the status chip, the changes panel, cloning and git's questions.
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import type { ConflictFile, GitChange, GitInfo } from '../../../shared/git';
+import type { Branches, ConflictFile, GitChange, GitInfo, GitOperation } from '../../../shared/git';
 import { conflictCount, parseConflicts, resolveConflicts, type Choice } from '../../../core/conflicts';
 import { Changes } from './History';
 
@@ -24,7 +24,7 @@ function Modal({ label, onClose, children }: { label: string; onClose: () => voi
   );
 }
 
-export function GitChip({ info, onOpen }: { info: GitInfo | null; onOpen: () => void }) {
+export function GitChip({ info, onOpen, onBranches }: { info: GitInfo | null; onOpen: () => void; onBranches: () => void }) {
   if (!info?.repoRoot || !info.status) return null;
   const { branch, ahead, behind, changes } = info.status;
   if (info.operation) {
@@ -34,18 +34,23 @@ export function GitChip({ info, onOpen }: { info: GitInfo | null; onOpen: () => 
       </button>
     );
   }
-  const parts = [branch ?? 'detached', changes.length ? `${changes.length} change${changes.length === 1 ? '' : 's'}` : 'no changes'];
+  const summary = changes.length ? `${changes.length} change${changes.length === 1 ? '' : 's'}` : 'no changes';
   const checked = info.checked
     ? info.checked.error
       ? `Couldn’t check the server: ${info.checked.error}`
       : `Server checked at ${new Date(info.checked.at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`
     : 'The server hasn’t been checked yet';
   return (
-    <button type="button" className={`chip-button${changes.length ? ' has-changes' : ''}${behind ? ' has-news' : ''}`} onClick={onOpen} title={`Changes and version history (git). ${checked}.`}>
-      <span aria-hidden="true">⎇</span> {parts.join(' · ')}
-      {ahead > 0 && <span title={`${ahead} commit${ahead === 1 ? '' : 's'} not pushed yet`}> ↑{ahead}</span>}
-      {behind > 0 && <span title={`${behind} new commit${behind === 1 ? '' : 's'} on the server`}> ↓{behind} new</span>}
-    </button>
+    <span className="git-chip">
+      <button type="button" className="chip-button git-branch" onClick={onBranches} title="Switch branch, or start a new one (Ctrl+Shift+B)">
+        <span aria-hidden="true">⎇</span> {branch ?? 'no branch'}
+      </button>
+      <button type="button" className={`chip-button${changes.length ? ' has-changes' : ''}${behind ? ' has-news' : ''}`} onClick={onOpen} title={`Changes, commits and the server (git). ${checked}.`}>
+        {summary}
+        {ahead > 0 && <span title={`${ahead} commit${ahead === 1 ? '' : 's'} not pushed yet`}> ↑{ahead}</span>}
+        {behind > 0 && <span title={`${behind} new commit${behind === 1 ? '' : 's'} on the server`}> ↓{behind} new</span>}
+      </button>
+    </span>
   );
 }
 
@@ -550,6 +555,192 @@ export function ConflictsDialog({ info, titles, onDone, onClose }: { info: GitIn
           {busy ? 'Finishing…' : 'Done'}
         </button>
       </div>
+    </Modal>
+  );
+}
+
+// A branch name from what was typed: spaces become hyphens, and characters git doesn't
+// allow in branch names go.
+export function branchName(typed: string): string {
+  return typed
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/[~^:?*[\\\x00-\x1f\x7f]+/g, '')
+    .replace(/\.{2,}/g, '.')
+    .replace(/\/{2,}/g, '/')
+    .replace(/@\{/g, '@')
+    .replace(/^[-./]+|[./]+$|\.lock$/g, '');
+}
+
+interface BranchProps {
+  info: GitInfo;
+  saveAll: () => Promise<boolean>;
+  onSwitched: (operation: GitOperation, message: string) => void;
+  onClose: () => void;
+}
+
+// Switching branch, or starting a new one. Pull requests stay with the git server.
+export function BranchDialog({ info, saveAll, onSwitched, onClose }: BranchProps) {
+  const [branches, setBranches] = useState<Branches | null>(null);
+  const [filter, setFilter] = useState('');
+  const [target, setTarget] = useState<{ name: string; label: string } | null>(null); // asking about uncommitted changes
+  const [leave, setLeave] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [typed, setTyped] = useState('');
+  const [fromBase, setFromBase] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    void api.gitBranches().then(setBranches, (e) => setError(message(e)));
+  }, []);
+  const changes = info.status?.changes.length ?? 0;
+  const current = branches?.current ?? info.status?.branch ?? null;
+  const name = branchName(typed);
+  const match = (n: string) => n.toLowerCase().includes(filter.trim().toLowerCase());
+
+  const run = async (fn: () => Promise<GitOperation | void>, done: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      if (!(await saveAll())) throw new Error('Some pages couldn’t be saved. Fix them first.');
+      onSwitched((await fn()) ?? null, done);
+    } catch (e) {
+      setError(message(e));
+      setBusy(false);
+    }
+  };
+  const pick = (branch: string, label: string) => {
+    if (label === current) return;
+    if (changes) setTarget({ name: branch, label });
+    else void run(() => api.gitSwitch(branch, false), `On ${label} now.`);
+  };
+
+  const row = (key: string, label: string, detail: string, onClick: () => void, isCurrent = false) => (
+    <li key={key}>
+      <button type="button" className={`branch-row${isCurrent ? ' current' : ''}`} aria-current={isCurrent ? 'true' : undefined} disabled={busy} onClick={onClick}>
+        <span className="branch-name">{label}</span>
+        <span className="branch-detail">{isCurrent ? 'you’re on this one' : detail}</span>
+      </button>
+    </li>
+  );
+  const when = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+
+  return (
+    <Modal label="Branches" onClose={() => !busy && onClose()}>
+      <h2>Branches</h2>
+      {target ? (
+        <>
+          <p className="modal-help">
+            You have {changes} uncommitted change{changes === 1 ? '' : 's'} on <strong>{current}</strong>. What should happen to {changes === 1 ? 'it' : 'them'}?
+          </p>
+          <label className="check">
+            <input type="radio" checked={leave} onChange={() => setLeave(true)} />
+            Leave {changes === 1 ? 'it' : 'them'} on {current}: set aside, and back when you return to {current}
+          </label>
+          <label className="check">
+            <input type="radio" checked={!leave} onChange={() => setLeave(false)} />
+            Take {changes === 1 ? 'it' : 'them'} along to {target.label}
+          </label>
+          {error && (
+            <p className="sphinx-error" role="alert">
+              {error}
+            </p>
+          )}
+          <div className="modal-actions">
+            <button type="button" disabled={busy} onClick={() => setTarget(null)}>
+              Back
+            </button>
+            <button type="button" className="primary" disabled={busy} onClick={() => void run(() => api.gitSwitch(target.name, leave), `On ${target.label} now.`)}>
+              {busy ? 'Switching…' : `Switch to ${target.label}`}
+            </button>
+          </div>
+        </>
+      ) : creating ? (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (name) void run(() => api.gitCreateBranch(name, fromBase ? branches?.base ?? null : null), `On the new branch ${name}. It goes to the server with your first push.`);
+          }}
+        >
+          <div className="field">
+            <label htmlFor="branch-name">Name</label>
+            <input id="branch-name" value={typed} autoFocus spellCheck={false} placeholder="feature/install-guide" onChange={(e) => setTyped(e.target.value)} />
+            {typed && name !== typed.trim() && <small>As {name || '(nothing usable)'}</small>}
+          </div>
+          {branches?.base && (
+            <>
+              <label className="check">
+                <input type="radio" checked={fromBase} onChange={() => setFromBase(true)} />
+                Start from the latest {branches.base.replace(/^[^/]+\//, '')} on the server
+              </label>
+              <label className="check">
+                <input type="radio" checked={!fromBase} onChange={() => setFromBase(false)} />
+                Start from what you have now ({current})
+              </label>
+            </>
+          )}
+          {changes > 0 && <p className="muted">Your uncommitted changes come along to the new branch.</p>}
+          {error && (
+            <p className="sphinx-error" role="alert">
+              {error}
+            </p>
+          )}
+          <div className="modal-actions">
+            <button type="button" disabled={busy} onClick={() => setCreating(false)}>
+              Back
+            </button>
+            <button type="submit" className="primary" disabled={busy || !name}>
+              {busy ? 'Creating…' : 'Create branch'}
+            </button>
+          </div>
+        </form>
+      ) : (
+        <>
+          <div className="row branch-search">
+            <input aria-label="Find a branch" placeholder="Find a branch" value={filter} autoFocus onChange={(e) => setFilter(e.target.value)} />
+            <button type="button" onClick={() => setCreating(true)}>
+              New branch…
+            </button>
+          </div>
+          {!branches && !error && <p className="muted">Looking…</p>}
+          {branches && (
+            <div className="branch-lists">
+              <h3>Yours</h3>
+              <ul aria-label="Your branches">
+                {branches.local
+                  .filter((b) => match(b.name))
+                  .map((b) =>
+                    row(
+                      b.name,
+                      b.name,
+                      [b.gone ? 'gone from the server' : b.upstream ? null : 'not on the server yet', b.ahead ? `↑${b.ahead}` : null, b.behind ? `↓${b.behind}` : null, when(b.date)].filter(Boolean).join(' · '),
+                      () => pick(b.name, b.name),
+                      b.name === current,
+                    ),
+                  )}
+              </ul>
+              {branches.remote.some((b) => match(b.branch)) && (
+                <>
+                  <h3>On the server</h3>
+                  <ul aria-label="Branches on the server">
+                    {branches.remote.filter((b) => match(b.branch)).map((b) => row(b.name, b.branch, when(b.date), () => pick(b.name, b.branch)))}
+                  </ul>
+                </>
+              )}
+            </div>
+          )}
+          {error && (
+            <p className="sphinx-error" role="alert">
+              {error}
+            </p>
+          )}
+          <div className="modal-actions">
+            <button type="button" onClick={onClose}>
+              Close
+            </button>
+          </div>
+        </>
+      )}
     </Modal>
   );
 }

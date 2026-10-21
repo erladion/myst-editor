@@ -128,6 +128,16 @@ export class Workspace {
     return this.save(path);
   }
 
+  // Forget every open page (another branch was checked out: the files are different).
+  // Unsaved edits must have been saved first.
+  closeAll() {
+    this.timers.forEach(clearTimeout);
+    this.timers.clear();
+    this.sessions.clear();
+    this.current = null;
+    this.changed();
+  }
+
   // Forget a page (it was deleted).
   close(path: string) {
     clearTimeout(this.timers.get(path));

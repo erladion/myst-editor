@@ -3,7 +3,7 @@
 import { execFile } from 'node:child_process';
 import { existsSync, promises as fs } from 'node:fs';
 import { join, resolve } from 'node:path';
-import type { GitChange, GitOperation, GitStatus } from '../../shared/git.js';
+import type { Branches, GitChange, GitOperation, GitStatus } from '../../shared/git.js';
 import { run, type RunResult } from '../sphinx/run.js';
 
 export interface FileCommit {
@@ -243,8 +243,11 @@ export class Git {
       // The writer's edits are back in the files: unstaged again, as they were, and the
       // copy git kept aside is no longer needed.
       await this.checked(['reset', '-q'], root);
-      const top = await this.git(['stash', 'list', '-1', '--format=%gs'], root);
-      if (top.code === 0 && top.output.trim() === 'autostash') await this.checked(['stash', 'drop', '-q'], root);
+      // Either the autostash of getting the latest, or changes left on this branch.
+      const stashes = ((await this.stdout(['stash', 'list', '--format=%gd%x1f%gs'], root)) ?? '').split('\n').map((l) => l.split('\x1f'));
+      const branch = (await this.status(root)).branch;
+      const kept = stashes.find(([, s], i) => (i === 0 && s === 'autostash') || (branch && s?.endsWith(`: ${leftOn(branch)}`)));
+      if (kept) await this.checked(['stash', 'drop', '-q', kept[0]], root);
       return this.operation(root);
     }
     return null;
@@ -257,6 +260,84 @@ export class Git {
     else if (op === 'merge') await this.checked(['merge', '--abort'], root);
   }
 
+  // Local branches (with how they stand against the server) and the server's branches
+  // that have no local branch yet. Newest first.
+  async branches(root: string): Promise<Branches> {
+    const refs = async (pattern: string) =>
+      ((await this.stdout(['for-each-ref', '--sort=-committerdate', '--format=%(refname:short)%1f%(upstream:short)%1f%(upstream:track)%1f%(committerdate:iso-strict)%1f%(HEAD)', pattern], root)) ?? '')
+        .split('\n')
+        .filter(Boolean)
+        .map((l) => l.split('\x1f'));
+    const local = (await refs('refs/heads')).map(([name, upstream, track, date]) => ({
+      name,
+      upstream: upstream || null,
+      ahead: Number(/ahead (\d+)/.exec(track)?.[1] ?? 0),
+      behind: Number(/behind (\d+)/.exec(track)?.[1] ?? 0),
+      gone: track.includes('gone'),
+      date,
+    }));
+    const current = (await refs('refs/heads')).find((r) => r[4] === '*')?.[0] ?? null;
+    const tracked = new Set(local.map((b) => b.upstream));
+    const remote = (await refs('refs/remotes'))
+      .map(([name, , , date]) => ({ name, branch: name.slice(name.indexOf('/') + 1), date }))
+      .filter((r) => !r.name.endsWith('/HEAD') && r.name.includes('/') && !tracked.has(r.name) && !local.some((b) => b.name === r.branch));
+    return { current, local, remote, base: await this.baseBranch(root) };
+  }
+
+  // The server's default branch (what origin/HEAD points at), else origin/main or master.
+  async baseBranch(root: string): Promise<string | null> {
+    const head = await this.stdout(['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'], root);
+    if (head?.trim()) return head.trim();
+    for (const b of ['origin/main', 'origin/master']) {
+      if ((await this.git(['rev-parse', '--verify', '--quiet', b], root)).code === 0) return b;
+    }
+    return null;
+  }
+
+  // Switch to a branch (a local one, or the server's as a new local one tracking it).
+  // `leave`: uncommitted changes stay with the branch being left, set aside until the
+  // writer comes back to it; otherwise they come along. Returns what's left to settle
+  // if changes set aside on the new branch clash when put back.
+  async switchTo(root: string, branch: string, leave: boolean): Promise<GitOperation> {
+    const { branch: from, changes } = await this.status(root);
+    if (leave && from && changes.length) await this.checked(['stash', 'push', '--include-untracked', '-m', leftOn(from)], root);
+    const remote = (await this.branches(root)).remote.find((r) => r.name === branch);
+    const r = await this.git(remote ? ['switch', '--track', remote.name] : ['switch', branch], root);
+    if (r.code !== 0) {
+      if (leave && from && changes.length) await this.git(['stash', 'pop', '--quiet'], root); // as it was
+      if (/would be overwritten by checkout|commit your changes or stash them/i.test(r.output)) {
+        throw new GitError('Your uncommitted changes clash with that branch. Leave them on this branch instead, or commit them first.', r.output);
+      }
+      throw new GitError(explain(r.output), r.output);
+    }
+    // Changes left on this branch earlier come back.
+    const name = remote ? remote.branch : branch;
+    const stashes = ((await this.stdout(['stash', 'list', '--format=%gd%x1f%gs'], root)) ?? '').split('\n').map((l) => l.split('\x1f'));
+    const mine = stashes.find(([, subject]) => subject?.endsWith(`: ${leftOn(name)}`));
+    if (!mine) return null;
+    const applied = await this.git(['-c', 'merge.conflictStyle=merge', 'stash', 'apply', '--index', mine[0]], root);
+    if (applied.code === 0) {
+      await this.checked(['stash', 'drop', '--quiet', mine[0]], root);
+      return null;
+    }
+    return this.operation(root);
+  }
+
+  // A new branch, starting from the latest of the server's default branch (`base`),
+  // or from what's checked out now. Uncommitted changes come along.
+  async createBranch(root: string, name: string, base: string | null): Promise<void> {
+    if ((await this.git(['check-ref-format', '--branch', name], root)).code !== 0) throw new GitError(`“${name}” can’t be a branch name.`, '');
+    if ((await this.git(['rev-parse', '--verify', '--quiet', `refs/heads/${name}`], root)).code === 0) throw new GitError(`There’s a branch called “${name}” already.`, '');
+    if (base) await this.fetch(root).catch(() => {}); // the latest, if the server can be reached
+    const r = await this.git(['switch', '--create', name, ...(base ? ['--no-track', base] : [])], root);
+    if (r.code !== 0) {
+      if (/would be overwritten by checkout|commit your changes or stash them/i.test(r.output)) {
+        throw new GitError(`Your uncommitted changes clash with ${base}. Commit them first, or start the branch from what you have now.`, r.output);
+      }
+      throw new GitError(explain(r.output), r.output);
+    }
+  }
+
   // Throw away uncommitted changes to a file: back to the last commit, or (for a file
   // that was never committed) gone.
   async discard(root: string, path: string): Promise<void> {
@@ -266,6 +347,9 @@ export class Git {
   }
 }
 
+
+// The name of the stash holding changes left on a branch when switching away.
+const leftOn = (branch: string) => `left on ${branch} (MyST Editor)`;
 
 function changeKind(xy: string): GitChange['kind'] {
   if (xy.includes('D')) return 'deleted';

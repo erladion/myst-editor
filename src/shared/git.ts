@@ -35,6 +35,14 @@ export interface GitInfo {
 
 export type GitOperation = 'rebase' | 'merge' | 'stash' | null;
 
+// Branches to switch to: the writer's own, and the server's not checked out yet.
+export interface Branches {
+  current: string | null;
+  local: { name: string; upstream: string | null; ahead: number; behind: number; gone: boolean; date: string }[];
+  remote: { name: string; branch: string; date: string }[]; // e.g. origin/feature-x → feature-x
+  base: string | null; // where new branches start from: the server's default branch, e.g. origin/main
+}
+
 // A file with conflicts to settle. `text` has git's conflict markers; null for a file
 // that can only be taken whole (a picture, or one side deleted it).
 export interface ConflictFile {

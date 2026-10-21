@@ -19,7 +19,7 @@ import { EnvironmentDialog, Preview, ProblemsPanel, SphinxChip, SphinxDialog, Tr
 import { SourceEditor } from './components/SourceEditor';
 import { LivePreview } from './components/LivePreview';
 import { AdvancedBar } from './components/AdvancedBar';
-import { AskPassHost, CloneDialog, ConflictsDialog, GitChip, GitPanel } from './components/GitUi';
+import { AskPassHost, BranchDialog, CloneDialog, ConflictsDialog, GitChip, GitPanel } from './components/GitUi';
 import { NewPageDialog, type NewPage } from './components/PageDialogs';
 import { GoToPage, Outline, markdownHeadings, type Heading } from './components/Navigation';
 import { loadPlaces, rememberPage, rememberScroll } from './places';
@@ -116,6 +116,7 @@ export function App() {
   const [gitInfo, setGitInfo] = useState<GitInfo | null>(null);
   const [gitPanel, setGitPanel] = useState(false);
   const [conflicts, setConflicts] = useState(false); // settling what clashed when getting the latest
+  const [branchesOpen, setBranchesOpen] = useState(false);
   const [cloning, setCloning] = useState(false);
   const [opening, setOpening] = useState<OpenProgress | null>(null);
   const [goTo, setGoTo] = useState(false);
@@ -473,6 +474,7 @@ export function App() {
       else if (cmd === 'delete-page' && ws?.current) void deletePage(ws.current);
       else if (cmd === 'go-to-page' && ws) setGoTo(true);
       else if (cmd === 'page-history' && ws?.current) setHistory(ws.current);
+      else if (cmd === 'switch-branch' && ws) setBranchesOpen(true);
       else if (cmd === 'toggle-outline') setOutline((o) => (o === 'shown' ? 'hidden' : 'shown'));
     });
     const offRecent = api.onOpenFolderPath((folder) => void openFolder(folder));
@@ -783,7 +785,7 @@ export function App() {
               Settings: {settingsProblems.length} problem{settingsProblems.length === 1 ? '' : 's'}
             </button>
           )}
-          <GitChip info={gitInfo} onOpen={() => (gitInfo?.operation ? setConflicts(true) : setGitPanel(true))} />
+          <GitChip info={gitInfo} onOpen={() => (gitInfo?.operation ? setConflicts(true) : setGitPanel(true))} onBranches={() => setBranchesOpen(true)} />
           <SphinxChip
             state={sphinx}
             project={projects.length > 1 ? activeProject?.name : undefined}
@@ -805,6 +807,24 @@ export function App() {
             setConflicts(true);
           }}
           onClose={() => setGitPanel(false)}
+        />
+      )}
+      {branchesOpen && gitInfo?.repoRoot && (
+        <BranchDialog
+          info={gitInfo}
+          saveAll={() => ws.saveAll()}
+          onSwitched={(operation, m) => {
+            setBranchesOpen(false);
+            // The files are another branch's now: read the pages again, staying on the
+            // same page if that branch has it.
+            const was = ws.current;
+            ws.closeAll();
+            const page = was && ws.project.files.includes(was) ? was : landingPage(ws.project);
+            if (page) void openPage(page);
+            if (operation) setConflicts(true);
+            else dialogs.current?.notify(m);
+          }}
+          onClose={() => setBranchesOpen(false)}
         />
       )}
       {conflicts && gitInfo?.repoRoot && (

@@ -42,10 +42,12 @@ previews. Right-click a page in the sidebar to see its history, delete it, or mo
 in the contents (or drag it).
 
 **Git:** the status bar shows the branch and your changes, and checks the server
-every few minutes ("↓2 new"). Click it to commit, push, see or discard changes, and
-**Get latest**: your commits go on top of what's new (a rebase) and uncommitted edits
-are kept. Where you and a colleague changed the same lines, the app asks, place by
-place, what to keep. Branches and pull requests are left to git and your server.
+every few minutes ("↓2 new"). Click the changes to commit, push, see or discard them,
+and **Get latest**: your commits go on top of what's new (a rebase) and uncommitted
+edits are kept. Where you and a colleague changed the same lines, the app asks, place
+by place, what to keep. Click the branch (or Ctrl+Shift+B) to switch branch, or start
+one from the latest `main`; uncommitted changes can stay with the branch you leave
+and come back when you return. Pull requests stay in your git server.
 
 | Shortcut | |
 |---|---|
@@ -54,6 +56,7 @@ place, what to keep. Branches and pull requests are left to git and your server.
 | Ctrl+Shift+O | Outline of the page |
 | Ctrl+/ | Markdown view |
 | Ctrl+F | Find and replace (Markdown view) |
+| Ctrl+Shift+B | Switch branch |
 
 View → Appearance switches between light and dark.
 

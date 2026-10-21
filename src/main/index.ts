@@ -596,6 +596,32 @@ function registerIpc() {
       }),
     ),
   );
+  ipcMain.handle('git-branches', () => plain(async () => git.branches(await requireRepo())));
+  // Switching branch changes the files under the app: the page list and the projects'
+  // settings are read again before answering, so the window has them when it reopens
+  // a page.
+  const afterCheckout = async () => {
+    const p = requireProject();
+    await pagesChanged(p, [...(await listDocuments(p.root)), ...(await existing(p.root, builtPages))]);
+    await refreshProject(p);
+  };
+  ipcMain.handle('git-switch', (_e, branch: string, leave: boolean) =>
+    plain(() =>
+      gitAction(async (root) => {
+        finishing = await git.switchTo(root, branch, leave);
+        await afterCheckout();
+        return finishing;
+      }),
+    ),
+  );
+  ipcMain.handle('git-create-branch', (_e, name: string, base: string | null) =>
+    plain(() =>
+      gitAction(async (root) => {
+        await git.createBranch(root, name, base);
+        await afterCheckout();
+      }),
+    ),
+  );
   // Check the server now (the Changes panel was opened).
   ipcMain.handle('git-check', () => checkServer());
   ipcMain.handle('git-push', () => plain(() => gitAction((root) => git.push(root))));
@@ -745,6 +771,8 @@ function buildMenu(theme: Theme = nativeTheme.themeSource) {
         { label: 'New Page…', accelerator: 'CmdOrCtrl+N', click: () => send('new-page') },
         { label: 'Delete Page…', click: () => send('delete-page') },
         { id: 'page-history', label: 'Page History…', click: () => send('page-history') },
+        { type: 'separator' },
+        { id: 'switch-branch', label: 'Switch Branch…', accelerator: 'CmdOrCtrl+Shift+B', click: () => send('switch-branch') },
         { label: 'Save', accelerator: 'CmdOrCtrl+S', click: () => send('save') },
         { type: 'separator' },
         { role: 'quit' },
