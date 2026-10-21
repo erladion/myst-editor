@@ -33,7 +33,10 @@ export function HistoryDialog({ path, title, current, ctx, onRestore, onClose }:
   const [versions, setVersions] = useState<PageVersion[] | null>(null);
   const [selected, setSelected] = useState<PageVersion | null>(null);
   const [text, setText] = useState<string | null>(null);
-  const [show, setShow] = useState<'version' | 'changes'>('changes');
+  // The version before the selected one (older, next in the list): '' if it's the first.
+  const [before, setBefore] = useState<string | null>(null);
+  // What a version changed by itself (the default), how it differs from now, or how it looked.
+  const [show, setShow] = useState<'here' | 'now' | 'version'>('here');
   useEffect(() => {
     void api.pageHistory(path).then((v) => {
       setVersions(v);
@@ -42,15 +45,22 @@ export function HistoryDialog({ path, title, current, ctx, onRestore, onClose }:
   }, [path]);
   useEffect(() => {
     setText(null);
-    if (selected) void api.pageVersion(path, selected).then((t) => setText(t ?? ''));
-  }, [path, selected]);
+    setBefore(null);
+    if (!selected || !versions) return;
+    void api.pageVersion(path, selected).then((t) => setText(t ?? ''));
+    const older = versions[versions.indexOf(selected) + 1];
+    if (older) void api.pageVersion(path, older).then((t) => setBefore(t ?? ''));
+    else setBefore('');
+  }, [path, selected, versions]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const same = text !== null && text.replace(/\r\n/g, '\n') === current.replace(/\r\n/g, '\n');
+  const lf = (t: string) => t.replace(/\r\n/g, '\n');
+  const same = text !== null && lf(text) === lf(current);
+  const unchanged = text !== null && before !== null && lf(text) === lf(before);
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal history" role="dialog" aria-modal="true" aria-label="Page history">
@@ -77,8 +87,11 @@ export function HistoryDialog({ path, title, current, ctx, onRestore, onClose }:
           <div className="history-view">
             {selected && (
               <div className="history-tabs" role="tablist" aria-label="Show">
-                <button type="button" role="tab" aria-selected={show === 'changes'} onClick={() => setShow('changes')}>
-                  Changes since
+                <button type="button" role="tab" aria-selected={show === 'here'} onClick={() => setShow('here')}>
+                  Changes in this version
+                </button>
+                <button type="button" role="tab" aria-selected={show === 'now'} onClick={() => setShow('now')}>
+                  Compared with now
                 </button>
                 <button type="button" role="tab" aria-selected={show === 'version'} onClick={() => setShow('version')}>
                   This version
@@ -91,7 +104,13 @@ export function HistoryDialog({ path, title, current, ctx, onRestore, onClose }:
                 <LivePreview text={text} ctx={ctx} savedText={text} build={null} viewAs={null} line={null} onPick={() => {}} />
               </div>
             )}
-            {selected && text !== null && show === 'changes' && (same ? <p className="muted pad">The page is the same now as in this version.</p> : <Changes from={text} to={current} />)}
+            {selected && text !== null && show === 'now' && (same ? <p className="muted pad">The page is the same now as in this version.</p> : <Changes from={text} to={current} />)}
+            {selected && text !== null && show === 'here' && before !== null &&
+              (unchanged ? (
+                <p className="muted pad">Nothing changed in the page from the version before.</p>
+              ) : (
+                <Changes from={before} to={text} labels={[before ? 'Before this version' : 'Before (nothing yet)', 'Changed in this version']} />
+              ))}
           </div>
         </div>
         <div className="modal-actions">
