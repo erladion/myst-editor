@@ -84,11 +84,12 @@ interface Props {
   previewAvailable: boolean;
   previewOpen: boolean;
   onTogglePreview: () => void;
+  onHistory: () => void; // the page's earlier versions
   viewAs: string[] | null;
   onViewAs: (capabilities: string[] | null) => void;
 }
 
-export function Toolbar({ view, ctx, onMarkdown, previewAvailable, previewOpen, onTogglePreview, viewAs, onViewAs }: Props) {
+export function Toolbar({ view, ctx, onMarkdown, previewAvailable, previewOpen, onTogglePreview, onHistory, viewAs, onViewAs }: Props) {
   const conditions = ctx.config.editor.conditions;
   const state = view?.state;
   const run = (cmd: Command) => {
@@ -199,6 +200,10 @@ export function Toolbar({ view, ctx, onMarkdown, previewAvailable, previewOpen, 
       </button>
       <button type="button" className="tb wide" title="Edit the Markdown beside a live preview (Ctrl+/)" onClick={onMarkdown}>
         Markdown
+      </button>
+      <span className="tb-sep" />
+      <button type="button" className="tb wide" title="Earlier versions of this page, and what changed" disabled={!view} onClick={onHistory}>
+        History
       </button>
     </div>
     {inTable && (

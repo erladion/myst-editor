@@ -10,9 +10,10 @@ interface Props {
   conditions: ConditionsDef | null;
   viewAs: string[] | null;
   onViewAs: (v: string[] | null) => void;
+  onHistory: () => void; // the page's earlier versions
 }
 
-export function AdvancedBar({ preview, onPreview, built, onRich, conditions, viewAs, onViewAs }: Props) {
+export function AdvancedBar({ preview, onPreview, built, onRich, conditions, viewAs, onViewAs, onHistory }: Props) {
   const option = (value: Props['preview'], label: string, title: string, disabled = false) => (
     <button type="button" aria-pressed={preview === value} title={title} disabled={disabled} onClick={() => onPreview(value)}>
       {label}
@@ -32,6 +33,10 @@ export function AdvancedBar({ preview, onPreview, built, onRich, conditions, vie
         {option('built', 'As built', built ? 'The page as Sphinx built it, after saving' : 'Available once Sphinx has built the project', !built)}
         {option('off', 'Off', 'Hide the preview')}
       </div>
+      <span className="tb-sep" />
+      <button type="button" className="tb wide" title="Earlier versions of this page, and what changed" onClick={onHistory}>
+        History
+      </button>
     </div>
   );
 }

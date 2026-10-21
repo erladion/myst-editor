@@ -31,7 +31,7 @@ test('restores the version from before an edit, and the restore can be undone', 
   await expect(page.locator('.save-status')).toHaveText('All changes saved', { timeout: 10_000 });
   expect(file()).toContain('Oops, a mistake.');
 
-  await menu('page-history');
+  await page.getByRole('button', { name: 'History', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Page history' });
   await expect(dialog.getByRole('option')).toHaveText([/^Today .*Before your edits/]);
   // What changed since: the old line, and the new one.
@@ -69,7 +69,9 @@ test('lists the page’s commits, with who and why', async () => {
   });
   const { page } = ctx;
   await openInstall();
-  await menu('page-history');
+  // From the Markdown view's bar too.
+  await page.getByRole('button', { name: 'Markdown' }).click();
+  await page.getByRole('button', { name: 'History', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Page history' });
   await expect(dialog.getByRole('option')).toHaveText([/Mention uv — Rob Reviewer/, /First version — Wendy Writer/]);
   await expect(dialog).toContainText('The page is the same now as in this version.');

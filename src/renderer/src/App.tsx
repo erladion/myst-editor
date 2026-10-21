@@ -674,6 +674,7 @@ export function App() {
             conditions={ctx.config.editor.conditions}
             viewAs={viewAs}
             onViewAs={setViewAs}
+            onHistory={() => ws.current && setHistory(ws.current)}
           />
         ) : (
         <Toolbar
@@ -683,6 +684,7 @@ export function App() {
           previewAvailable={!!info}
           previewOpen={showPreview}
           onTogglePreview={() => setShowPreview(!showPreview)}
+          onHistory={() => ws.current && setHistory(ws.current)}
           viewAs={viewAs}
           onViewAs={setViewAs}
         />
