@@ -45,9 +45,14 @@ test('right-click offers cut, copy and paste where they apply', async () => {
   // Something to paste, and a selection in the page.
   await app.evaluate(({ clipboard }) => clipboard.writeText('from elsewhere'));
   await page.locator('.prose').getByText('Welcome to the').dblclick();
-  await page.locator('.prose').getByText('Welcome to the').click({ button: 'right' });
+  // Right-click on the selected word, as a writer would.
+  const at = await page.evaluate(() => {
+    const r = getSelection()!.getRangeAt(0).getBoundingClientRect();
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  });
+  await page.mouse.click(at.x, at.y, { button: 'right' });
   await expect.poll(items).toEqual(['cut:true', 'copy:true', 'paste:true', 'selectall:true']);
-  // Right-clicking selects the word under the pointer: that's what Copy copies.
+  // What's selected is what Copy copies.
   const selected = await page.evaluate(() => getSelection()!.toString());
   expect(selected.trim()).not.toBe('');
   await app.evaluate(({ clipboard }) => {
