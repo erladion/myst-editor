@@ -52,6 +52,21 @@ export class Snapshots {
     }
   }
 
+  // The page was renamed or moved: its versions go with it.
+  async rename(root: string, from: string, to: string): Promise<void> {
+    const source = this.dir(root, from);
+    const target = this.dir(root, to);
+    try {
+      await fs.access(source);
+    } catch {
+      return; // none kept
+    }
+    await fs.rm(target, { recursive: true, force: true });
+    await fs.mkdir(join(target, '..'), { recursive: true });
+    await fs.rename(source, target);
+    await fs.writeFile(join(target, 'page.txt'), `${root}\n${to}\n`);
+  }
+
   // Keep `text` as a version of the page, unless one was kept less than SPACING ago
   // (`force` keeps it anyway: before restoring an older version) or it's the same as
   // the last one.

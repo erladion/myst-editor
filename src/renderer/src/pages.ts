@@ -5,6 +5,7 @@ import type { ProjectInfo, SphinxProject } from '../../shared/api';
 import type { SphinxInfo } from '../../shared/sphinx';
 import { addTocEntry, entryFor, globIncludes, insertTocEntry, removeTocEntries, retarget, takeTocEntry } from '../../core/toctree';
 import { loadDocument } from '../../core/document';
+import { rewriteRef, rewriteTitled, type Rename } from '../../core/rename';
 import { configFor } from '../../shared/projects';
 import { dirname } from './paths';
 import type { Workspace } from './workspace';
@@ -219,4 +220,98 @@ export function rankPages(query: string, files: string[], titles: Record<string,
     });
   scored.sort((a, b) => a.group - b.group || a.recency - b.recency || a.t.localeCompare(b.t));
   return scored.slice(0, limit).map((s) => s.f);
+}
+
+// ---- renaming and moving ----------------------------------------------------------
+
+// Directives whose argument is a path relative to the page.
+const PATH_DIRECTIVES = new Set(['figure', 'image', 'include', 'literalinclude']);
+
+// The page's first heading (its title) set to `title`.
+export function retitle(state: EditorState, title: string) {
+  let found: { node: PMNode; pos: number } | null = null;
+  state.doc.descendants((node, pos) => {
+    if (found) return false;
+    if (node.type.name === 'heading') found = { node, pos };
+    return !node.isTextblock;
+  });
+  if (!found) return null;
+  const { node, pos } = found as { node: PMNode; pos: number };
+  if (node.textContent === title) return null;
+  return state.tr.insertText(title, pos + 1, pos + node.nodeSize - 1);
+}
+
+// Every reference to a renamed or moved page, in the pages that may have one (those
+// mentioning its old file name), and the moved page's own relative references when
+// it changed folder. Returns the pages that couldn't be updated.
+export async function renameReferences(ws: Workspace, project: SphinxProject | null, oldPath: string, newPath: string): Promise<string[]> {
+  const inProject = (p: string) => (project?.dir && p.startsWith(project.dir + '/') ? p.slice(project.dir.length + 1) : p);
+  const docRename: Rename = { from: inProject(oldPath).replace(/\.md$/, ''), to: inProject(newPath).replace(/\.md$/, '') };
+  const fileRename: Rename = { from: inProject(oldPath), to: inProject(newPath) };
+  const stem = oldPath.split('/').pop()!.replace(/\.md$/, '');
+  const files = ws.project.files.filter((f) => !project?.dir || f.startsWith(project.dir + '/'));
+  const pages: string[] = [newPath];
+  for (const f of files) if (f !== newPath && (await ws.api.readFile(f).catch(() => '')).includes(stem)) pages.push(f);
+
+  const failed: string[] = [];
+  for (const page of pages) {
+    const moved = page === newPath;
+    const folder = moved ? { before: dirname(inProject(oldPath)), after: dirname(inProject(newPath)) } : { before: dirname(inProject(page)), after: dirname(inProject(page)) };
+    const toPage = (t: string) => (t.trim() === 'self' || /[*?[]/.test(t) ? null : rewriteRef(t, folder, docRename));
+    // Links to files: only to .md pages (a bare word can be a label to MyST); the moved
+    // page's other relative paths (pictures, includes) follow it too.
+    const toFile = (href: string) => (/\.md(#|$)/.test(href) ? rewriteRef(href, folder, fileRename) : moved ? rewriteRef(href, folder, null) : null);
+    const ok = await ws.edit(page, (state) => {
+      const tr = state.tr;
+      state.doc.descendants((node, pos) => {
+        const attrs = node.attrs;
+        if (node.type.name === 'role' && attrs.name === 'doc') {
+          const value = rewriteTitled(attrs.value, toPage);
+          if (value !== null) tr.setNodeMarkup(pos, null, { ...attrs, value });
+        } else if (node.type.name === 'ref_link') {
+          const href = toFile(attrs.href);
+          if (href !== null) tr.setNodeMarkup(pos, null, { ...attrs, href });
+        } else if (node.type.name === 'image' && moved) {
+          const src = rewriteRef(attrs.src, folder, null);
+          if (src !== null) tr.setNodeMarkup(pos, null, { ...attrs, src });
+        } else if (node.type.name === 'raw_block' && attrs.kind === 'image' && moved) {
+          // A picture on its own line is kept as written: change the path in its source.
+          const m = /^(\s*!\[[^\]]*\]\(\s*<?)([^)\s>]+)(.*)$/s.exec(attrs.source);
+          const src = m && rewriteRef(m[2], folder, null);
+          if (m && src !== null) tr.setNodeMarkup(pos, null, { ...attrs, source: m[1] + src + m[3] });
+        } else if (node.type.name === 'opaque_directive' && attrs.name === 'toctree') {
+          const lines = (attrs.source as string).split('\n');
+          let changed = false;
+          for (let i = 1; i < lines.length - 1; i++) {
+            const line = lines[i];
+            if (!line.trim() || /^\s*:[\w-]+:/.test(line)) continue;
+            const next = rewriteTitled(line.trim(), toPage);
+            if (next === null) continue;
+            lines[i] = /^\s*/.exec(line)![0] + next;
+            changed = true;
+          }
+          if (changed) tr.setNodeMarkup(pos, null, { ...attrs, source: lines.join('\n') });
+        } else if (moved && PATH_DIRECTIVES.has(attrs.name) && attrs.args) {
+          const args = rewriteRef(attrs.args, folder, null);
+          if (args !== null) {
+            // An opaque directive is written from its source: change the argument there too.
+            const source = typeof attrs.source === 'string' && attrs.source ? attrs.source.replace(/^(\s*\S+\{[^}]+\}[ \t]*).*$/m, `$1${args}`) : attrs.source;
+            tr.setNodeMarkup(pos, null, { ...attrs, args, ...(source !== undefined ? { source } : {}) });
+          }
+        }
+        if (node.isText) {
+          for (const mark of node.marks) {
+            if (mark.type.name !== 'link') continue;
+            const href = toFile(mark.attrs.href);
+            if (href === null) continue;
+            tr.removeMark(pos, pos + node.nodeSize, mark).addMark(pos, pos + node.nodeSize, mark.type.create({ ...mark.attrs, href }));
+          }
+        }
+        return true;
+      });
+      return tr;
+    });
+    if (!ok) failed.push(page);
+  }
+  return failed;
 }

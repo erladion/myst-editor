@@ -43,7 +43,7 @@ export interface ProjectChanged {
   project: ProjectInfo;
 }
 
-export type MenuCommand = 'open-folder' | 'save' | 'toggle-source' | 'clone' | 'new-page' | 'delete-page' | 'go-to-page' | 'toggle-outline' | 'page-history' | 'switch-branch';
+export type MenuCommand = 'open-folder' | 'save' | 'toggle-source' | 'clone' | 'new-page' | 'delete-page' | 'go-to-page' | 'toggle-outline' | 'page-history' | 'switch-branch' | 'rename-page';
 
 export interface MystApi {
   // The project from the command line or the last session, if any.
@@ -61,6 +61,8 @@ export interface MystApi {
   // Create a page (never replacing a file), or delete one: to the trash, or
   // permanently when asked (`trashed: false` means the trash wasn't available).
   createPage(rel: string, text: string): Promise<void>;
+  // Move a page's file (and its history in the app) to a new path.
+  renamePage(from: string, to: string): Promise<void>;
   deletePage(rel: string, permanently: boolean): Promise<{ trashed: boolean }>;
   // An image pasted or dropped into a page, as the path to write in it: a file (its
   // path from filePath), or a picture's bytes with a file name.

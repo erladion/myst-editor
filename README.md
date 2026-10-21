@@ -38,8 +38,9 @@ time, the app asks whether to build it with Sphinx, which runs the project's
 - a private one the app sets up, from the project's requirements (needs internet once).
 
 Builds then run in the background after every save, for links, problems and
-previews. Right-click a page in the sidebar to see its history, delete it, or move it
-in the contents (or drag it).
+previews. Right-click a page in the sidebar to see its history, rename or move it (links and
+tables of contents pointing to it follow), delete it, or move it in the contents (or
+drag it).
 
 **Git:** the status bar shows the branch and your changes, and checks the server
 every few minutes ("↓2 new"). Click the changes to commit, push, see or discard them,
@@ -116,8 +117,7 @@ written, shown as cards with a preview from the build, and editable as source.
 
 - `{list-table}`, grid tables, definition lists and footnotes are cards, edited as
   source. Table cells hold one line.
-- No find and replace across pages, and pages can't be renamed or moved to another
-  folder from the app.
+- No find and replace across pages.
 - Syntax an extension finds in the raw text (say `[[...]]`), rather than through a
   role or directive, is ordinary text to the editor and may get escaped when its
   paragraph is edited.

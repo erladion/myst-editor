@@ -108,3 +108,99 @@ export function NewPageDialog({ folders, folder: initialFolder, files, titles, c
     </div>
   );
 }
+
+export interface PageRename {
+  title: string;
+  path: string;
+}
+
+interface RenameProps {
+  path: string;
+  title: string;
+  folders: string[]; // where it can go: folders of its own project
+  files: Set<string>;
+  onRename: (change: PageRename) => Promise<void>;
+  onClose: () => void;
+}
+
+// Renaming a page (its title, its file) or moving it to another folder. Links and
+// tables of contents pointing to it are updated.
+export function RenamePageDialog({ path, title: initialTitle, folders, files, onRename, onClose }: RenameProps) {
+  const slash = path.lastIndexOf('/');
+  const [title, setTitle] = useState(initialTitle);
+  const [folder, setFolder] = useState(slash < 0 ? '' : path.slice(0, slash));
+  const [name, setName] = useState(path.slice(slash + 1).replace(/\.md$/, ''));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const file = `${(name.trim() || 'page').replace(/\.md$/, '')}.md`;
+  const target = folder ? `${folder}/${file}` : file;
+  const taken = target !== path && files.has(target);
+  const unchanged = target === path && title.trim() === initialTitle;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !busy && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [busy, onClose]);
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await onRename({ title: title.trim(), path: target });
+    } catch (err) {
+      setError(String(err instanceof Error ? err.message : err).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''));
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label="Rename page">
+        <h2>Rename or move page</h2>
+        <form onSubmit={submit}>
+          <div className="field">
+            <label htmlFor="rename-title">Title</label>
+            <input id="rename-title" value={title} autoFocus onChange={(e) => setTitle(e.target.value)} />
+            <small>The page’s heading, shown in the contents.</small>
+          </div>
+          <div className="field">
+            <label htmlFor="rename-folder">Folder</label>
+            <select id="rename-folder" value={folder} onChange={(e) => setFolder(e.target.value)}>
+              {folders.map((f) => (
+                <option key={f} value={f}>
+                  {f || '(top folder)'}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="rename-file">File name</label>
+            <div className="row">
+              <input id="rename-file" value={name} spellCheck={false} onChange={(e) => setName(e.target.value)} />
+              <button type="button" title="A file name made from the title" onClick={() => setName(pageSlug(title))}>
+                From the title
+              </button>
+            </div>
+            <small>
+              {target === path ? `Stays ${path}` : `Becomes ${target}`}
+              {taken && ' — there’s a page with that name already'}
+            </small>
+          </div>
+          {target !== path && <p className="muted">Tables of contents and links pointing to it are updated, and so are the page’s own links and pictures if it changes folder.</p>}
+          {error && (
+            <p className="sphinx-error" role="alert">
+              {error}
+            </p>
+          )}
+          <div className="modal-actions">
+            <button type="button" onClick={onClose} disabled={busy}>
+              Cancel
+            </button>
+            <button type="submit" className="primary" disabled={busy || (!title.trim() && !!initialTitle) || taken || unchanged}>
+              {busy ? 'Renaming…' : 'Rename'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}

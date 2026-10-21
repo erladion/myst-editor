@@ -20,12 +20,12 @@ import { SourceEditor } from './components/SourceEditor';
 import { LivePreview } from './components/LivePreview';
 import { AdvancedBar } from './components/AdvancedBar';
 import { AskPassHost, BranchDialog, CloneDialog, ConflictsDialog, GitChip, GitPanel } from './components/GitUi';
-import { NewPageDialog, type NewPage } from './components/PageDialogs';
+import { NewPageDialog, RenamePageDialog, type NewPage, type PageRename } from './components/PageDialogs';
 import { GoToPage, Outline, markdownHeadings, type Heading } from './components/Navigation';
 import { loadPlaces, rememberPage, rememberScroll } from './places';
 import { HistoryDialog, when } from './components/History';
 import type { PageVersion } from '../../shared/git';
-import { addToContents, contentsPages, defaultContents, folderOf, listingPages, moveInContents, pageFolders, removeFromContents, type ContentsMove } from './pages';
+import { addToContents, contentsPages, defaultContents, folderOf, listingPages, moveInContents, pageFolders, removeFromContents, renameReferences, retitle, type ContentsMove } from './pages';
 import type { GitInfo } from '../../shared/git';
 import { resolveRef } from './paths';
 import { docnameOf, problemsIn, resolveLink, resolveRole, suggestTargets } from './sphinx';
@@ -121,6 +121,7 @@ export function App() {
   const [opening, setOpening] = useState<OpenProgress | null>(null);
   const [goTo, setGoTo] = useState(false);
   const [history, setHistory] = useState<string | null>(null); // the page whose history is shown
+  const [renaming, setRenaming] = useState<string | null>(null); // the page being renamed
   const [outline, setOutline] = useStoredState<'shown' | 'hidden'>('mysteditor.outline', 'hidden');
   const [recentFolders, setRecentFolders] = useState<string[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -438,6 +439,25 @@ export function App() {
     [ws],
   );
 
+  // Rename or move a page: its title, its file, and every reference to it.
+  const renamePage = useCallback(
+    async (from: string, { title, path }: PageRename) => {
+      if (!ws) return;
+      if (!(await ws.saveAll())) throw new Error('Some pages couldn’t be saved. Fix them first.');
+      const project = projectFor(ws.project.projects, from);
+      if (title !== (ws.project.titles[from] ?? '') && !(await ws.edit(from, (state) => retitle(state, title)))) throw new Error('The page is open as Markdown: change its heading there.');
+      if (path !== from) {
+        await api.renamePage(from, path);
+        ws.close(from);
+        const failed = await renameReferences(ws, project, from, path);
+        if (failed.length) dialogs.current?.notify(`Update the links to it in ${failed.join(', ')} yourself: those pages are open as Markdown or couldn’t be saved.`);
+      }
+      setRenaming(null);
+      await openPage(path);
+    },
+    [ws, openPage],
+  );
+
   // Move a page in the contents (dragged in the sidebar, or Move up / down).
   const moveInContentsOf = useCallback(
     async (move: ContentsMove) => {
@@ -475,6 +495,7 @@ export function App() {
       else if (cmd === 'go-to-page' && ws) setGoTo(true);
       else if (cmd === 'page-history' && ws?.current) setHistory(ws.current);
       else if (cmd === 'switch-branch' && ws) setBranchesOpen(true);
+      else if (cmd === 'rename-page' && ws?.current) setRenaming(ws.current);
       else if (cmd === 'toggle-outline') setOutline((o) => (o === 'shown' ? 'hidden' : 'shown'));
     });
     const offRecent = api.onOpenFolderPath((folder) => void openFolder(folder));
@@ -663,6 +684,7 @@ export function App() {
         onDeletePage={(path) => void deletePage(path)}
         onMoveInContents={moveInContentsOf}
         onHistory={(path) => void openPage(path).then(() => setHistory(path))}
+        onRename={(path) => setRenaming(path)}
       />
       <main className="main">
         {mode === 'markdown' ? (
@@ -842,6 +864,20 @@ export function App() {
       )}
       {cloning && <CloneDialog onClose={() => setCloning(false)} onCloned={onCloned} />}
       <AskPassHost />
+      {renaming && (
+        <RenamePageDialog
+          path={renaming}
+          title={ws.project.titles[renaming] ?? ''}
+          folders={pageFolders(ws.project).filter((f) => {
+            // Its own project only: another project's build wouldn't have it.
+            const own = projectFor(ws.project.projects, renaming);
+            return !own?.dir || f === own.dir || f.startsWith(own.dir + '/');
+          })}
+          files={new Set(ws.project.files)}
+          onRename={(change) => renamePage(renaming, change)}
+          onClose={() => setRenaming(null)}
+        />
+      )}
       {history && ws.get(history) && (
         <HistoryDialog
           path={history}

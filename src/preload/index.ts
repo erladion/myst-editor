@@ -22,6 +22,7 @@ const api: MystApi = {
   addImageData: (page, name, bytes) => ipcRenderer.invoke('add-image-data', page, name, bytes),
   filePath: (file) => webUtils.getPathForFile(file),
   createPage: (rel, text) => ipcRenderer.invoke('create-page', rel, text),
+  renamePage: (from, to) => ipcRenderer.invoke('rename-page', from, to),
   deletePage: (rel, permanently) => ipcRenderer.invoke('delete-page', rel, permanently),
   sphinxEnv: (project) => ipcRenderer.invoke('sphinx-env', project),
   setSphinxEnv: (vars) => ipcRenderer.invoke('sphinx-set-env', vars),

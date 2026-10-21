@@ -1,10 +1,10 @@
 // Electron main process: window, menu, project file access and change watching.
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, net, protocol, shell, type MenuItemConstructorOptions } from 'electron';
 import { createHash } from 'node:crypto';
-import { promises as fs, statSync } from 'node:fs';
+import { existsSync, promises as fs, statSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { buildInputsOf, isBuildInput, listDocuments, openProject, readDocument, readTitle, IMAGE_EXTENSIONS, placeImage, resolveInside, saveImage, UNWATCHED_DIRS, unwatchedDir, writeDocument } from './project.js';
+import { buildInputsOf, firstHeading, isBuildInput, listDocuments, openProject, readDocument, readTitle, IMAGE_EXTENSIONS, placeImage, resolveInside, saveImage, UNWATCHED_DIRS, unwatchedDir, writeDocument } from './project.js';
 import { FolderWatcher } from './watch.js';
 import { Snapshots } from './history.js';
 import { SphinxManager } from './sphinx/manager.js';
@@ -511,7 +511,16 @@ function registerIpc() {
     if (before !== null && before !== text) await snapshots.keep(requireProject().root, rel, before).catch(() => {});
     fingerprints.set(rel, fingerprintText(text));
     await writeDocument(requireProject(), rel, text);
-    buildFor(requireProject(), rel, false);
+    // A changed heading is a new title for the sidebar and dialogs.
+    const p = requireProject();
+    const title = firstHeading(text);
+    if ((title ?? undefined) !== p.titles[rel]) {
+      p.titles = { ...p.titles };
+      if (title) p.titles[rel] = title;
+      else delete p.titles[rel];
+      win?.webContents.send('files-changed', { files: p.files, titles: p.titles, changed: [] });
+    }
+    buildFor(p, rel, false);
     refreshGit();
   });
   // A new page; refuses to replace a file that exists.
@@ -529,6 +538,27 @@ function registerIpc() {
     fingerprints.set(rel, fingerprintText(text));
     await pagesChanged(p, [...p.files, rel], rel);
     buildFor(p, rel, false);
+  });
+  // Rename or move a page's file (its references are the window's job). Refuses to
+  // replace another file.
+  ipcMain.handle('rename-page', async (_e, from: string, to: string) => {
+    const p = requireProject();
+    if (!to.endsWith('.md')) throw new Error('Pages are Markdown files ending in .md');
+    const source = resolveInside(p.root, from);
+    const target = resolveInside(p.root, to);
+    if (source === target) return;
+    // On Windows and macOS a change of case alone is the same file: allow that.
+    if (existsSync(target) && source.toLowerCase() !== target.toLowerCase()) throw new Error(`There’s already a file called ${to}`);
+    await fs.mkdir(dirname(target), { recursive: true });
+    await fs.rename(source, target);
+    const fp = fingerprints.get(from);
+    fingerprints.delete(from);
+    if (fp) fingerprints.set(to, fp);
+    if (builtPages.delete(from)) builtPages.add(to);
+    await snapshots.rename(p.root, from, to).catch(() => {});
+    await pagesChanged(p, [...p.files.filter((f) => f !== from), to], to);
+    buildFor(p, from, false);
+    buildFor(p, to, false);
   });
   // Delete a page: to the trash, or for good (when the trash isn't available).
   ipcMain.handle('delete-page', async (_e, rel: string, permanently: boolean) => {
@@ -771,6 +801,7 @@ function buildMenu(theme: Theme = nativeTheme.themeSource) {
         { label: 'New Page…', accelerator: 'CmdOrCtrl+N', click: () => send('new-page') },
         { label: 'Delete Page…', click: () => send('delete-page') },
         { id: 'page-history', label: 'Page History…', click: () => send('page-history') },
+        { id: 'rename-page', label: 'Rename Page…', click: () => send('rename-page') },
         { type: 'separator' },
         { id: 'switch-branch', label: 'Switch Branch…', accelerator: 'CmdOrCtrl+Shift+B', click: () => send('switch-branch') },
         { label: 'Save', accelerator: 'CmdOrCtrl+S', click: () => send('save') },
