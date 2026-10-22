@@ -1,15 +1,15 @@
 // Formatting toolbar. Reads the editor state on every render; App re-renders on each change.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { EditorView } from 'prosemirror-view';
 import type { Command, EditorState } from 'prosemirror-state';
 import { undo, redo } from 'prosemirror-history';
 import { schema } from '../../../core/schema';
 import {
-  blockKind, editLink, heading, inList, insertCodeBlock, insertDirective, insertDivider, insertFigure, insertImage, insertTarget, insertMath,
-  insertProjectDirective, insertReference, markActive, paragraph, toggleCode, toggleEm, toggleList, toggleQuote, toggleStrike, toggleStrong,
+  blockKind, editLink, heading, inList, insertAsking, insertCaptionedTable, insertCard, insertCodeBlock, insertCodeDirective, insertDirective,
+  insertDivider, insertFigure, insertImage, insertTarget, insertMath, insertProjectDirective, insertReference, markActive, paragraph, toggleCode, toggleEm, toggleList, toggleQuote, toggleStrike, toggleStrong,
 } from '../editor/commands';
 import type { EditorContext } from '../editor/context';
-import { ADMONITIONS } from '../editor/directives';
+import { ADMONITIONS, CALLOUT_CHOICES } from '../editor/directives';
 import { conditionColor, conditionKind, makeConditional } from '../editor/conditions';
 import type { ConditionsDef } from '../../../core/editor-config';
 import {
@@ -283,6 +283,15 @@ function MenuButton({ label, items, state, run }: { label: string; items: [strin
   );
 }
 
+const VERSION_NOTES = [
+  ['versionadded', 'New in version'],
+  ['versionchanged', 'Changed in version'],
+  ['deprecated', 'Deprecated'],
+  ['versionremoved', 'Removed in version'],
+] as const;
+const FILE_HELP = 'Relative to this page.';
+const LIST_TABLE = '* - Name\n  - Value\n* - first\n  - 1';
+
 function InsertMenu({ disabled, ctx, state, run }: { disabled: boolean; ctx: EditorContext; state: EditorState | undefined; run: (cmd: Command) => void }) {
   const [open, setOpen] = useState(false);
   const projectDirectives = Object.entries(ctx.config.editor.directives).filter(([, d]) => d.insert);
@@ -292,6 +301,14 @@ function InsertMenu({ disabled, ctx, state, run }: { disabled: boolean; ctx: Edi
     const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
     window.addEventListener('mousedown', close);
     return () => window.removeEventListener('mousedown', close);
+  }, [open]);
+  // It's wide: moved left as far as needed to stay in the window.
+  const items = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = items.current;
+    if (!open || !el) return;
+    const over = el.getBoundingClientRect().right - (window.innerWidth - 8);
+    if (over > 0) el.style.left = `${-over}px`;
   }, [open]);
   const item = (label: string, action: () => void) => (
     <button
@@ -312,22 +329,50 @@ function InsertMenu({ disabled, ctx, state, run }: { disabled: boolean; ctx: Edi
         Insert ▾
       </button>
       {open && (
-        <div className="menu-items" role="menu">
-          <div className="menu-heading">Callouts</div>
-          {['note', 'tip', 'important', 'warning', 'danger', 'seealso'].map((n) => item(ADMONITIONS[n].label, () => run(insertDirective(ctx, n))))}
-          <div className="menu-heading">Blocks</div>
-          {item('Image…', () => insertImage(ctx, run))}
-          {item('Figure…', () => insertFigure(ctx, run))}
-          {item('Table', () => run(insertTable))}
-          {item('Code block', () => run(insertCodeBlock()))}
-          {item('Equation', () => run(insertMath(ctx)))}
-          {item('Dropdown', () => run(insertDirective(ctx, 'dropdown', 'Click to expand')))}
-          {item('Divider', () => run(insertDivider))}
-          {projectDirectives.length > 0 && <div className="menu-heading">This project</div>}
-          {projectDirectives.map(([name, def]) => item(def.label ?? name, () => run(insertProjectDirective(ctx, name, def))))}
-          <div className="menu-heading">Inline</div>
-          {item('Cross-reference…', () => insertReference(ctx, run))}
-          {state && item('Link target…', () => insertTarget(ctx, state, run))}
+        <div className="menu-items insert-menu" role="menu" ref={items}>
+          <div className="menu-column">
+            <div className="menu-heading">Callouts</div>
+            {CALLOUT_CHOICES.map((n) =>
+              item(n === 'admonition' ? 'Callout with title' : ADMONITIONS[n].label, () => run(insertDirective(ctx, n, n === 'admonition' ? 'Title' : ''))),
+            )}
+            <div className="menu-heading">Version notes</div>
+            {VERSION_NOTES.map(([name, label]) => item(`${label}…`, () => void insertAsking(ctx, run, { title: label, label: 'Version', placeholder: '2.1', insert: (v) => insertDirective(ctx, name, v) })))}
+          </div>
+          <div className="menu-column">
+            <div className="menu-heading">Blocks</div>
+            {item('Image…', () => insertImage(ctx, run))}
+            {item('Figure…', () => insertFigure(ctx, run))}
+            {item('Table', () => run(insertTable))}
+            {item('Table with caption', () => run(insertCaptionedTable(ctx)))}
+            {item('Code block', () => run(insertCodeBlock()))}
+            {item('Equation', () => run(insertMath(ctx)))}
+            {item('Dropdown', () => run(insertDirective(ctx, 'dropdown', 'Click to expand')))}
+            {item('Divider', () => run(insertDivider))}
+            <div className="menu-heading">Text</div>
+            {item('Topic', () => run(insertDirective(ctx, 'topic', 'Title')))}
+            {item('Sidebar', () => run(insertDirective(ctx, 'sidebar', 'Title')))}
+            {item('Rubric…', () => void insertAsking(ctx, run, { title: 'Insert rubric', label: 'Heading', help: 'A heading that isn’t a section: not in the contents, nothing nested under it.', insert: (v) => insertCard(ctx, 'rubric', v) }))}
+            {item('Epigraph', () => run(insertDirective(ctx, 'epigraph')))}
+            {item('Pull quote', () => run(insertDirective(ctx, 'pull-quote')))}
+            {item('Highlights', () => run(insertDirective(ctx, 'highlights')))}
+          </div>
+          <div className="menu-column">
+            <div className="menu-heading">Structure</div>
+            {item('Table of contents', () => run(insertCard(ctx, 'toctree', '', [['maxdepth', '2']])))}
+            {item('Contents of this page', () => run(insertCard(ctx, 'contents', '', [['local', '']])))}
+            {item('Glossary', () => run(insertCard(ctx, 'glossary', '', [], 'Term\n  What the term means.')))}
+            {item('Include a file…', () => void insertAsking(ctx, run, { title: 'Include a file', label: 'File', placeholder: 'snippets/common.md', help: FILE_HELP, insert: (v) => insertCard(ctx, 'include', v) }))}
+            {item('Code from a file…', () => void insertAsking(ctx, run, { title: 'Code from a file', label: 'File', placeholder: '../examples/hello.py', help: FILE_HELP, insert: (v) => insertCard(ctx, 'literalinclude', v) }))}
+            {item('List table', () => run(insertCard(ctx, 'list-table', 'Caption', [['header-rows', '1']], LIST_TABLE)))}
+            {item('CSV table', () => run(insertCard(ctx, 'csv-table', 'Caption', [['header-rows', '1']], 'Name, Value\nfirst, 1')))}
+            {item('Raw HTML', () => run(insertCodeDirective(ctx, 'raw', 'html')))}
+            {item('reStructuredText', () => run(insertCodeDirective(ctx, 'eval-rst')))}
+            {projectDirectives.length > 0 && <div className="menu-heading">This project</div>}
+            {projectDirectives.map(([name, def]) => item(def.label ?? name, () => run(insertProjectDirective(ctx, name, def))))}
+            <div className="menu-heading">Inline</div>
+            {item('Cross-reference…', () => insertReference(ctx, run))}
+            {state && item('Link target…', () => insertTarget(ctx, state, run))}
+          </div>
         </div>
       )}
     </div>

@@ -36,7 +36,8 @@ export function saveDocument(doc: PMNode, map: SourceMap, config: MystConfig = D
 }
 
 // Attributes that record how something was written rather than what it is.
-const BOOKKEEPING = new Set(['sid', 'header', 'headerKey', 'marker', 'pad', 'pretty', 'colwidth']);
+// A directive's fence too: the serializer lengthens it when something nested would close it.
+const BOOKKEEPING = new Set(['sid', 'header', 'headerKey', 'marker', 'pad', 'pretty', 'colwidth', 'fence']);
 
 type Json = { type: string; attrs?: Record<string, unknown>; content?: Json[]; text?: string; marks?: unknown[] };
 

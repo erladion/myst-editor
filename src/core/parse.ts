@@ -18,7 +18,7 @@ type MdNode = { type: string; position?: { start: { line: number }; end: { line:
 export const MARKDOWN_DIRECTIVES = new Set([
   'admonition', 'note', 'warning', 'tip', 'important', 'hint', 'caution', 'attention', 'danger', 'error', 'seealso',
   'versionadded', 'versionchanged', 'deprecated', 'versionremoved',
-  'figure', 'dropdown', 'topic', 'sidebar', 'margin', 'epigraph', 'pull-quote', 'highlights',
+  'figure', 'table', 'dropdown', 'topic', 'sidebar', 'margin', 'epigraph', 'pull-quote', 'highlights',
   'tab-set', 'tab-item', 'grid', 'grid-item', 'grid-item-card', 'card', 'div', 'container',
 ]);
 

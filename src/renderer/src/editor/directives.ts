@@ -30,6 +30,7 @@ const OTHER: Record<string, DirectiveInfo> = {
   deprecated: { label: 'Deprecated since version', tone: 'warning', argLabel: 'Version' },
   versionremoved: { label: 'Removed in version', tone: 'danger', argLabel: 'Version' },
   figure: { label: 'Figure', tone: 'neutral', argLabel: 'Image' },
+  table: { label: 'Table', tone: 'neutral', argLabel: 'Caption' },
   dropdown: { label: 'Dropdown', tone: 'neutral', argLabel: 'Title' },
   topic: { label: 'Topic', tone: 'neutral', argLabel: 'Title' },
   sidebar: { label: 'Sidebar', tone: 'neutral', argLabel: 'Title' },
@@ -55,7 +56,7 @@ export function directiveInfo(name: string, editor?: EditorConfig): DirectiveInf
 }
 
 // Callouts offered in the Insert menu and the type switcher, in display order.
-export const CALLOUT_CHOICES = ['note', 'tip', 'important', 'warning', 'caution', 'danger', 'seealso', 'admonition'];
+export const CALLOUT_CHOICES = ['note', 'tip', 'hint', 'important', 'seealso', 'attention', 'caution', 'warning', 'danger', 'error', 'admonition'];
 
 // Small inline icons; emoji fonts aren't reliable on Linux desktops.
 export const ICONS: Record<Tone, string> = {

@@ -452,6 +452,21 @@ button.toc-toggle:hover {
   flex-direction: column;
 }
 
+/* Many directives: side by side, scrolling in a small window. */
+.menu-items.insert-menu {
+  flex-direction: row;
+  gap: 4px;
+  max-height: calc(100vh - 120px);
+  max-width: calc(100vw - 16px);
+  overflow: auto;
+}
+
+.menu-column {
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+}
+
 .menu-items button {
   border: none;
   text-align: left;

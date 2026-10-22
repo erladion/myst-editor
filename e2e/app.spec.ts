@@ -82,6 +82,35 @@ test('inserting a callout from the menu', async () => {
   expect(file('guide/install.md')).toBe(original('guide/install.md') + '\n:::{warning}\nBack up your settings first.\n:::\n');
 });
 
+test('the standard directives are in the Insert menu', async () => {
+  const { page } = ctx;
+  await openPage(page, 'Installing Widget');
+  const insert = async (name: string) => {
+    await page.getByRole('button', { name: 'Insert ▾' }).click();
+    await page.getByRole('menuitem', { name, exact: true }).click();
+  };
+  await clickEndOf(page, 'Settings live in');
+  await insert('Raw HTML');
+  await page.keyboard.type('<br>');
+  await insert('Table of contents');
+  await expect(page.locator('.prose .card').filter({ hasText: 'Table of contents' })).toBeVisible();
+  // One that needs its argument asks for it.
+  await insert('New in version…');
+  const dialog = page.getByRole('dialog', { name: 'New in version' });
+  await dialog.getByLabel('Version').fill('2.1');
+  await dialog.getByRole('button', { name: 'Insert' }).click();
+  await page.keyboard.type('Settings can be reloaded.');
+  // And a callout inside it, which gets the longer fence.
+  await insert('Hint');
+  await page.keyboard.type('Ctrl+R');
+  await waitForSave(page);
+  expect(file('guide/install.md')).toBe(
+    original('guide/install.md') +
+      '\n:::{raw} html\n<br>\n:::\n\n:::{toctree}\n:maxdepth: 2\n:::\n\n' +
+      '::::{versionadded} 2.1\nSettings can be reloaded.\n\n:::{hint}\nCtrl+R\n:::\n::::\n',
+  );
+});
+
 test('inserting an image, and a link target for a heading', async () => {
   const { page } = ctx;
   await openPage(page, 'Installing Widget');

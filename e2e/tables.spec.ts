@@ -116,7 +116,7 @@ test.describe('with span roles configured', () => {
     const { page } = ctx;
     await page.locator('.prose').getByText('Closing words.').click();
     await page.getByRole('button', { name: 'Insert ▾' }).click();
-    await page.getByRole('menuitem', { name: 'Table' }).click();
+    await page.getByRole('menuitem', { name: 'Table', exact: true }).click();
     await page.keyboard.type('Name');
     await saved(page);
     expect(file()).toContain('Closing words.\n\n| Name | Column 2 | Column 3 |\n| ---- | -------- | -------- |\n|      |          |          |\n|      |          |          |\n');

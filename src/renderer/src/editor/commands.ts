@@ -106,6 +106,42 @@ export function insertProjectDirective(ctx: EditorContext, name: string, def: Di
   return insertBlock(nodes.opaque_directive.create({ name, options, source: `${header}\n${fence}` }));
 }
 
+// A directive shown as a card, its source edited as Markdown (a toctree, an include…).
+export function insertCard(ctx: EditorContext, name: string, args = '', options: [string, string][] = [], body = ''): Command {
+  const fence = newDirectiveFence(ctx.config);
+  const header = renderHeader(fence, name, args, options);
+  const source = body ? `${header}\n${body}\n${fence}` : `${header.replace(/\n$/, '')}\n${fence}`;
+  return insertBlock(nodes.opaque_directive.create({ name, args, options, source }));
+}
+
+// A directive whose body is literal text (raw HTML, reStructuredText), edited as code.
+export function insertCodeDirective(ctx: EditorContext, name: string, args = ''): Command {
+  return insertBlock(nodes.code_block.create({ name, args, lang: args, directive: true, fence: newDirectiveFence(ctx.config) }));
+}
+
+// A table with a caption: the table directive around a Markdown table.
+export function insertCaptionedTable(ctx: EditorContext): Command {
+  const cell = (type: typeof nodes.table_cell, text = '') => type.create(null, nodes.paragraph.create(null, text ? schema.text(text) : undefined));
+  const row = (type: typeof nodes.table_cell, texts: string[]) => nodes.table_row.create(null, texts.map((t) => cell(type, t)));
+  const table = nodes.table.create({ pretty: true, ruleSpaces: true }, [row(nodes.table_header, ['Column 1', 'Column 2']), row(nodes.table_cell, ['', ''])]);
+  return insertBlock(nodes.md_directive.create({ name: 'table', args: 'Caption', fence: newDirectiveFence(ctx.config) }, table), 5);
+}
+
+// Directives that can't do without their argument (a version, a file): asked for first.
+export async function insertAsking(
+  ctx: EditorContext,
+  run: (cmd: Command) => void,
+  opts: { title: string; label: string; placeholder?: string; help?: string; insert: (value: string) => Command },
+) {
+  const values = await ctx.ui.editFields({
+    title: opts.title,
+    submit: 'Insert',
+    fields: [{ key: 'value', label: opts.label, value: '', placeholder: opts.placeholder, help: opts.help }],
+  });
+  const value = values?.value.trim();
+  if (value) run(opts.insert(value));
+}
+
 export function insertCodeBlock(): Command {
   return insertBlock(nodes.code_block.create({ lang: '' }));
 }

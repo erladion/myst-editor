@@ -62,6 +62,14 @@ describe('saveDocument', () => {
     expect(r).toEqual({ text: 'AbQout the\n`--strip all` option.\n', verified: true });
   });
 
+  it('lengthens the fence of a callout when a directive is put inside it', () => {
+    const { doc, map } = loadDocument(':::{note}\nHi\n:::\n');
+    const state = EditorState.create({ doc });
+    const rubric = schema.nodes.opaque_directive.create({ name: 'rubric', args: 'Later', source: ':::{rubric} Later\n:::' });
+    const r = saveDocument(state.apply(state.tr.insert(5, rubric)).doc, map);
+    expect(r).toEqual({ text: '::::{note}\nHi\n\n:::{rubric} Later\n:::\n::::\n', verified: true });
+  });
+
   it('drops a trailing hard break and empty paragraphs', () => {
     const { doc, map } = loadDocument('Text\n');
     const state = EditorState.create({ doc });
