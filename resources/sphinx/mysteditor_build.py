@@ -144,6 +144,30 @@ def export_fragments(app, doctree, docname, outdir):
         json.dump({"uri": uri, "fragments": fragments}, f)
 
 
+def mark_lines(app, doctree, docname):
+    """Tag each section and top-level block of a page with its source line, as a
+    mysteditor-line-N class, so the preview can scroll along with the editor. The
+    output is the editor's own build, not the project's."""
+    from docutils import nodes
+
+    own_source = os.path.abspath(str(app.env.doc2path(docname)))
+
+    def walk(parent):
+        for node in parent.children:
+            if not isinstance(node, nodes.Element):
+                continue
+            source = getattr(node, "source", None)
+            if source and os.path.abspath(source) != own_source:
+                continue  # included from another file
+            line = line_of(node)
+            if line:
+                node["classes"].append(f"mysteditor-line-{line}")
+            if isinstance(node, nodes.section):
+                walk(node)
+
+    walk(doctree)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--srcdir", required=True)
@@ -194,6 +218,7 @@ def main():
             written_docs.add(docname)
             try:
                 export_fragments(_app, doctree, docname, args.outdir)
+                mark_lines(_app, doctree, docname)
             except Exception:
                 traceback.print_exc()  # previews are optional; never fail the build
 

@@ -12,6 +12,7 @@ import { ASSET_SCHEME, BUILD_SCHEME, type MenuCommand, type ProjectInfo } from '
 import type { EnvironmentChoice, SphinxInfo, SphinxState } from '../shared/sphinx.js';
 import { probePython } from './sphinx/pythons.js';
 import { fragmentPage } from './sphinx/fragments.js';
+import { builtPage } from './sphinx/preview.js';
 import { Git, GitError } from './git/git.js';
 import { AskPass } from './git/askpass.js';
 import type { ConflictFile, GitInfo, PageVersion } from '../shared/git.js';
@@ -797,7 +798,8 @@ function registerProtocols() {
   // myst-asset://project/<path relative to the project root>: images in pages
   protocol.handle(ASSET_SCHEME, serveFrom(() => project?.root ?? null));
   // myst-build://<project id>/<path in its HTML output>: the Sphinx preview, one
-  // origin per project; _mysteditor/fragment.html previews a single block.
+  // origin per project; _mysteditor/fragment.html previews a single block. Pages get
+  // a script that follows the editor's scrolling.
   const files = serveFrom((url) => sphinx.get(url.hostname)?.outputDir ?? null);
   protocol.handle(BUILD_SCHEME, async (request) => {
     const url = new URL(request.url);
@@ -805,6 +807,12 @@ function registerProtocols() {
     if (outputDir && url.pathname === '/_mysteditor/fragment.html') {
       const q = url.searchParams;
       return fragmentPage(outputDir, q.get('doc') ?? '', Number(q.get('from')), Number(q.get('to')));
+    }
+    if (outputDir) {
+      let rel = decodeURIComponent(url.pathname.replace(/^\//, ''));
+      if (rel === '' || rel.endsWith('/')) rel += 'index.html';
+      const page = await builtPage(outputDir, rel);
+      if (page) return page;
     }
     return files(request);
   });

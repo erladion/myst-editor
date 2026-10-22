@@ -15,7 +15,8 @@ import { Sidebar } from './components/Sidebar';
 import { Toolbar } from './components/Toolbar';
 import { Banner, StatusBar } from './components/Status';
 import { DialogHost, type DialogApi } from './components/Dialogs';
-import { EnvironmentDialog, Preview, ProblemsPanel, SphinxChip, SphinxDialog, TrustBanner } from './components/SphinxUi';
+import { EnvironmentDialog, Preview, ProblemsPanel, SphinxChip, SphinxDialog, TrustBanner, type PreviewLine } from './components/SphinxUi';
+import { blockLines, lineAtTop } from './editor/scrollsync';
 import { SourceEditor } from './components/SourceEditor';
 import { LivePreview } from './components/LivePreview';
 import { AdvancedBar } from './components/AdvancedBar';
@@ -670,6 +671,24 @@ export function App() {
   const pageProblems = useMemo(() => problemsIn(info, session?.path ?? null), [info, session?.path]);
   // Hooks stay above the welcome screen's early return.
   const previewBuild = usePreviewBuild(pageProject?.id ?? null, info && session ? docnameOf(info, session.path) : null, info?.builtAt ?? null);
+  // The Sphinx preview follows the formatted view's scrolling (the Markdown view
+  // reports its line itself).
+  const [richLine, setRichLine] = useState<PreviewLine>(null);
+  const savedLines = useMemo(
+    () => (ws && session && showPreview ? blockLines(session.savedText, configFor(ws.project, session.path)) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ws, session?.path, session?.savedText, showPreview],
+  );
+  const followFrame = useRef(0);
+  const followScroll = useCallback(() => {
+    cancelAnimationFrame(followFrame.current);
+    followFrame.current = requestAnimationFrame(() => {
+      const el = scrollRef.current;
+      const v = viewRef.current;
+      if (el && v && savedLines) setRichLine(lineAtTop(v, el, savedLines));
+    });
+  }, [savedLines]);
+  useEffect(followScroll, [followScroll]);
 
   const openingCard = opening && (
     <div className="opening" role="status" aria-live="polite">
@@ -833,7 +852,7 @@ export function App() {
                     onPick={setGotoLine}
                   />
                 ) : (
-                  <Preview url={previewUrl} building={sphinx.status.kind === 'building'} />
+                  <Preview url={previewUrl} building={sphinx.status.kind === 'building'} line={sourceLine} />
                 )}
               </div>
             )}
@@ -841,7 +860,14 @@ export function App() {
           </div>
         ) : (
         <div className={`workarea${showPreview && info ? ' with-preview' : ''}`}>
-          <div className="scroll" ref={scrollRef} onScroll={onScroll}>
+          <div
+            className="scroll"
+            ref={scrollRef}
+            onScroll={() => {
+              onScroll();
+              followScroll();
+            }}
+          >
             {find && view && <FindBar key={`${find.initial}|${find.caseSensitive}`} view={view} initial={find.initial} caseSensitive={find.caseSensitive} focusKey={find.focus} onClose={() => setFind(null)} />}
             {session && (
               <Editor
@@ -861,7 +887,7 @@ export function App() {
             )}
             {!session && <div className="empty-state muted">Choose a page on the left.</div>}
           </div>
-          {showPreview && info && <Preview url={previewUrl} building={sphinx.status.kind === 'building'} />}
+          {showPreview && info && <Preview url={previewUrl} building={sphinx.status.kind === 'building'} line={richLine} />}
           {outline === 'shown' && session && <Outline headings={headings} current={currentHeading} onPick={pickHeading} onClose={() => setOutline('hidden')} />}
         </div>
         )}

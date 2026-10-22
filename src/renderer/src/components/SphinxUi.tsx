@@ -1,6 +1,6 @@
 // Sphinx in the UI: the permission banner, the status chip, the problems list and
 // the preview pane.
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { usable, type EnvironmentChoice, type PythonCandidate, type SphinxState, type SphinxWarning } from '../../../shared/sphinx';
 
 interface TrustProps {
@@ -431,13 +431,25 @@ export function ProblemsPanel({ warnings, titles, current, onOpen, onClose }: Pr
   );
 }
 
-export function Preview({ url, building }: { url: string | null; building: boolean }) {
+// Where the preview should be: the source line at the top of the editor (a fraction
+// part way through a block), or the end.
+export type PreviewLine = number | 'end' | null;
+
+export function Preview({ url, building, line = null }: { url: string | null; building: boolean; line?: PreviewLine }) {
+  const frame = useRef<HTMLIFrameElement>(null);
+  // The page scrolls itself there (see main/sphinx/preview.ts); again after each
+  // build reloads it.
+  const follow = () => {
+    if (line !== null) frame.current?.contentWindow?.postMessage({ mysteditorScroll: line }, '*');
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(follow, [line]);
   return (
     <aside className="preview" aria-label="Preview">
       {url ? (
         // Sandboxed, and on its own myst-build:// origin, so the built page's scripts
         // can't reach the app.
-        <iframe title="Sphinx preview" src={url} sandbox="allow-scripts allow-same-origin" />
+        <iframe ref={frame} title="Sphinx preview" src={url} sandbox="allow-scripts allow-same-origin" onLoad={follow} />
       ) : (
         <div className="preview-empty muted">{building ? 'Building the preview…' : 'No preview for this page yet.'}</div>
       )}

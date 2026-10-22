@@ -1,6 +1,8 @@
 // End-to-end tests for the Sphinx integration. The first run downloads Python and
 // the fixture's docs packages (shared between runs via MYSTEDITOR_SPHINX_DATA).
 import { expect, test } from '@playwright/test';
+import { appendFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { launch, type App } from './helpers';
 
 let ctx: App;
@@ -56,6 +58,30 @@ test('builds the project: contents, resolved references, problems and preview', 
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
   const preview = page.frameLocator('.preview iframe');
   await expect(preview.locator('h1')).toHaveText(/Widget documentation/);
+});
+
+test('the preview scrolls along with the page', async () => {
+  // A longer page.
+  await ctx.app.evaluate(({ app }) => app.exit(0)).catch(() => {});
+  const parts = Array.from({ length: 30 }, (_, i) => `## Part ${i + 1}\n\n${'Some words to fill the page. '.repeat(30)}\n`).join('\n');
+  ctx = await launch({ prepare: (project) => appendFileSync(join(project, 'docs', 'index.md'), `\n${parts}`) });
+  const { page } = ctx;
+  await allowAndBuild();
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  const preview = page.frameLocator('.preview iframe');
+  await expect(preview.locator('h1')).toHaveText(/Widget documentation/);
+  const topIn = (heading: string, where: typeof preview) =>
+    where.locator('h2', { hasText: heading }).evaluate((el) => Math.round(el.getBoundingClientRect().top));
+
+  await page.locator('.prose h2', { hasText: 'Part 20' }).evaluate((el) => el.scrollIntoView({ block: 'start' }));
+  // Part 20 is at the top of the preview too.
+  await expect.poll(() => topIn('Part 20', preview)).toBeLessThan(60);
+  expect(await topIn('Part 20', preview)).toBeGreaterThan(-20);
+  // And the end with the end.
+  await page.locator('.scroll').evaluate((el) => el.scrollTo(0, el.scrollHeight));
+  await expect
+    .poll(() => preview.locator('html').evaluate(() => Math.round(document.documentElement.scrollHeight - innerHeight - scrollY)))
+    .toBeLessThan(2);
 });
 
 test('the Markdown view shows warnings on their lines and the built page', async () => {
