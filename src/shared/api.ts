@@ -2,6 +2,7 @@
 import type { MystConfig } from '../core/project-config.js';
 import type { EnvironmentChoice, PythonCandidate, SphinxState } from './sphinx.js';
 import type { Branches, ConflictFile, GitInfo, GitOperation, PageVersion } from './git.js';
+import type { ValeResult } from './vale.js';
 
 // One Sphinx project (a conf.py and the pages under it) inside the opened folder.
 export interface SphinxProject {
@@ -93,6 +94,8 @@ export interface MystApi {
   snapshotPage(rel: string): Promise<void>;
   // Search every page's Markdown for some text.
   searchPages(query: string, caseSensitive: boolean): Promise<{ results: PageMatches[]; truncated: boolean }>;
+  // Vale's alerts for a saved page, when Vale is installed and configured for it.
+  valeLint(rel: string): Promise<ValeResult>;
   // The app's version and what it runs on, for Help → About.
   about(): Promise<AboutInfo>;
   // Pick an image for a page: its path relative to the page, or null if cancelled.

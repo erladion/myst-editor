@@ -9,6 +9,9 @@ import { imageInput } from './images';
 import { locateProblems, setProblems } from './problems';
 import { setConditionView } from './conditions';
 import { locatePreviews, setPreviews, type PreviewBuild } from './previews';
+import { setVale } from './vale';
+import { locateAlerts } from '../../../core/vale';
+import type { ValeAlert } from '../../../shared/vale';
 
 interface Props {
   state: EditorState;
@@ -26,10 +29,12 @@ interface Props {
   viewAs: string[] | null;
   // The latest build of this page's project, for previews in cards.
   build: PreviewBuild | null;
+  // Vale's alerts for the page, and the saved text they're about.
+  vale: { text: string; alerts: ValeAlert[] } | null;
 }
 
 // Remount (via `key`) when switching pages, so node views never carry state across files.
-export function Editor({ state, ctx, onChange, viewRef, onView, problems, savedText, reveal, onRevealed, viewAs, build }: Props) {
+export function Editor({ state, ctx, onChange, viewRef, onView, problems, savedText, reveal, onRevealed, viewAs, build, vale }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
@@ -82,6 +87,11 @@ export function Editor({ state, ctx, onChange, viewRef, onView, problems, savedT
     if (!view) return;
     view.dispatch(setProblems(view.state.tr, locateProblems(view.state.doc, savedText, ctx.config, problems)));
   }, [problems, savedText, ctx, viewRef]);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (view) view.dispatch(setVale(view.state.tr, vale ? locateAlerts(view.state.doc, vale.text, ctx.config, vale.alerts) : []));
+  }, [vale, ctx, viewRef]);
 
   useEffect(() => {
     const view = viewRef.current;

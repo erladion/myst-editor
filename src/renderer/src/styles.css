@@ -1412,6 +1412,71 @@ button.toc-toggle:hover {
   margin: auto;
 }
 
+/* Vale's alerts: the words underlined; a click shows what it says. */
+.vale {
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.vale-error {
+  text-decoration-color: var(--tone-danger);
+}
+
+.vale-warning {
+  text-decoration-color: var(--tone-warning);
+}
+
+.vale-suggestion {
+  text-decoration-style: dotted;
+  text-decoration-color: var(--accent);
+}
+
+.vale-popup {
+  position: fixed;
+  z-index: 50;
+  max-width: 360px;
+  padding: 10px 12px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.16);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.vale-popup.vale-error {
+  border-left-color: var(--tone-danger);
+}
+
+.vale-popup.vale-warning {
+  border-left-color: var(--tone-warning);
+}
+
+.vale-popup p {
+  margin: 0 0 8px;
+}
+
+.vale-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.vale-suggestions button {
+  padding: 2px 10px;
+}
+
+.vale-check {
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
 /* Blocks with a Sphinx warning. */
 .has-problem {
   box-shadow: -10px 0 0 -7px var(--tone-warning);

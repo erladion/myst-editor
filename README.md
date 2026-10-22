@@ -62,6 +62,11 @@ and come back when you return. Pull requests stay in your git server.
 
 View → Appearance switches between light and dark.
 
+**Vale:** if [Vale](https://vale.sh) is installed and a `.vale.ini` applies to the page,
+the page is checked after each save. Remarks are underlined; click one for what Vale
+says and its corrections. The status bar shows how many there are (click to go to the
+next).
+
 **Emacs keys:** Edit → Emacs Keys switches them on, in both views: C-f/b/n/p, M-f/b, C-a/e, M-</>, C-v/M-v to move; C-SPC sets the mark;
 C-d, M-d, M-DEL, C-k, C-w, M-w and C-y (one kill ring for both views); C-o, C-t,
 C-x h, C-/ to undo; C-s and C-r to find; C-g to cancel; C-x C-s to save, C-x b to go

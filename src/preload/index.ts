@@ -18,6 +18,7 @@ const api: MystApi = {
   chooseImage: (page) => ipcRenderer.invoke('choose-image', page),
   searchPages: (query, caseSensitive) => ipcRenderer.invoke('search-pages', query, caseSensitive),
   about: () => ipcRenderer.invoke('about'),
+  valeLint: (rel) => ipcRenderer.invoke('vale-lint', rel),
   pageHistory: (rel) => ipcRenderer.invoke('page-history', rel),
   pageVersion: (rel, version) => ipcRenderer.invoke('page-version', rel, version),
   snapshotPage: (rel) => ipcRenderer.invoke('snapshot-page', rel),

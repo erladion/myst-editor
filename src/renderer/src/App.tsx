@@ -3,6 +3,7 @@ import type { EditorView } from 'prosemirror-view';
 import { TextSelection, type EditorState } from 'prosemirror-state';
 import type { OpenProgress, ProjectInfo } from '../../shared/api';
 import type { EnvironmentChoice, SphinxState } from '../../shared/sphinx';
+import type { ValeAlert, ValeResult } from '../../shared/vale';
 import type { SourceMap } from '../../core/sourcemap';
 import { configFor, fromProject, projectFor } from '../../shared/projects';
 import { DEFAULT_CONFIG } from '../../core/project-config';
@@ -17,6 +18,7 @@ import { Banner, StatusBar } from './components/Status';
 import { DialogHost, type DialogApi } from './components/Dialogs';
 import { EnvironmentDialog, Preview, ProblemsPanel, SphinxChip, SphinxDialog, TrustBanner, type PreviewLine } from './components/SphinxUi';
 import { blockLines, lineAtTop } from './editor/scrollsync';
+import { nextAlert } from './editor/vale';
 import { SourceEditor } from './components/SourceEditor';
 import { LivePreview } from './components/LivePreview';
 import { AdvancedBar } from './components/AdvancedBar';
@@ -95,6 +97,48 @@ function landingPage(info: ProjectInfo): string | null {
 }
 
 // Stable while the page and build are the same, so cards don't reload their previews.
+const NO_ALERTS: ValeAlert[] = [];
+
+// Vale in the status bar: how many remarks it has on the page (a click goes to the
+// next), or that it failed. Nothing when it isn't installed or set up for the page.
+function ValeChip({ result, onNext, onShowError }: { result: ValeResult; onNext: () => void; onShowError: (text: string) => void }) {
+  if (result.status === 'unavailable') {
+    if (result.reason !== 'failed') return null;
+    return (
+      <button type="button" className="chip-button has-problems" onClick={() => onShowError(result.message)}>
+        Vale failed
+      </button>
+    );
+  }
+  const n = result.alerts.length;
+  return (
+    <button type="button" className="chip-button vale-chip" title={n ? 'Checked with Vale: go to the next remark' : 'Checked with Vale'} onClick={onNext} disabled={!n}>
+      {n ? `Style: ${n} remark${n === 1 ? '' : 's'}` : 'Style: no remarks'}
+    </button>
+  );
+}
+
+// Vale's alerts for the open page: checked when it opens and after each save, if Vale
+// is installed and configured for it (otherwise the result says why not).
+function useVale(path: string | null, savedText: string | null) {
+  const [found, setFound] = useState<{ path: string; text: string; result: ValeResult } | null>(null);
+  useEffect(() => {
+    if (!path || savedText === null) return;
+    let stale = false;
+    const timer = setTimeout(() => {
+      void api.valeLint(path).then(
+        (result) => !stale && setFound({ path, text: savedText, result }),
+        () => {},
+      );
+    }, 300);
+    return () => {
+      stale = true;
+      clearTimeout(timer);
+    };
+  }, [path, savedText]);
+  return found && found.path === path ? found : null;
+}
+
 function usePreviewBuild(project: string | null, docname: string | null, builtAt: number | null): PreviewBuild | null {
   return useMemo(() => {
     if (!project || !docname || !builtAt) return null;
@@ -675,6 +719,11 @@ export function App() {
   const pageProblems = useMemo(() => problemsIn(info, session?.path ?? null), [info, session?.path]);
   // Hooks stay above the welcome screen's early return.
   const previewBuild = usePreviewBuild(pageProject?.id ?? null, info && session ? docnameOf(info, session.path) : null, info?.builtAt ?? null);
+  const valeFound = useVale(session?.path ?? null, session?.savedText ?? null);
+  const vale = useMemo(
+    () => (valeFound?.result.status === 'ok' ? { text: valeFound.text, alerts: valeFound.result.alerts } : null),
+    [valeFound],
+  );
   // The Sphinx preview follows the formatted view's scrolling (the Markdown view
   // reports its line itself).
   const [richLine, setRichLine] = useState<PreviewLine>(null);
@@ -837,6 +886,7 @@ export function App() {
               text={session.text}
               onChange={(text) => ws.setText(session.path, text)}
               problems={pageProblems}
+              vale={vale?.alerts ?? NO_ALERTS}
               onLine={setSourceLine}
               goto={gotoLine}
               onGotoDone={onGotoDone}
@@ -888,6 +938,7 @@ export function App() {
                 onRevealed={onRevealed}
                 viewAs={viewAs}
                 build={previewBuild}
+                vale={vale}
               />
             )}
             {!session && <div className="empty-state muted">Choose a page on the left.</div>}
@@ -925,6 +976,7 @@ export function App() {
               {echo}
             </span>
           )}
+          {valeFound && <ValeChip result={valeFound.result} onNext={() => view && nextAlert(view)} onShowError={(text) => void dialogs.current?.showText({ title: 'Vale', text })} />}
           <GitChip info={gitInfo} onOpen={() => (gitInfo?.operation ? setConflicts(true) : setGitPanel(true))} onBranches={() => setBranchesOpen(true)} />
           <SphinxChip
             state={sphinx}

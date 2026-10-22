@@ -12,6 +12,7 @@ import { gapCursor } from 'prosemirror-gapcursor';
 import { schema } from '../../../core/schema';
 import { heading, paragraph, toggleCode, toggleEm, toggleStrike, toggleStrong } from './commands';
 import { problemsPlugin } from './problems';
+import { valePlugin } from './vale';
 import { conditionsPlugin } from './conditions';
 import { previewsPlugin } from './previews';
 import { tablePlugins } from './tables';
@@ -144,6 +145,7 @@ export function createEditorState(doc: PMNode): EditorState {
       placeholder,
       followLinks,
       problemsPlugin,
+      valePlugin(),
       conditionsPlugin,
       previewsPlugin,
       inlineHtmlPlugin(),

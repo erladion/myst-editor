@@ -24,11 +24,14 @@ import { tags } from '@lezer/highlight';
 import { imageFiles } from '../editor/images';
 import { registerSourceView } from '../emacs';
 import type { SphinxWarning } from '../../../shared/sphinx';
+import type { ValeAlert } from '../../../shared/vale';
+import { columnOffset } from '../../../core/vale';
 
 interface Props {
   text: string;
   onChange: (text: string) => void;
   problems: SphinxWarning[];
+  vale: ValeAlert[]; // for the text as last saved
   // The line the writer is at (cursor or top of the scrolled view), for the preview.
   onLine: (line: number) => void;
   // Move the cursor to a line (from the preview or the problems list).
@@ -84,16 +87,38 @@ const theme = EditorView.theme({
   '.cm-panels': { backgroundColor: 'var(--bg-soft)', color: 'var(--fg)' },
 });
 
-function diagnostics(state: EditorState, problems: SphinxWarning[]): Diagnostic[] {
-  return problems
+function diagnostics(state: EditorState, problems: SphinxWarning[], vale: ValeAlert[]): Diagnostic[] {
+  const sphinx = problems
     .filter((w) => w.line)
-    .map((w) => {
+    .map((w): Diagnostic => {
       const line = state.doc.line(Math.min(w.line!, state.doc.lines));
       return { from: line.from, to: line.to, severity: w.level === 'warning' ? 'warning' : 'error', message: w.message, source: w.type ? `Sphinx (${w.type})` : 'Sphinx' };
     });
+  // Vale's, on their words, with its corrections as actions.
+  const style = vale.flatMap((a): Diagnostic[] => {
+    if (a.Line > state.doc.lines) return [];
+    const line = state.doc.line(a.Line);
+    const from = line.from + columnOffset(line.text, a.Span[0]);
+    const to = line.from + columnOffset(line.text, a.Span[1] + 1);
+    if (state.doc.sliceString(from, to) !== a.Match) return []; // edited since
+    return [
+      {
+        from,
+        to,
+        severity: a.Severity === 'suggestion' ? 'info' : a.Severity,
+        message: a.Message,
+        source: `Vale (${a.Check})`,
+        actions: a.Suggestions.map((s) => ({
+          name: s || 'Remove',
+          apply: (view, f, t) => view.dispatch({ changes: { from: f, to: t, insert: s } }),
+        })),
+      },
+    ];
+  });
+  return [...sphinx, ...style];
 }
 
-export function SourceEditor({ text, onChange, problems, onLine, goto, onGotoDone, onImage, onImageError }: Props) {
+export function SourceEditor({ text, onChange, problems, vale, onLine, goto, onGotoDone, onImage, onImageError }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const callbacks = useRef({ onChange, onLine, onImage, onImageError });
@@ -192,8 +217,8 @@ export function SourceEditor({ text, onChange, problems, onLine, goto, onGotoDon
 
   useEffect(() => {
     const view = viewRef.current;
-    if (view) view.dispatch(setDiagnostics(view.state, diagnostics(view.state, problems)));
-  }, [problems]);
+    if (view) view.dispatch(setDiagnostics(view.state, diagnostics(view.state, problems, vale)));
+  }, [problems, vale]);
 
   useEffect(() => {
     const view = viewRef.current;
