@@ -1353,12 +1353,22 @@ button.toc-toggle:hover {
   min-width: 0;
   border-left: 1px solid var(--border);
   display: flex;
+  position: relative;
   background: #fff;
 }
 
 .preview iframe {
   flex: 1;
   border: none;
+}
+
+/* The next build of the page, loading out of sight. */
+.preview iframe.preview-next {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  visibility: hidden;
 }
 
 .preview-empty {
@@ -1763,6 +1773,12 @@ button.danger-text {
 /* ---- previews from the Sphinx build ---- */
 
 /* A picture of the block: clicks go to the card (select, double-click to edit). */
+/* The next build's preview, loading out of sight (it takes no space). */
+.card-preview.card-preview-next {
+  position: absolute;
+  visibility: hidden;
+}
+
 .card-preview {
   display: block;
   pointer-events: none;

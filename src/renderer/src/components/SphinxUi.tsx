@@ -436,20 +436,58 @@ export function ProblemsPanel({ warnings, titles, current, onOpen, onClose }: Pr
 export type PreviewLine = number | 'end' | null;
 
 export function Preview({ url, building, line = null }: { url: string | null; building: boolean; line?: PreviewLine }) {
-  const frame = useRef<HTMLIFrameElement>(null);
-  // The page scrolls itself there (see main/sphinx/preview.ts); again after each
-  // build reloads it.
-  const follow = () => {
-    if (line !== null) frame.current?.contentWindow?.postMessage({ mysteditorScroll: line }, '*');
+  // A new build loads out of sight and replaces the shown page once it has scrolled to
+  // the same place, so the preview doesn't flash or jump.
+  const [shown, setShown] = useState(url);
+  const frames = useRef(new Map<string, HTMLIFrameElement>());
+  const lineRef = useRef(line);
+  lineRef.current = line;
+  const urlRef = useRef(url);
+  urlRef.current = url;
+  // The page scrolls itself there (see main/sphinx/preview.ts) and says when it has.
+  const follow = (src: string | null) => {
+    if (lineRef.current !== null && src) frames.current.get(src)?.contentWindow?.postMessage({ mysteditorScroll: lineRef.current }, '*');
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(follow, [line]);
+  useEffect(() => follow(shown), [line, shown]);
+  const next = url && url !== shown ? url : null;
+  useEffect(() => {
+    if (!url) setShown(null);
+    if (!next) return;
+    const onMessage = (e: MessageEvent) => {
+      if (e.source === frames.current.get(next)?.contentWindow && e.data?.mysteditorScrolled) setShown(next);
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [url, next]);
+  const onLoad = (src: string) => {
+    if (src !== next) return follow(src);
+    if (lineRef.current === null) return setShown(src);
+    follow(src);
+    setTimeout(() => urlRef.current === src && setShown(src), 500); // in case it can't say
+  };
+  const srcs = [shown, next].filter((s): s is string => !!s);
   return (
     <aside className="preview" aria-label="Preview">
-      {url ? (
+      {srcs.length ? (
         // Sandboxed, and on its own myst-build:// origin, so the built page's scripts
         // can't reach the app.
-        <iframe ref={frame} title="Sphinx preview" src={url} sandbox="allow-scripts allow-same-origin" onLoad={follow} />
+        srcs.map((src) => (
+          <iframe
+            key={src}
+            ref={(el) => {
+              if (el) frames.current.set(src, el);
+              else frames.current.delete(src);
+            }}
+            className={src === next ? 'preview-next' : undefined}
+            title={src === next ? 'Next Sphinx preview' : 'Sphinx preview'}
+            aria-hidden={src === next || undefined}
+            tabIndex={src === next ? -1 : undefined}
+            src={src}
+            sandbox="allow-scripts allow-same-origin"
+            onLoad={() => onLoad(src)}
+          />
+        ))
       ) : (
         <div className="preview-empty muted">{building ? 'Building the preview…' : 'No preview for this page yet.'}</div>
       )}

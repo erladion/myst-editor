@@ -34,11 +34,11 @@ test('a custom directive the editor doesn’t know shows as the build renders it
   const { page } = ctx;
   const card = page.locator('.card-directive', { hasText: 'product-matrix' });
   await expect(card.locator('.card-badge')).toBeVisible();
-  const frame = card.frameLocator('iframe.card-preview');
+  const frame = card.frameLocator('iframe.card-preview:not(.card-preview-next)');
   await expect(frame.locator('.rubric')).toHaveText('Product availability');
   await expect(frame.locator('li')).toHaveText(['Basic: available', 'Pro: available']);
   // The frame sizes itself to the content.
-  expect((await card.locator('iframe.card-preview').boundingBox())!.height).toBeGreaterThan(40);
+  expect((await card.locator('iframe.card-preview:not(.card-preview-next)').boundingBox())!.height).toBeGreaterThan(40);
   // Clean build: the extension provides the {jira} role too.
   await expect(page.locator('.chip-button', { hasText: 'No problems' })).toBeVisible();
 });
@@ -46,13 +46,13 @@ test('a custom directive the editor doesn’t know shows as the build renders it
 test('raw HTML is previewed from the build, and updates after editing', async () => {
   const { page } = ctx;
   const card = page.locator('.card-html', { hasText: 'Raw HTML from the docs.' });
-  await expect(card.frameLocator('iframe.card-preview').locator('.raw-note p')).toHaveText('Raw HTML from the docs.');
+  await expect(card.frameLocator('iframe.card-preview:not(.card-preview-next)').locator('.raw-note p')).toHaveText('Raw HTML from the docs.');
 
   await card.dblclick();
   const dialog = page.getByRole('dialog', { name: 'Edit html' });
   await dialog.locator('textarea').fill('<div class="raw-note"><p>Changed in the editor.</p></div>');
   await dialog.getByRole('button', { name: 'Save' }).click();
-  await expect(page.locator('.card-raw').frameLocator('iframe.card-preview').locator('.raw-note p')).toHaveText('Changed in the editor.', { timeout: 30_000 });
+  await expect(page.locator('.card-raw').frameLocator('iframe.card-preview:not(.card-preview-next)').locator('.raw-note p')).toHaveText('Changed in the editor.', { timeout: 30_000 });
 });
 
 test('a previewed card hides its own view; condition markers are never previewed', async () => {
@@ -60,4 +60,30 @@ test('a previewed card hides its own view; condition markers are never previewed
   await expect(page.locator('.card-directive', { hasText: 'product-matrix' }).locator('.card-fallback')).toBeHidden();
   await expect(page.locator('.cond-start').first()).toBeVisible();
   await expect(page.locator('.cond-start iframe')).toHaveCount(0);
+});
+
+test('a new build swaps previews in without the card collapsing', async () => {
+  const { page } = ctx;
+  const card = page.locator('.card-directive', { hasText: 'product-matrix' });
+  const frame = card.locator('iframe.card-preview');
+  await expect(card.frameLocator('iframe.card-preview').locator('.rubric')).toHaveText('Product availability');
+  const before = await frame.getAttribute('src');
+  // Note any moment the card shows no preview.
+  await card.evaluate((el) => {
+    const w = window as unknown as { gaps: number };
+    w.gaps = 0;
+    const check = () => {
+      const shown = el.querySelector<HTMLIFrameElement>('iframe.card-preview:not(.card-preview-next)');
+      if (!shown || shown.hidden) w.gaps++;
+    };
+    new MutationObserver(check).observe(el, { subtree: true, childList: true, attributes: true });
+  });
+  await page.locator('.prose').getByText('Closing words.').click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' More.');
+  // The next build's preview takes over.
+  await expect.poll(() => card.locator('iframe.card-preview:not(.card-preview-next)').getAttribute('src'), { timeout: 60_000 }).not.toBe(before);
+  await expect(card.locator('iframe.card-preview')).toHaveCount(1);
+  await expect(card.frameLocator('iframe.card-preview').locator('.rubric')).toHaveText('Product availability');
+  expect(await page.evaluate(() => (window as unknown as { gaps: number }).gaps)).toBe(0);
 });

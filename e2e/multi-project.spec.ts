@@ -52,7 +52,7 @@ test('shows both projects, builds each with the shared .venv, and resolves refer
   await expect(page.locator('.chip-button', { hasText: 'User Guide: Built in' })).toBeVisible();
   await expect(page.locator('.directive-tip')).toBeVisible();
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
-  await expect(page.frameLocator('.preview iframe').getByRole('heading', { level: 1, name: /Installing/ })).toBeVisible();
+  await expect(page.frameLocator('.preview iframe[title="Sphinx preview"]').getByRole('heading', { level: 1, name: /Installing/ })).toBeVisible();
 });
 
 test('new callouts use each project’s fence style, and saving rebuilds only that project', async () => {

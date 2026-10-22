@@ -56,7 +56,7 @@ test('builds the project: contents, resolved references, problems and preview', 
 
   // The preview shows the page as Sphinx built it.
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
-  const preview = page.frameLocator('.preview iframe');
+  const preview = page.frameLocator('.preview iframe[title="Sphinx preview"]');
   await expect(preview.locator('h1')).toHaveText(/Widget documentation/);
 });
 
@@ -68,7 +68,7 @@ test('the preview scrolls along with the page', async () => {
   const { page } = ctx;
   await allowAndBuild();
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
-  const preview = page.frameLocator('.preview iframe');
+  const preview = page.frameLocator('.preview iframe[title="Sphinx preview"]');
   await expect(preview.locator('h1')).toHaveText(/Widget documentation/);
   const topIn = (heading: string, where: typeof preview) =>
     where.locator('h2', { hasText: heading }).evaluate((el) => Math.round(el.getBoundingClientRect().top));
@@ -77,6 +77,24 @@ test('the preview scrolls along with the page', async () => {
   // Part 20 is at the top of the preview too.
   await expect.poll(() => topIn('Part 20', preview)).toBeLessThan(60);
   expect(await topIn('Part 20', preview)).toBeGreaterThan(-20);
+
+  // After the next build the new page takes over in the same place, with no gap.
+  const shown = page.locator('.preview iframe[title="Sphinx preview"]');
+  const before = await shown.getAttribute('src');
+  await page.evaluate(() => {
+    const w = window as unknown as { gaps: number };
+    w.gaps = 0;
+    const pane = document.querySelector('.preview')!;
+    new MutationObserver(() => !pane.querySelector('iframe[title="Sphinx preview"]') && w.gaps++).observe(pane, { subtree: true, childList: true, attributes: true });
+  });
+  await page.locator('.prose h2', { hasText: 'Part 20' }).click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' again');
+  await expect.poll(() => shown.getAttribute('src'), { timeout: 60_000 }).not.toBe(before);
+  await expect(preview.locator('h2', { hasText: 'Part 20 again' })).toBeVisible();
+  expect(await topIn('Part 20 again', preview)).toBeLessThan(60);
+  expect(await page.evaluate(() => (window as unknown as { gaps: number }).gaps)).toBe(0);
+
   // And the end with the end.
   await page.locator('.scroll').evaluate((el) => el.scrollTo(0, el.scrollHeight));
   await expect
@@ -94,7 +112,7 @@ test('the Markdown view shows warnings on their lines and the built page', async
   await expect(page.locator('.cm-activeLine')).toHaveText(':::{company-callout}');
   await expect(page.locator('.cm-lint-marker-warning')).toHaveCount(1);
   await page.getByRole('button', { name: 'As built' }).click();
-  await expect(page.frameLocator('.advanced-preview iframe').locator('h1')).toHaveText(/Widget documentation/);
+  await expect(page.frameLocator('.advanced-preview iframe[title="Sphinx preview"]').locator('h1')).toHaveText(/Widget documentation/);
 });
 
 test('a broken cross-reference is flagged after the next build', async () => {

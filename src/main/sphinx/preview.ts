@@ -38,6 +38,7 @@ const SCRIPT = `
     if (e.source !== parent || !e.data || !('mysteditorScroll' in e.data)) return;
     want = e.data.mysteditorScroll;
     go();
+    parent.postMessage({ mysteditorScrolled: true }, '*');
   });
   // Pictures change the layout as they load.
   addEventListener('load', go);

@@ -235,6 +235,10 @@ abstract class CardView implements NodeView {
   // The block as the project's Sphinx build renders it, when there is one.
   protected previewUrl: string | null;
   private previewId: string | null = null;
+  private shown: HTMLIFrameElement | null = null; // the preview frame in the card
+  private pending: HTMLIFrameElement | null = null; // a newer one, loading
+  private fallback: HTMLElement | null = null;
+  private badge: HTMLElement | null = null;
 
   constructor(
     protected node: PMNode,
@@ -272,40 +276,66 @@ abstract class CardView implements NodeView {
     const header = el('div', { class: 'card-header' }, ...title, el('span', { class: 'spacer' }), button('Edit…', 'Edit the source of this block', () => this.edit()));
     if (this.previewId) previewListeners.delete(this.previewId);
     this.previewId = null;
+    this.shown = this.pending = null;
     if (!this.previewUrl) return this.dom.replaceChildren(header, ...body);
 
     // The built HTML in a sandboxed frame on the build's own origin; the card's own
     // preview stays as the fallback until the frame says it has something to show.
+    this.fallback = el('div', { class: 'card-fallback' }, ...body);
+    this.badge = el('span', { class: 'card-badge', title: 'Rendered by the project’s Sphinx build' }, 'as built');
+    header.insertBefore(this.badge, header.querySelector('.spacer'));
+    this.badge.hidden = true;
+    this.dom.replaceChildren(header, this.fallback);
+    this.loadPreview(this.previewUrl);
+  }
+
+  // After a build, the new preview loads out of sight, as wide as the one shown, and
+  // replaces it once it has its height: the card doesn't collapse and grow back.
+  private loadPreview(url: string) {
+    if (this.previewId) previewListeners.delete(this.previewId);
+    this.pending?.remove();
     const id = `p${++previewCounter}`;
     const frame = el('iframe', {
       class: 'card-preview',
       title: 'Preview from the Sphinx build',
       sandbox: 'allow-scripts allow-same-origin',
-      src: `${this.previewUrl}&id=${id}`,
+      src: `${url}&id=${id}`,
     });
-    const fallback = el('div', { class: 'card-fallback' }, ...body);
-    const badge = el('span', { class: 'card-badge', title: 'Rendered by the project’s Sphinx build' }, 'as built');
-    header.insertBefore(badge, header.querySelector('.spacer'));
-    badge.hidden = true;
-    frame.hidden = true;
+    if (this.shown) {
+      frame.classList.add('card-preview-next');
+      frame.style.width = `${this.shown.offsetWidth}px`;
+      this.pending = frame;
+    } else {
+      frame.hidden = true;
+      this.shown = frame;
+    }
     previewListeners.set(id, ({ height, empty }) => {
+      if (frame === this.pending) {
+        this.shown?.remove();
+        frame.classList.remove('card-preview-next');
+        frame.style.width = '';
+        this.shown = frame;
+        this.pending = null;
+      }
       frame.hidden = empty;
-      fallback.hidden = !empty;
-      badge.hidden = empty;
+      this.fallback!.hidden = !empty;
+      this.badge!.hidden = empty;
       frame.style.height = `${Math.min(height, 2000)}px`;
     });
     this.previewId = id;
-    this.dom.replaceChildren(header, frame, fallback);
+    this.dom.insertBefore(frame, this.fallback);
   }
 
   update(node: PMNode, decorations: readonly Decoration[]) {
     if (node.type !== this.node.type) return false;
     const url = previewUrlOf(decorations);
-    if (node.attrs !== this.node.attrs || url !== this.previewUrl) {
-      this.node = node;
-      this.previewUrl = url;
-      this.render();
-    }
+    const sameBlock = node.attrs === this.node.attrs;
+    this.node = node;
+    if (sameBlock && url === this.previewUrl) return true;
+    this.previewUrl = url;
+    // Only a new build: swap the preview. Otherwise (edited, or no preview now) redraw.
+    if (sameBlock && url && this.shown && !this.shown.hidden) this.loadPreview(url);
+    else this.render();
     return true;
   }
 
