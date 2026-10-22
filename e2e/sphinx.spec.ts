@@ -61,8 +61,9 @@ test('builds the project: contents, resolved references, problems and preview', 
 });
 
 test('the preview scrolls along with the page', async () => {
-  // A longer page.
+  // A longer page. (Closed first: Windows keeps the old app's files until it's gone.)
   await ctx.app.evaluate(({ app }) => app.exit(0)).catch(() => {});
+  await ctx.app.close().catch(() => {});
   const parts = Array.from({ length: 30 }, (_, i) => `## Part ${i + 1}\n\n${'Some words to fill the page. '.repeat(30)}\n`).join('\n');
   ctx = await launch({ prepare: (project) => appendFileSync(join(project, 'docs', 'index.md'), `\n${parts}`) });
   const { page } = ctx;
