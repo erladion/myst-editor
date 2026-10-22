@@ -559,6 +559,43 @@ button.toc-toggle:hover {
   overflow: auto;
 }
 
+/* Help → About */
+.modal.about {
+  width: min(400px, 92vw);
+}
+
+.modal.about h2 {
+  margin-bottom: 2px;
+  font-size: 20px;
+}
+
+.about-version {
+  margin: 0 0 12px;
+  font-weight: 600;
+}
+
+.about-details {
+  display: grid;
+  gap: 4px;
+  margin: 16px 0;
+  font-size: 13px;
+}
+
+.about-details div {
+  display: flex;
+  gap: 12px;
+}
+
+.about-details dt {
+  width: 80px;
+  color: var(--fg-muted);
+}
+
+.about-details dd {
+  margin: 0;
+  user-select: text;
+}
+
 .modal h2 {
   margin: 0 0 12px;
   font-size: 17px;

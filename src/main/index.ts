@@ -1,6 +1,9 @@
 // Electron main process: window, menu, project file access and change watching.
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, net, protocol, shell, type MenuItemConstructorOptions } from 'electron';
 import { createHash } from 'node:crypto';
+import { release } from 'node:os';
+// The version being built (app.getVersion() is Electron's own when run from out/).
+import { version as appVersion } from '../../package.json';
 import { existsSync, promises as fs, statSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -522,6 +525,13 @@ function registerIpc() {
     return placeImage(requireProject().root, page, path);
   });
   ipcMain.handle('add-image-data', (_e, page: string, name: string, bytes: Uint8Array) => saveImage(requireProject().root, page, name, bytes));
+  ipcMain.handle('about', () => ({
+    version: appVersion,
+    electron: process.versions.electron,
+    chromium: process.versions.chrome,
+    node: process.versions.node,
+    system: `${process.platform === 'win32' ? 'Windows' : process.platform === 'darwin' ? 'macOS' : 'Linux'} ${release()} (${process.arch})`,
+  }));
   ipcMain.handle('search-pages', (_e, query: string, caseSensitive: boolean) => {
     const p = requireProject();
     return searchPages(p.root, p.files, String(query), !!caseSensitive);
@@ -894,6 +904,10 @@ function buildMenu(theme: Theme = nativeTheme.themeSource) {
         { role: 'togglefullscreen' },
         ...(app.isPackaged ? [] : ([{ role: 'reload' }, { role: 'toggleDevTools' }] as MenuItemConstructorOptions[])),
       ],
+    },
+    {
+      label: 'Help',
+      submenu: [{ id: 'about', label: 'About MyST Editor', click: () => send('about') }],
     },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));

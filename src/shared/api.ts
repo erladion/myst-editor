@@ -49,7 +49,15 @@ export interface ProjectChanged {
   project: ProjectInfo;
 }
 
-export type MenuCommand = 'open-folder' | 'save' | 'toggle-source' | 'clone' | 'new-page' | 'delete-page' | 'go-to-page' | 'toggle-outline' | 'page-history' | 'switch-branch' | 'rename-page' | 'find' | 'toggle-emacs' | 'search-pages';
+export interface AboutInfo {
+  version: string;
+  electron: string;
+  chromium: string;
+  node: string;
+  system: string;
+}
+
+export type MenuCommand = 'open-folder' | 'save' | 'toggle-source' | 'clone' | 'new-page' | 'delete-page' | 'go-to-page' | 'toggle-outline' | 'page-history' | 'switch-branch' | 'rename-page' | 'find' | 'toggle-emacs' | 'search-pages' | 'about';
 
 export interface MystApi {
   // The project from the command line or the last session, if any.
@@ -85,6 +93,8 @@ export interface MystApi {
   snapshotPage(rel: string): Promise<void>;
   // Search every page's Markdown for some text.
   searchPages(query: string, caseSensitive: boolean): Promise<{ results: PageMatches[]; truncated: boolean }>;
+  // The app's version and what it runs on, for Help → About.
+  about(): Promise<AboutInfo>;
   // Pick an image for a page: its path relative to the page, or null if cancelled.
   // Images from outside the opened folder are copied into one.
   chooseImage(page: string): Promise<string | null>;

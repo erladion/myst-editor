@@ -20,6 +20,7 @@ import { blockLines, lineAtTop } from './editor/scrollsync';
 import { SourceEditor } from './components/SourceEditor';
 import { LivePreview } from './components/LivePreview';
 import { AdvancedBar } from './components/AdvancedBar';
+import { AboutDialog } from './components/About';
 import { AskPassHost, BranchDialog, CloneDialog, ConflictsDialog, GitChip, GitPanel } from './components/GitUi';
 import { NewPageDialog, RenamePageDialog, type NewPage, type PageRename } from './components/PageDialogs';
 import { GoToPage, Outline, markdownHeadings, type Heading } from './components/Navigation';
@@ -114,6 +115,8 @@ export function App() {
   const [sphinxStates, setSphinxStates] = useState<Record<string, SphinxState>>({});
   const [showProblems, setShowProblems] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [about, setAbout] = useState(false);
+  const closeAbout = useCallback(() => setAbout(false), []);
   const [reveal, setReveal] = useState<number | null>(null);
   const [sphinxDialog, setSphinxDialog] = useState<'details' | 'environment' | null>(null);
   const [viewAs, setViewAs] = useState<string[] | null>(null);
@@ -521,6 +524,7 @@ export function App() {
       else if (cmd === 'find') openFind();
       else if (cmd === 'search-pages' && ws) setSearchAll((s) => ({ focusKey: (s?.focusKey ?? 0) + 1 }));
       else if (cmd === 'toggle-emacs') setKeyMode((k) => (k === 'emacs' ? 'standard' : 'emacs'));
+      else if (cmd === 'about') setAbout(true);
       else if (cmd === 'toggle-outline') setOutline((o) => (o === 'shown' ? 'hidden' : 'shown'));
     });
     const offRecent = api.onOpenFolderPath((folder) => void openFolder(folder));
@@ -734,6 +738,7 @@ export function App() {
           </div>
         )}
         {cloning && <CloneDialog onClose={() => setCloning(false)} onCloned={onCloned} />}
+        {about && <AboutDialog sphinx={null} onClose={closeAbout} />}
         <AskPassHost />
         <DialogHost ref={dialogs} />
       </div>
@@ -974,6 +979,7 @@ export function App() {
         />
       )}
       {cloning && <CloneDialog onClose={() => setCloning(false)} onCloned={onCloned} />}
+      {about && <AboutDialog sphinx={info?.sphinxVersion ?? null} onClose={closeAbout} />}
       <AskPassHost />
       {renaming && (
         <RenamePageDialog
