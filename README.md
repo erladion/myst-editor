@@ -123,8 +123,12 @@ written, shown as cards with a preview from the build, and editable as source.
 
 ## Known limitations
 
-- `{list-table}`, grid tables, definition lists and footnotes are cards, edited as
-  source. Table cells hold one line.
+- Some blocks are cards, edited as source: list and CSV tables, grid tables, tables
+  of contents, includes, glossaries, rubrics, definition lists and footnotes. Table
+  cells hold one line.
+- The Insert menu offers the standard MyST and Sphinx directives. Ones from
+  extensions or themes (sphinx-design's tabs and grids, margin notes, your own) show
+  in pages, but are only in the menu once declared in `.mysteditor.toml`.
 - Search all pages finds text; replacing is one page at a time (Ctrl+F). In the
   formatted view, find skips blocks shown as cards (the Markdown view finds those).
 - Syntax an extension finds in the raw text (say `[[...]]`), rather than through a
