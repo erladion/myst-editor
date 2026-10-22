@@ -21,7 +21,7 @@ test('Help → About shows the version, and copies the details', async () => {
   await expect(dialog.locator('dt')).toContainText(['Electron', 'Chromium', 'Node', 'System']);
   await dialog.getByRole('button', { name: 'Copy details' }).click();
   await expect(dialog.getByRole('button', { name: 'Copied' })).toBeVisible();
-  expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toMatch(new RegExp(`^MyST Editor ${version.replace(/\./g, '\\.')}\nElectron: `));
+  expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toMatch(new RegExp(`^MyST Editor ${version.replace(/\./g, '\\.')}\r?\nElectron: `)); // CRLF on Windows
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
 });
