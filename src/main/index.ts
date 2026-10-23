@@ -4,6 +4,9 @@ import { createHash } from 'node:crypto';
 import { release } from 'node:os';
 // The version being built (app.getVersion() is Electron's own when run from out/).
 import { version as appVersion } from '../../package.json';
+// The window's icon, for Linux taskbars and docks (Windows and macOS take the
+// executable's).
+import icon from '../../build/icon.png?asset';
 import { existsSync, promises as fs, statSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -952,6 +955,7 @@ function createWindow() {
     height: 860,
     show: false,
     title: 'MyST Editor',
+    ...(process.platform === 'linux' ? { icon } : {}),
     backgroundColor: windowBackground(),
     webPreferences: {
       preload: join(import.meta.dirname, '../preload/index.cjs'),
