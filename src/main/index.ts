@@ -15,7 +15,7 @@ import { FolderWatcher } from './watch.js';
 import { accept as acceptWithVale, lint as lintWithVale } from './vale.js';
 import { Snapshots } from './history.js';
 import { SphinxManager } from './sphinx/manager.js';
-import { ASSET_SCHEME, BUILD_SCHEME, type MenuCommand, type ProjectInfo } from '../shared/api.js';
+import { ASSET_SCHEME, BUILD_SCHEME, type AppMenuItem, type MenuCommand, type ProjectInfo } from '../shared/api.js';
 import type { EnvironmentChoice, SphinxInfo, SphinxState } from '../shared/sphinx.js';
 import { probePython } from './sphinx/pythons.js';
 import { fragmentPage } from './sphinx/fragments.js';
@@ -169,6 +169,9 @@ interface Settings {
   environments?: Record<string, EnvironmentChoice>;
   // Light or dark, or as the system is.
   theme?: Theme;
+  // Who draws the title bar: the app, with the menus in it (as in VS Code), or the
+  // system, with its own menu bar below. Applies from the next start.
+  titleBar?: 'custom' | 'system';
   // Per project root: the writer's own environment variables for Sphinx builds, on
   // top of (and overriding) the projects' [sphinx.env].
   sphinxEnv?: Record<string, Record<string, string>>;
@@ -251,7 +254,7 @@ async function useProject(folder: string): Promise<ProjectInfo> {
   lastCheck = null;
   startWatching(project);
   setTimeout(() => void checkServer(), 2000);
-  win?.setTitle(`${project.name} — MyST Editor`);
+  setWindowTitle(`${project.name} — MyST Editor`);
   const root = project.root;
   await updateSettings((s) => ({ ...s, lastProject: root, recent: [root, ...(s.recent ?? []).filter((r) => r !== root)].slice(0, 10) }));
   recentFolders = (await loadSettings()).recent ?? [];
@@ -838,6 +841,66 @@ function send(cmd: MenuCommand) {
   win?.webContents.send('menu', cmd);
 }
 
+// ---- the title bar ----------------------------------------------------------------
+// With the app's own title bar the menus are drawn by the page (TitleBar.tsx) from
+// the application menu, which stays set so its shortcuts keep working; the system
+// draws only the window buttons, in the colours of the bar.
+let customTitleBar = false; // decided at start
+let systemTitleBarChosen = false; // Settings.titleBar, which may differ until a restart
+const TITLE_BAR_HEIGHT = 34;
+const titleBarColors = () => (nativeTheme.shouldUseDarkColors ? { color: '#1b1d22', symbolColor: '#e6e8eb' } : { color: '#f3f4f6', symbolColor: '#1d2129' });
+
+// Shortcuts as the menu shows them: role items carry none of their own.
+const ROLE_KEYS: Record<string, string> = {
+  cut: 'Ctrl+X', copy: 'Ctrl+C', paste: 'Ctrl+V', pasteandmatchstyle: 'Ctrl+Shift+V', selectall: 'Ctrl+A', quit: 'Ctrl+Q',
+  zoomin: 'Ctrl++', zoomout: 'Ctrl+-', resetzoom: 'Ctrl+0', togglefullscreen: 'F11', reload: 'Ctrl+R', toggledevtools: 'Ctrl+Shift+I',
+};
+const keyText = (accelerator: string) => accelerator.replace(/Cmd(Or|or)Ctrl|Command(Or|or)Control/g, 'Ctrl').replace(/Plus/g, '+');
+
+function menuModel(items: Electron.MenuItem[] = Menu.getApplicationMenu()?.items ?? []): AppMenuItem[] {
+  return items
+    .filter((i) => i.visible)
+    .map((i): AppMenuItem => {
+      if (i.type === 'separator') return { type: 'separator', label: '', enabled: false };
+      // Emacs keys are written into labels after four spaces ("Cut    C-w").
+      const [label, emacs] = i.label.split(/ {4,}/);
+      const shortcut = emacs ?? (i.accelerator ? keyText(String(i.accelerator)) : i.role ? ROLE_KEYS[i.role.toLowerCase()] : undefined);
+      return {
+        type: i.submenu ? 'submenu' : i.type === 'checkbox' || i.type === 'radio' ? i.type : 'normal',
+        label,
+        enabled: i.enabled,
+        ...(shortcut ? { shortcut } : {}),
+        ...(i.type === 'checkbox' || i.type === 'radio' ? { checked: i.checked } : {}),
+        ...(i.submenu ? { submenu: menuModel(i.submenu.items) } : {}),
+      };
+    });
+}
+
+function sendMenu() {
+  if (customTitleBar) win?.webContents.send('app-menu', menuModel());
+}
+
+function setWindowTitle(title: string) {
+  win?.setTitle(title);
+  win?.webContents.send('window-title', title);
+}
+
+async function useSystemTitleBar(system: boolean) {
+  await updateSettings((s) => ({ ...s, titleBar: system ? 'system' : 'custom' }));
+  buildMenu();
+  const { response } = await dialog.showMessageBox(win!, {
+    type: 'info',
+    message: system ? 'The system’s title bar is used from the next start.' : 'The app’s own title bar is used from the next start.',
+    buttons: ['Restart Now', 'Later'],
+    defaultId: 0,
+    cancelId: 1,
+  });
+  if (response === 0) {
+    app.relaunch();
+    win?.close(); // asks about unsaved changes first
+  }
+}
+
 function buildMenu(theme: Theme = nativeTheme.themeSource) {
   const template: MenuItemConstructorOptions[] = [
     {
@@ -902,6 +965,9 @@ function buildMenu(theme: Theme = nativeTheme.themeSource) {
             ] as const
           ).map(([value, label]) => ({ id: `theme-${value}`, label, type: 'radio' as const, checked: theme === value, click: () => void setTheme(value) })),
         },
+        ...(process.platform === 'darwin'
+          ? []
+          : [{ id: 'system-title-bar', label: 'Use System Title Bar', type: 'checkbox' as const, checked: systemTitleBarChosen, click: (item: Electron.MenuItem) => void useSystemTitleBar(item.checked) }]),
         { type: 'separator' },
         { role: 'zoomIn' },
         { role: 'zoomOut' },
@@ -917,6 +983,7 @@ function buildMenu(theme: Theme = nativeTheme.themeSource) {
     },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+  sendMenu();
 }
 
 // The right-click menu for a place in the page: editing commands where text can be
@@ -956,6 +1023,7 @@ function createWindow() {
     show: false,
     title: 'MyST Editor',
     ...(process.platform === 'linux' ? { icon } : {}),
+    ...(customTitleBar ? { titleBarStyle: 'hidden' as const, titleBarOverlay: { ...titleBarColors(), height: TITLE_BAR_HEIGHT } } : {}),
     backgroundColor: windowBackground(),
     webPreferences: {
       preload: join(import.meta.dirname, '../preload/index.cjs'),
@@ -1006,14 +1074,28 @@ app.whenReady().then(async () => {
   registerIpc();
   registerProtocols();
   recentFolders = (await loadSettings()).recent ?? [];
+  systemTitleBarChosen = (await loadSettings()).titleBar === 'system';
+  customTitleBar = process.platform !== 'darwin' && !systemTitleBarChosen && !process.env.MYSTEDITOR_SYSTEM_TITLE_BAR;
   await setTheme((await loadSettings()).theme ?? 'system', false);
   // The window is told whether it's dark: on Linux, pages don't see the system's (or
   // the chosen) scheme through prefers-color-scheme.
   nativeTheme.on('updated', () => {
     win?.setBackgroundColor(windowBackground());
+    if (customTitleBar) win?.setTitleBarOverlay({ ...titleBarColors(), height: TITLE_BAR_HEIGHT });
     win?.webContents.send('dark-changed', nativeTheme.shouldUseDarkColors);
   });
   ipcMain.handle('is-dark', () => nativeTheme.shouldUseDarkColors);
+  ipcMain.handle('app-menu', () => (customTitleBar ? { menu: menuModel(), title: win?.getTitle() ?? 'MyST Editor' } : null));
+  // A click in the title bar's menus: the item at that path in the application menu.
+  ipcMain.on('app-menu-click', (_e, path: number[]) => {
+    let items = Menu.getApplicationMenu()?.items.filter((i) => i.visible) ?? [];
+    let item: Electron.MenuItem | undefined;
+    for (const i of path) {
+      item = items[i];
+      items = item?.submenu?.items.filter((x) => x.visible) ?? [];
+    }
+    if (item && item.enabled && !item.submenu && win) (item.click as (e: unknown, w: BrowserWindow, c: Electron.WebContents) => void)(undefined, win, win.webContents);
+  });
   createWindow();
 });
 

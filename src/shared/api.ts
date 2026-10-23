@@ -58,6 +58,16 @@ export interface AboutInfo {
   system: string;
 }
 
+// The application menu, for the title bar the app draws itself.
+export interface AppMenuItem {
+  type: 'normal' | 'separator' | 'submenu' | 'checkbox' | 'radio';
+  label: string;
+  enabled: boolean;
+  shortcut?: string;
+  checked?: boolean;
+  submenu?: AppMenuItem[];
+}
+
 export type MenuCommand = 'open-folder' | 'save' | 'toggle-source' | 'clone' | 'new-page' | 'delete-page' | 'go-to-page' | 'toggle-outline' | 'page-history' | 'switch-branch' | 'rename-page' | 'find' | 'toggle-emacs' | 'search-pages' | 'about';
 
 export interface MystApi {
@@ -98,6 +108,12 @@ export interface MystApi {
   valeLint(rel: string): Promise<ValeResult>;
   // Add a word to the vocabulary of the Vale configuration that applies to the page.
   valeAccept(rel: string, word: string): Promise<{ ok: true; file: string; addedVocab: boolean } | { ok: false; message: string }>;
+  // The menus and title for the app's own title bar; null when the system draws it.
+  appMenu(): Promise<{ menu: AppMenuItem[]; title: string } | null>;
+  onAppMenu(cb: (menu: AppMenuItem[]) => void): () => void;
+  onWindowTitle(cb: (title: string) => void): () => void;
+  // Run the menu item at this path (indices into the menus and their submenus).
+  clickMenu(path: number[]): void;
   // The app's version and what it runs on, for Help → About.
   about(): Promise<AboutInfo>;
   // Pick an image for a page: its path relative to the page, or null if cancelled.

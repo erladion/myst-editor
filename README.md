@@ -16,17 +16,16 @@ Downloads: [releases](https://github.com/erladion/myst-editor/releases).
 
 Git features need `git` (Git for Windows on Windows).
 
-**Air-gapped machines:** the app can build with a Python environment that's already
-there, so nothing is downloaded. Make one from wheel files and choose it in the app
-(a `.venv` in the project is found automatically):
+The app can build with a Python environment that's already there, so nothing is
+downloaded. Make one from wheel files and choose it in the app (a `.venv` in the
+project is found automatically):
 
 ```sh
 python3 -m venv docs/.venv
 docs/.venv/bin/pip install --no-index --find-links /path/to/wheels -r docs/requirements.txt
 ```
 
-It needs Sphinx 5.3 or later, MyST-Parser, and every extension `conf.py` uses. On
-RHEL 9's Python 3.9 that means Sphinx 7.4 or older.
+It needs Sphinx 5.3 or later, MyST-Parser, and every extension `conf.py` uses.
 
 ## Using it
 
@@ -60,7 +59,8 @@ and come back when you return. Pull requests stay in your git server.
 | Ctrl+Shift+F | Search all pages |
 | Ctrl+Shift+B | Switch branch |
 
-View → Appearance switches between light and dark.
+View → Appearance switches between light and dark. The menus are in the title bar;
+View → Use System Title Bar puts them back in a menu bar of their own.
 
 **Vale:** if [Vale](https://vale.sh) is installed and a `.vale.ini` applies to the page,
 the page is checked after each save. Remarks are underlined; click one for what Vale
@@ -69,12 +69,33 @@ next). **Accept** adds a word Vale gets wrong to the project's Vale vocabulary
 (`accept.txt`; without one, `Vocab = Project` is added to `.vale.ini`), so Vale
 accepts it everywhere.
 
-**Emacs keys:** Edit → Emacs Keys switches them on, in both views: C-f/b/n/p, M-f/b, C-a/e, M-</>, C-v/M-v to move; C-SPC sets the mark;
-C-d, M-d, M-DEL, C-k, C-w, M-w and C-y (one kill ring for both views); C-o, C-t,
-C-x h, C-/ to undo; C-s and C-r to find; C-g to cancel; C-x C-s to save, C-x b to go
-to a page, C-x C-f to open a folder; C-c C-s b / i / c for bold, italic and code, and
-C-c m for the Markdown view. The menu then leaves those keys alone. Fields in dialogs
-keep their usual keys.
+**Emacs keys:** Edit → Emacs Keys switches them on, in both views. The menu then
+leaves these keys alone; fields in dialogs keep their usual keys.
+
+| Keys | |
+|---|---|
+| C-f / C-b, C-n / C-p | Forward / back a character, down / up a line |
+| M-f / M-b | Forward / back a word |
+| C-a / C-e | Start / end of the line |
+| M-< / M-> | Start / end of the page |
+| C-v / M-v | Down / up a screen |
+| C-SPC | Set the mark (moving then selects) |
+| C-d | Delete the next character |
+| M-d / M-DEL | Kill the next / previous word |
+| C-k | Kill to the end of the line |
+| C-w / M-w | Kill / copy the selection |
+| C-y | Yank (one kill ring for both views) |
+| C-o | Open a line |
+| C-t | Swap two characters |
+| C-x h | Select all |
+| C-/ | Undo |
+| C-s / C-r | Find forward / back |
+| C-g | Cancel |
+| C-x C-s | Save |
+| C-x b | Go to a page |
+| C-x C-f | Open a folder |
+| C-c C-s b / i / c | Bold / italic / code |
+| C-c m | Markdown view |
 
 ## Project settings
 

@@ -159,11 +159,152 @@ button:focus-visible {
 
 /* ---- layout ---- */
 
+/* The window: the app's title bar (when it draws one), then the app. */
+.window {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.window-body {
+  flex: 1;
+  min-height: 0;
+}
+
+.titlebar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: 34px;
+  /* The system's window buttons sit in the area right of titlebar-area. */
+  padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw));
+  background: var(--bg-sidebar);
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  user-select: none;
+  -webkit-app-region: drag;
+  position: relative;
+  z-index: 60;
+}
+
+.titlebar-icon {
+  width: 18px;
+  height: 18px;
+  margin: 0 6px 0 10px;
+}
+
+.titlebar-menus {
+  display: flex;
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-menu {
+  position: relative;
+}
+
+.titlebar-menu > button {
+  border: none;
+  background: none;
+  color: var(--fg);
+  padding: 4px 9px;
+  border-radius: 5px;
+  font-size: 13px;
+}
+
+.titlebar-menu > button:hover,
+.titlebar-menu.open > button {
+  background: color-mix(in srgb, var(--fg) 10%, transparent);
+}
+
+.titlebar-title {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  color: var(--fg-muted);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: 0 12px;
+}
+
+.titlebar-items,
+.titlebar-submenu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 240px;
+  margin: 2px 0 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.16);
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-submenu {
+  top: -5px;
+  left: 100%;
+  margin: 0 0 0 2px;
+}
+
+.titlebar-items li {
+  position: relative;
+}
+
+.titlebar-items button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  border: none;
+  background: none;
+  color: var(--fg);
+  padding: 4px 10px 4px 4px;
+  border-radius: 5px;
+  text-align: left;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.titlebar-items button.active:not(:disabled),
+.titlebar-items button:focus-visible,
+.titlebar-items li.open > button {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  outline: none;
+}
+
+.titlebar-items button:disabled {
+  color: var(--fg-muted);
+}
+
+.titlebar-check {
+  width: 20px;
+  text-align: center;
+  flex: none;
+}
+
+.titlebar-label {
+  flex: 1;
+}
+
+.titlebar-shortcut {
+  margin-left: 24px;
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.titlebar-separator {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}
+
 .app {
   display: grid;
   grid-template-columns: 270px 1fr;
   grid-template-rows: 100%;
-  height: 100vh;
+  height: 100%;
   overflow: hidden;
 }
 
