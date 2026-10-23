@@ -9,7 +9,8 @@ export const valeKey = new PluginKey<DecorationSet>('vale');
 
 export function setVale(tr: Transaction, located: LocatedAlert[]): Transaction {
   const decorations = located.map(({ from, to, alert }) =>
-    Decoration.inline(from, to, { class: `vale vale-${alert.Severity}`, title: `${alert.Message} (${alert.Check})` }, { alert }),
+    // No title: hovering shows the popup, in the app's colours (see Popup).
+    Decoration.inline(from, to, { class: `vale vale-${alert.Severity}` }, { alert }),
   );
   return tr.setMeta(valeKey, DecorationSet.create(tr.doc, decorations)).setMeta('addToHistory', false);
 }
@@ -28,13 +29,39 @@ export function setAccept(view: EditorView, accept: ((word: string) => void) | n
   else acceptors.delete(view);
 }
 
+type Hit = { from: number; to: number; alert: ValeAlert };
+
+// Opened by a click it stays until a click elsewhere (or Escape); opened by hovering,
+// it goes a moment after the mouse leaves both the word and the popup.
 class Popup {
   private dom: HTMLElement | null = null;
+  private shown: ValeAlert | null = null;
+  private pinned = false;
+  private timer: ReturnType<typeof setTimeout> | undefined;
   private close = () => this.hide();
   constructor(private view: EditorView) {}
 
-  show({ from, to, alert }: { from: number; to: number; alert: ValeAlert }) {
+  hoverEnter(hit: Hit) {
+    clearTimeout(this.timer);
+    if (this.shown === hit.alert) return;
+    this.timer = setTimeout(() => this.show(hit, false), 300);
+  }
+
+  hoverLeave() {
+    clearTimeout(this.timer);
+    if (this.dom && !this.pinned) this.timer = setTimeout(() => this.hide(), 300);
+  }
+
+  show(hit: Hit, pinned = true) {
+    clearTimeout(this.timer);
+    if (this.shown === hit.alert && this.dom) {
+      this.pinned ||= pinned;
+      return;
+    }
     this.hide();
+    const { from, to, alert } = hit;
+    this.shown = alert;
+    this.pinned = pinned;
     const dom = document.createElement('div');
     dom.className = `vale-popup vale-${alert.Severity}`;
     dom.setAttribute('role', 'dialog');
@@ -89,6 +116,8 @@ class Popup {
       check.append(b);
     }
     dom.append(check);
+    dom.addEventListener('mouseenter', () => clearTimeout(this.timer));
+    dom.addEventListener('mouseleave', () => this.hoverLeave());
     document.body.append(dom);
     const at = this.view.coordsAtPos(from);
     const width = dom.offsetWidth;
@@ -116,8 +145,11 @@ class Popup {
   };
 
   hide() {
+    clearTimeout(this.timer);
     this.dom?.remove();
     this.dom = null;
+    this.shown = null;
+    this.pinned = false;
     window.removeEventListener('mousedown', this.onOutside, true);
     window.removeEventListener('keydown', this.onKey, true);
     window.removeEventListener('scroll', this.close, true);
@@ -163,6 +195,18 @@ export function valePlugin() {
     },
     props: {
       decorations: (state) => valeKey.getState(state),
+      handleDOMEvents: {
+        mouseover(view, event) {
+          const el = (event.target as Element).closest?.('.vale');
+          const hit = el && alertAt(view.state, view.posAtDOM(el, 0));
+          if (hit) popup?.hoverEnter(hit);
+          return false;
+        },
+        mouseout(_view, event) {
+          if ((event.target as Element).closest?.('.vale')) popup?.hoverLeave();
+          return false;
+        },
+      },
       handleClick(view, pos, event) {
         if (event.button !== 0 || event.shiftKey || event.ctrlKey || event.metaKey) return false;
         const hit = alertAt(view.state, pos);

@@ -86,6 +86,38 @@ const theme = EditorView.theme({
   '.cm-activeLineGutter': { backgroundColor: 'color-mix(in srgb, var(--accent) 12%, transparent)' },
   '&.cm-focused .cm-selectionBackground, .cm-selectionBackground': { backgroundColor: 'color-mix(in srgb, var(--accent) 22%, transparent) !important' },
   '.cm-panels': { backgroundColor: 'var(--bg-soft)', color: 'var(--fg)' },
+  // Tooltips (Vale's and Sphinx's remarks, completions) and the find panel's fields,
+  // in the app's colours rather than CodeMirror's light ones.
+  '.cm-tooltip': {
+    backgroundColor: 'var(--bg)',
+    color: 'var(--fg)',
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius)',
+    boxShadow: '0 8px 24px rgb(0 0 0 / 0.16)',
+    fontFamily: 'var(--font-ui)',
+    fontSize: '13px',
+  },
+  '.cm-tooltip-lint': { padding: '2px 0' },
+  '.cm-diagnostic': { padding: '6px 10px', borderLeftWidth: '3px' },
+  '.cm-diagnostic-error': { borderLeftColor: 'var(--tone-danger)' },
+  '.cm-diagnostic-warning': { borderLeftColor: 'var(--tone-warning)' },
+  '.cm-diagnostic-info': { borderLeftColor: 'var(--accent)' },
+  '.cm-diagnosticSource': { color: 'var(--fg-muted)', opacity: '1', fontSize: '11px' },
+  '.cm-diagnosticAction': {
+    backgroundColor: 'var(--bg-soft)',
+    color: 'var(--fg)',
+    border: '1px solid var(--border)',
+    borderRadius: '5px',
+    padding: '1px 8px',
+    marginLeft: '0',
+    marginRight: '6px',
+    font: 'inherit',
+  },
+  '.cm-diagnosticAction:hover': { backgroundColor: 'color-mix(in srgb, var(--accent) 14%, var(--bg))' },
+  '.cm-tooltip-autocomplete > ul > li[aria-selected]': { backgroundColor: 'var(--accent)', color: '#fff' },
+  '.cm-textfield': { backgroundColor: 'var(--bg)', color: 'var(--fg)', border: '1px solid var(--border)', borderRadius: '5px' },
+  '.cm-button': { backgroundImage: 'none', backgroundColor: 'var(--bg)', color: 'var(--fg)', border: '1px solid var(--border)', borderRadius: '5px' },
+  '.cm-panel.cm-search label': { color: 'var(--fg)' },
 });
 
 function diagnostics(state: EditorState, problems: SphinxWarning[], vale: ValeAlert[], accept?: (word: string) => void): Diagnostic[] {

@@ -96,3 +96,35 @@ test('a word Vale gets wrong can be accepted, into its vocabulary', async () => 
   await expect(page.locator('.vale-chip')).toHaveText('Style: no remarks');
   expect(readFileSync(join(project, 'styles', 'config', 'vocabularies', 'Project', 'accept.txt'), 'utf8')).toBe('widgte\nutilize\n');
 });
+
+test('hovering shows the remark, in dark mode too', async () => {
+  ctx = await launch({
+    env: { MYSTEDITOR_VALE: stub },
+    prepare: (project) => {
+      writeFileSync(join(project, '.vale.ini'), '[*.md]\nBasedOnStyles = Vale\n');
+      appendFileSync(join(project, 'docs', 'guide', 'install.md'), '\nWe utilize the widgte here.\n');
+    },
+  });
+  const { app, page } = ctx;
+  await app.evaluate(({ Menu }) => Menu.getApplicationMenu()!.getMenuItemById('theme-dark')!.click());
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await openInstall();
+  const dark = 'rgb(23, 25, 29)'; // --bg in dark mode
+  const background = (l: ReturnType<typeof page.locator>) => l.evaluate((el) => getComputedStyle(el).backgroundColor);
+
+  // The formatted view: on hover, and gone when the mouse leaves.
+  await page.locator('.prose .vale-error').hover();
+  const popup = page.getByRole('dialog', { name: 'Style check' });
+  await expect(popup).toContainText("Did you really mean 'widgte'?");
+  expect(await background(popup)).toBe(dark);
+  await page.locator('.prose h1').hover();
+  await expect(popup).toHaveCount(0);
+
+  // The Markdown view's tooltip.
+  await page.getByRole('button', { name: 'Markdown' }).click();
+  await page.locator('.cm-lintRange-error').hover();
+  const tooltip = page.locator('.cm-tooltip-lint');
+  await expect(tooltip).toContainText("Did you really mean 'widgte'?");
+  expect(await background(page.locator('.cm-tooltip', { has: tooltip }))).toBe(dark);
+  expect(await background(tooltip.locator('.cm-diagnosticAction').first())).not.toBe('rgb(68, 68, 68)'); // CodeMirror's own
+});
