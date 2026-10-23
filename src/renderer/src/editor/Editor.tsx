@@ -1,5 +1,5 @@
 // Mounts a ProseMirror view for one open page.
-import { useEffect, useRef, type MutableRefObject } from 'react';
+import { useEffect, useRef, useState, type MutableRefObject } from 'react';
 import { TextSelection, type EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import type { SphinxWarning } from '../../../shared/sphinx';
@@ -65,33 +65,43 @@ export function Editor({ state, ctx, onChange, viewRef, onView, problems, savedT
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // State replaced from outside (e.g. reloaded from disk or edited as source).
+  // State replaced from outside (e.g. reloaded from disk or edited as source). It
+  // comes without what the effects below add (problems, previews, Vale, …), so they
+  // run again.
+  const [replaced, setReplaced] = useState(0);
   useEffect(() => {
     const view = viewRef.current;
-    if (view && view.state !== state) view.updateState(state);
+    if (view && view.state !== state) {
+      view.updateState(state);
+      setReplaced((n) => n + 1);
+    }
   }, [state, viewRef]);
 
   useEffect(() => {
     const view = viewRef.current;
     if (view) view.dispatch(setPreviews(view.state.tr, locatePreviews(view.state.doc, savedText, ctx.config, build)));
-  }, [build, savedText, ctx, viewRef]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [build, savedText, ctx, viewRef, replaced]);
 
   const conditions = ctx.config.editor.conditions;
   useEffect(() => {
     const view = viewRef.current;
     if (view) view.dispatch(setConditionView(view.state.tr, conditions, viewAs));
-  }, [conditions, viewAs, viewRef]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conditions, viewAs, viewRef, replaced]);
 
   useEffect(() => {
     const view = viewRef.current;
     if (!view) return;
     view.dispatch(setProblems(view.state.tr, locateProblems(view.state.doc, savedText, ctx.config, problems)));
-  }, [problems, savedText, ctx, viewRef]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [problems, savedText, ctx, viewRef, replaced]);
 
   useEffect(() => {
     const view = viewRef.current;
     if (view) view.dispatch(setVale(view.state.tr, vale ? locateAlerts(view.state.doc, vale.text, ctx.config, vale.alerts) : []));
-  }, [vale, ctx, viewRef]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vale, ctx, viewRef, replaced]);
 
   useEffect(() => {
     const view = viewRef.current;

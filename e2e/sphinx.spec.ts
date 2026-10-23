@@ -114,6 +114,9 @@ test('the Markdown view shows warnings on their lines and the built page', async
   await expect(page.locator('.cm-lint-marker-warning')).toHaveCount(1);
   await page.getByRole('button', { name: 'As built' }).click();
   await expect(page.frameLocator('.advanced-preview iframe[title="Sphinx preview"]').locator('h1')).toHaveText(/Widget documentation/);
+  // Back in the formatted view, the block is still marked.
+  await page.getByRole('button', { name: '← Formatted editing' }).click();
+  await expect(page.locator('.card-directive.has-problem')).toBeVisible();
 });
 
 test('a broken cross-reference is flagged after the next build', async () => {

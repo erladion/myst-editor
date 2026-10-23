@@ -53,6 +53,9 @@ test('Vale’s remarks are underlined, and a correction can be picked', async ()
   // In the Markdown view too, on the word.
   await page.getByRole('button', { name: 'Markdown' }).click();
   await expect(page.locator('.cm-lintRange-warning')).toHaveText('utilize');
+  // And still underlined back in the formatted view.
+  await page.getByRole('button', { name: '← Formatted editing' }).click();
+  await expect(page.locator('.prose .vale-warning')).toHaveText('utilize');
 });
 
 test('without a Vale configuration the editor is as before', async () => {
