@@ -80,7 +80,18 @@ export function HistoryDialog({ path, title, current, ctx, onRestore, onClose }:
                 onClick={() => setSelected(v)}
               >
                 <span className="history-when">{when(v.date)}</span>
-                <span className="history-what">{v.kind === 'commit' ? `${v.message} — ${v.author}` : 'Before your edits (kept by the app)'}</span>
+                {v.kind === 'commit' ? (
+                  <>
+                    {/* Clicked, the whole message shows. */}
+                    <span className="history-what" title={v === selected ? undefined : v.message}>
+                      {v.message}
+                    </span>
+                    {v === selected && v.body && <span className="history-body-text">{v.body}</span>}
+                    <span className="history-who">{v.author}</span>
+                  </>
+                ) : (
+                  <span className="history-what">Before your edits (kept by the app)</span>
+                )}
               </li>
             ))}
           </ul>

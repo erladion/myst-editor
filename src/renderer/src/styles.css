@@ -2601,10 +2601,26 @@ button.secondary {
 
 .history-what {
   font-size: 12px;
-  color: var(--fg-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.history-list li.active .history-what {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.history-body-text {
+  margin: 4px 0 2px;
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.history-who {
+  font-size: 12px;
+  color: var(--fg-muted);
 }
 
 .history-view {

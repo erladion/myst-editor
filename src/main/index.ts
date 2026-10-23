@@ -663,6 +663,7 @@ function registerIpc() {
           date: c.date,
           author: c.author,
           message: c.message,
+          body: c.body,
           path: c.path,
         }))
       : [];

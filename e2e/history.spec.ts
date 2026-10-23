@@ -61,6 +61,8 @@ test('restores the version from before an edit, and the restore can be undone', 
   await expect(dialog.locator('.diff-add')).toHaveText('+ Settings live in `widget.toml`.');
 });
 
+const LONG = 'Mention uv, which more and more readers install packages with these days';
+
 test('lists the page’s commits, with who and why', async () => {
   const git = (cwd: string, ...args: string[]) =>
     execFileSync('git', args, { cwd, env: { ...process.env, GIT_CONFIG_GLOBAL: join(workDir(), 'empty-gitconfig'), GIT_CONFIG_NOSYSTEM: '1' } });
@@ -72,7 +74,7 @@ test('lists the page’s commits, with who and why', async () => {
       git(project, '-c', 'user.name=Wendy Writer', '-c', 'user.email=w@x', 'commit', '-qm', 'First version');
       const path = join(project, 'docs', 'guide', 'install.md');
       writeFileSync(path, readFileSync(path, 'utf8').replace('Install the package with pip:', 'Install the package with pip or uv:'));
-      git(project, '-c', 'user.name=Rob Reviewer', '-c', 'user.email=r@x', 'commit', '-qam', 'Mention uv');
+      git(project, '-c', 'user.name=Rob Reviewer', '-c', 'user.email=r@x', 'commit', '-qa', '-m', LONG, '-m', 'Some readers use uv\nrather than pip.');
     },
   });
   const { page } = ctx;
@@ -81,7 +83,12 @@ test('lists the page’s commits, with who and why', async () => {
   await page.getByRole('button', { name: 'Markdown' }).click();
   await page.getByRole('button', { name: 'History', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Page history' });
-  await expect(dialog.getByRole('option')).toHaveText([/Mention uv — Rob Reviewer/, /First version — Wendy Writer/]);
+  // Date, message, author; the selected one with all of its message.
+  await expect(dialog.locator('.history-what')).toHaveText([LONG, 'First version']);
+  await expect(dialog.locator('.history-who')).toHaveText(['Rob Reviewer', 'Wendy Writer']);
+  await expect(dialog.locator('.history-body-text')).toHaveText('Some readers use uv\nrather than pip.');
+  const fullWidth = await dialog.locator('.history-what').first().evaluate((el) => el.scrollWidth <= el.clientWidth);
+  expect(fullWidth).toBe(true); // wrapped, not cut off
   // Each commit shows its own change, not every change since.
   await expect(dialog.locator('.diff-del')).toHaveText('− Install the package with pip:');
   await expect(dialog.locator('.diff-add')).toHaveText('+ Install the package with pip or uv:');
@@ -90,6 +97,7 @@ test('lists the page’s commits, with who and why', async () => {
   await expect(dialog.getByRole('button', { name: 'Restore this version' })).toBeDisabled();
   await dialog.getByRole('tab', { name: 'Changes in this version' }).click();
   await dialog.getByRole('option', { name: /First version/ }).click();
+  await expect(dialog.locator('.history-body-text')).toHaveCount(0);
   await expect(dialog.locator('.diff-del')).toHaveCount(0); // the first: all of it added
   await expect(dialog.locator('.diff-add', { hasText: 'Install the package with pip:' })).toHaveCount(1);
   await expect(dialog.locator('.diff-add', { hasText: 'or uv' })).toHaveCount(0); // that came later

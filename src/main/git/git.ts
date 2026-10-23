@@ -10,7 +10,8 @@ export interface FileCommit {
   commit: string;
   author: string;
   date: string; // ISO 8601
-  message: string;
+  message: string; // the subject line
+  body: string; // the rest of the message, if any
   path: string; // the file's path in that commit
 }
 
@@ -136,15 +137,17 @@ export class Git {
   // The commits that changed a file (relative to the repository root), newest first,
   // following renames: each with the path the file had then.
   async fileHistory(root: string, path: string, limit = 200): Promise<FileCommit[]> {
-    const out = await this.stdout(['log', '--follow', `--max-count=${limit}`, '--name-only', '--format=%x1e%H%x1f%an%x1f%aI%x1f%s', '--', path], root);
+    // Each commit: its fields, the body (any number of lines) up to \x1d, then the
+    // file's name in that commit (from --name-only).
+    const out = await this.stdout(['log', '--follow', `--max-count=${limit}`, '--name-only', '--format=%x1e%H%x1f%an%x1f%aI%x1f%s%x1f%b%x1d', '--', path], root);
     if (out === null) return [];
     return out
       .split('\x1e')
       .slice(1)
       .map((record) => {
-        const [header, ...rest] = record.split('\n');
-        const [commit, author, date, message] = header.split('\x1f');
-        return { commit, author, date, message, path: rest.find((l) => l.trim())?.trim() ?? path };
+        const [header, names = ''] = record.split('\x1d');
+        const [commit, author, date, message, body = ''] = header.split('\x1f');
+        return { commit, author, date, message, body: body.trim(), path: names.split('\n').find((l) => l.trim())?.trim() ?? path };
       })
       .filter((c) => c.commit);
   }
