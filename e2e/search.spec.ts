@@ -44,7 +44,17 @@ test('right-click offers cut, copy and paste where they apply', async () => {
     });
   // Something to paste, and a selection in the page.
   await app.evaluate(({ clipboard }) => clipboard.writeText('from elsewhere'));
-  await page.locator('.prose').getByText('Welcome to the').dblclick();
+  // "Welcome" selected, wherever the window's size makes the line wrap.
+  await page.locator('.prose').getByText('Welcome to the').click();
+  await page.evaluate(() => {
+    const p = [...document.querySelectorAll('.prose p')].find((el) => el.textContent!.startsWith('Welcome to the'))!;
+    const range = document.createRange();
+    range.setStart(p.firstChild!, 0);
+    range.setEnd(p.firstChild!, 'Welcome'.length);
+    getSelection()!.removeAllRanges();
+    getSelection()!.addRange(range);
+  });
+  await expect.poll(() => page.evaluate(() => getSelection()!.toString())).toBe('Welcome');
   // Right-click on the selected word, as a writer would.
   const at = await page.evaluate(() => {
     const r = getSelection()!.getRangeAt(0).getBoundingClientRect();
@@ -53,8 +63,7 @@ test('right-click offers cut, copy and paste where they apply', async () => {
   await page.mouse.click(at.x, at.y, { button: 'right' });
   await expect.poll(items).toEqual(['cut:true', 'copy:true', 'paste:true', 'selectall:true']);
   // What's selected is what Copy copies.
-  const selected = await page.evaluate(() => getSelection()!.toString());
-  expect(selected.trim()).not.toBe('');
+  const selected = 'Welcome';
   await app.evaluate(({ clipboard }) => {
     clipboard.writeText('');
     const m = (globalThis as { lastContextMenu?: Electron.Menu }).lastContextMenu!;

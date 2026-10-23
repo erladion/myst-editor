@@ -34,7 +34,16 @@ export interface LaunchOptions {
 export async function launch(opts: LaunchOptions = {}): Promise<App> {
   // The previous test's files go (its app is closed by now), so a run never holds
   // more than one test's projects and environments at a time.
-  if (!opts.again) for (const old of earlier.splice(0)) rmSync(old, { recursive: true, force: true });
+  if (!opts.again) {
+    for (const old of earlier.splice(0)) {
+      try {
+        // Windows can hold the closed app's files a moment longer.
+        rmSync(old, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+      } catch {
+        // left for the global setup's cleanup
+      }
+    }
+  }
   const work = opts.again ? dirname(opts.again.project) : mkdtempSync(join(workDir(), 'mysteditor-e2e-'));
   if (!opts.again) earlier.push(work);
   const project = join(work, 'project');

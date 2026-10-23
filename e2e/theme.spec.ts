@@ -12,7 +12,13 @@ test('switches to dark and back, and remembers the choice', async () => {
   await choose('theme-dark');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   expect(await background()).toBe('rgb(23, 25, 29)');
-  const settings = () => JSON.parse(readFileSync(join(dirname(project), 'user-data', 'settings.json'), 'utf8'));
+  const settings = () => {
+    try {
+      return JSON.parse(readFileSync(join(dirname(project), 'user-data', 'settings.json'), 'utf8'));
+    } catch {
+      return {}; // not written yet
+    }
+  };
   await expect.poll(() => settings().theme).toBe('dark');
 
   await choose('theme-light');

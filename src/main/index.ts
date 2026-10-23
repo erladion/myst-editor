@@ -219,10 +219,28 @@ async function loadSettings(): Promise<Settings> {
   }
 }
 
-async function updateSettings(patch: (s: Settings) => Settings) {
-  const next = patch(await loadSettings());
-  await fs.mkdir(app.getPath('userData'), { recursive: true });
-  await fs.writeFile(settingsPath(), JSON.stringify(next, null, 2));
+// One change at a time (each reads what the last wrote), and written whole: to a
+// temporary file first, so the file is never seen half-written, even after a crash.
+let settingsWrite: Promise<void> = Promise.resolve();
+function updateSettings(patch: (s: Settings) => Settings): Promise<void> {
+  const write = async () => {
+    const next = patch(await loadSettings());
+    await fs.mkdir(app.getPath('userData'), { recursive: true });
+    const temp = `${settingsPath()}.${process.pid}.tmp`;
+    await fs.writeFile(temp, JSON.stringify(next, null, 2));
+    // Windows refuses the rename while another program has the file open: try again.
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await fs.rename(temp, settingsPath());
+        return;
+      } catch (e) {
+        if (attempt >= 10 || (e as NodeJS.ErrnoException).code !== 'EPERM') throw e;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    }
+  };
+  settingsWrite = settingsWrite.then(write, write);
+  return settingsWrite;
 }
 
 // Opening a large folder takes a while: tell the window what's happening.
