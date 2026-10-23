@@ -96,6 +96,8 @@ export interface MystApi {
   searchPages(query: string, caseSensitive: boolean): Promise<{ results: PageMatches[]; truncated: boolean }>;
   // Vale's alerts for a saved page, when Vale is installed and configured for it.
   valeLint(rel: string): Promise<ValeResult>;
+  // Add a word to the vocabulary of the Vale configuration that applies to the page.
+  valeAccept(rel: string, word: string): Promise<{ ok: true; file: string; addedVocab: boolean } | { ok: false; message: string }>;
   // The app's version and what it runs on, for Help → About.
   about(): Promise<AboutInfo>;
   // Pick an image for a page: its path relative to the page, or null if cancelled.

@@ -120,7 +120,7 @@ function ValeChip({ result, onNext, onShowError }: { result: ValeResult; onNext:
 
 // Vale's alerts for the open page: checked when it opens and after each save, if Vale
 // is installed and configured for it (otherwise the result says why not).
-function useVale(path: string | null, savedText: string | null) {
+function useVale(path: string | null, savedText: string | null, again: number) {
   const [found, setFound] = useState<{ path: string; text: string; result: ValeResult } | null>(null);
   useEffect(() => {
     if (!path || savedText === null) return;
@@ -135,7 +135,7 @@ function useVale(path: string | null, savedText: string | null) {
       stale = true;
       clearTimeout(timer);
     };
-  }, [path, savedText]);
+  }, [path, savedText, again]);
   return found && found.path === path ? found : null;
 }
 
@@ -719,7 +719,20 @@ export function App() {
   const pageProblems = useMemo(() => problemsIn(info, session?.path ?? null), [info, session?.path]);
   // Hooks stay above the welcome screen's early return.
   const previewBuild = usePreviewBuild(pageProject?.id ?? null, info && session ? docnameOf(info, session.path) : null, info?.builtAt ?? null);
-  const valeFound = useVale(session?.path ?? null, session?.savedText ?? null);
+  const [valeAgain, setValeAgain] = useState(0); // check again (a word was accepted)
+  const valeFound = useVale(session?.path ?? null, session?.savedText ?? null, valeAgain);
+  const valePath = session?.path ?? null;
+  const acceptWord = useCallback(
+    async (word: string) => {
+      if (!valePath || !ws) return;
+      const result = await api.valeAccept(valePath, word);
+      if (!result.ok) return void dialogs.current?.notify(result.message);
+      setValeAgain((n) => n + 1);
+      const where = result.file.startsWith(ws.project.root) ? result.file.slice(ws.project.root.length + 1) : result.file;
+      dialogs.current?.notify(`“${word}” accepted: added to ${where.split('\\').join('/')}${result.addedVocab ? ' (and Vocab = Project to .vale.ini)' : ''}.`);
+    },
+    [valePath, ws],
+  );
   const vale = useMemo(
     () => (valeFound?.result.status === 'ok' ? { text: valeFound.text, alerts: valeFound.result.alerts } : null),
     [valeFound],
@@ -887,6 +900,7 @@ export function App() {
               onChange={(text) => ws.setText(session.path, text)}
               problems={pageProblems}
               vale={vale?.alerts ?? NO_ALERTS}
+              onAcceptWord={vale ? acceptWord : undefined}
               onLine={setSourceLine}
               goto={gotoLine}
               onGotoDone={onGotoDone}
@@ -939,6 +953,7 @@ export function App() {
                 viewAs={viewAs}
                 build={previewBuild}
                 vale={vale}
+                onAcceptWord={vale ? acceptWord : undefined}
               />
             )}
             {!session && <div className="empty-state muted">Choose a page on the left.</div>}

@@ -2,7 +2,7 @@
 // location), with a .vale.ini that applies (Vale looks from the page's folder up, and
 // in its global config).
 import { execFile } from 'node:child_process';
-import { accessSync, constants, statSync } from 'node:fs';
+import { accessSync, constants, existsSync, promises as fs, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import type { ValeAlert, ValeResult } from '../shared/vale.js';
@@ -101,4 +101,68 @@ export async function lint(file: string): Promise<ValeResult> {
   };
   await Promise.all(Array.from({ length: FIX_CONCURRENCY }, work));
   return { status: 'ok', alerts };
+}
+
+// Accepting a word: into the vocabulary of the Vale configuration that applies (its
+// accept.txt, which every rule respects), so Vale accepts it everywhere, not only here.
+// Without a vocabulary, the configuration gets one: `Vocab = Project`.
+const NEW_VOCAB = 'Project';
+
+interface ValeConfig {
+  Vocab?: string[] | null;
+  RootINI?: string;
+  Paths?: string[] | null; // styles folders: Vale's default, then the configuration's own
+}
+
+const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// `Vocab = name` in the configuration's general part (before its first [section]).
+async function addVocab(ini: string, name: string) {
+  const text = await fs.readFile(ini, 'utf8');
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  const lines = text.split(/\r?\n/);
+  const at = lines.findIndex((l) => /^\s*\[/.test(l));
+  lines.splice(at < 0 ? lines.length : at, 0, `Vocab = ${name}`);
+  await fs.writeFile(ini, lines.join(eol));
+}
+
+export async function accept(file: string, word: string): Promise<{ ok: true; file: string; addedVocab: boolean } | { ok: false; message: string }> {
+  const vale = findVale();
+  if (!vale) return { ok: false, message: 'Vale isn’t installed.' };
+  const cwd = dirname(file);
+  const { code, stdout } = await run(vale, ['ls-config'], cwd);
+  let config: ValeConfig = {};
+  try {
+    if (code === 0) config = JSON.parse(stdout);
+  } catch {
+    // unreadable
+  }
+  if (!config.RootINI) return { ok: false, message: 'No Vale configuration (.vale.ini) applies to this page.' };
+  const paths = config.Paths ?? [];
+  let vocab = config.Vocab?.[0];
+  let addedVocab = false;
+  if (!vocab) {
+    vocab = NEW_VOCAB;
+    await addVocab(config.RootINI, vocab);
+    addedVocab = true;
+  }
+  // The vocabulary's word list where it exists already, else in the configuration's
+  // own styles folder (listed last).
+  const lists = [...paths].reverse().map((p) => join(p, 'config', 'vocabularies', vocab!, 'accept.txt'));
+  const target = lists.find((l) => existsSync(l)) ?? lists[0];
+  if (!target) return { ok: false, message: 'Vale has no styles folder to keep the word in.' };
+  await fs.mkdir(dirname(target), { recursive: true });
+  let text = '';
+  try {
+    text = await fs.readFile(target, 'utf8');
+  } catch {
+    // a new list
+  }
+  // Entries are regular expressions; the word is taken literally, as written.
+  const entry = escapeRegex(word.trim());
+  if (!text.split(/\r?\n/).includes(entry)) {
+    const eol = text.includes('\r\n') ? '\r\n' : '\n';
+    await fs.writeFile(target, `${text}${text && !text.endsWith('\n') ? eol : ''}${entry}${eol}`);
+  }
+  return { ok: true, file: target, addedVocab };
 }

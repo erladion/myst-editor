@@ -32,6 +32,7 @@ interface Props {
   onChange: (text: string) => void;
   problems: SphinxWarning[];
   vale: ValeAlert[]; // for the text as last saved
+  onAcceptWord?: (word: string) => void;
   // The line the writer is at (cursor or top of the scrolled view), for the preview.
   onLine: (line: number) => void;
   // Move the cursor to a line (from the preview or the problems list).
@@ -87,7 +88,7 @@ const theme = EditorView.theme({
   '.cm-panels': { backgroundColor: 'var(--bg-soft)', color: 'var(--fg)' },
 });
 
-function diagnostics(state: EditorState, problems: SphinxWarning[], vale: ValeAlert[]): Diagnostic[] {
+function diagnostics(state: EditorState, problems: SphinxWarning[], vale: ValeAlert[], accept?: (word: string) => void): Diagnostic[] {
   const sphinx = problems
     .filter((w) => w.line)
     .map((w): Diagnostic => {
@@ -108,17 +109,20 @@ function diagnostics(state: EditorState, problems: SphinxWarning[], vale: ValeAl
         severity: a.Severity === 'suggestion' ? 'info' : a.Severity,
         message: a.Message,
         source: `Vale (${a.Check})`,
-        actions: a.Suggestions.map((s) => ({
-          name: s || 'Remove',
-          apply: (view, f, t) => view.dispatch({ changes: { from: f, to: t, insert: s } }),
-        })),
+        actions: [
+          ...a.Suggestions.map((s) => ({
+            name: s || 'Remove',
+            apply: (view: EditorView, f: number, t: number) => view.dispatch({ changes: { from: f, to: t, insert: s } }),
+          })),
+          ...(accept ? [{ name: `Accept “${a.Match}”`, apply: () => accept(a.Match) }] : []),
+        ],
       },
     ];
   });
   return [...sphinx, ...style];
 }
 
-export function SourceEditor({ text, onChange, problems, vale, onLine, goto, onGotoDone, onImage, onImageError }: Props) {
+export function SourceEditor({ text, onChange, problems, vale, onAcceptWord, onLine, goto, onGotoDone, onImage, onImageError }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const callbacks = useRef({ onChange, onLine, onImage, onImageError });
@@ -217,8 +221,8 @@ export function SourceEditor({ text, onChange, problems, vale, onLine, goto, onG
 
   useEffect(() => {
     const view = viewRef.current;
-    if (view) view.dispatch(setDiagnostics(view.state, diagnostics(view.state, problems, vale)));
-  }, [problems, vale]);
+    if (view) view.dispatch(setDiagnostics(view.state, diagnostics(view.state, problems, vale, onAcceptWord)));
+  }, [problems, vale, onAcceptWord]);
 
   useEffect(() => {
     const view = viewRef.current;

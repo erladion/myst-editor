@@ -68,3 +68,31 @@ test('without a Vale configuration the editor is as before', async () => {
   await expect(page.locator('.prose .vale')).toHaveCount(0);
   await expect(page.locator('.vale-chip')).toHaveCount(0);
 });
+
+test('a word Vale gets wrong can be accepted, into its vocabulary', async () => {
+  ctx = await launch({
+    env: { MYSTEDITOR_VALE: stub },
+    prepare: (project) => {
+      writeFileSync(join(project, '.vale.ini'), 'StylesPath = styles\n\n[*.md]\nBasedOnStyles = Vale\n');
+      appendFileSync(join(project, 'docs', 'guide', 'install.md'), '\nWe utilize the widgte here.\n');
+    },
+  });
+  const { page, project } = ctx;
+  await openInstall();
+  await expect(page.locator('.vale-chip')).toHaveText('Style: 2 remarks');
+  await page.locator('.prose .vale-error').click();
+  await page.getByRole('dialog', { name: 'Style check' }).getByRole('button', { name: 'Accept “widgte”' }).click();
+  // No vocabulary yet: the configuration gets one, and the word goes in its list.
+  await expect(page.locator('.toast')).toHaveText('“widgte” accepted: added to styles/config/vocabularies/Project/accept.txt (and Vocab = Project to .vale.ini).');
+  expect(readFileSync(join(project, '.vale.ini'), 'utf8')).toBe('StylesPath = styles\n\nVocab = Project\n[*.md]\nBasedOnStyles = Vale\n');
+  expect(readFileSync(join(project, 'styles', 'config', 'vocabularies', 'Project', 'accept.txt'), 'utf8')).toBe('widgte\n');
+  await expect(page.locator('.vale-chip')).toHaveText('Style: 1 remark');
+  await expect(page.locator('.prose .vale-error')).toHaveCount(0);
+
+  // From the Markdown view too; the list grows.
+  await page.getByRole('button', { name: 'Markdown' }).click();
+  await page.locator('.cm-lintRange-warning').hover();
+  await page.getByRole('button', { name: 'Accept “utilize”' }).click();
+  await expect(page.locator('.vale-chip')).toHaveText('Style: no remarks');
+  expect(readFileSync(join(project, 'styles', 'config', 'vocabularies', 'Project', 'accept.txt'), 'utf8')).toBe('widgte\nutilize\n');
+});

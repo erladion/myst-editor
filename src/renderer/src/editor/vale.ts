@@ -21,6 +21,13 @@ const alertAt = (state: EditorState, pos: number) => {
   return d ? { from: d.from, to: d.to, alert: (d.spec as { alert: ValeAlert }).alert } : null;
 };
 
+// What "Accept" does (set by the editor): add the word to Vale's vocabulary.
+const acceptors = new WeakMap<EditorView, (word: string) => void>();
+export function setAccept(view: EditorView, accept: ((word: string) => void) | null) {
+  if (accept) acceptors.set(view, accept);
+  else acceptors.delete(view);
+}
+
 class Popup {
   private dom: HTMLElement | null = null;
   private close = () => this.hide();
@@ -65,6 +72,21 @@ class Popup {
         list.append(b);
       }
       dom.append(list);
+    }
+    const accept = acceptors.get(this.view);
+    if (accept) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'link-button vale-accept';
+      b.textContent = `Accept “${alert.Match}”`;
+      b.title = 'Add it to the project’s Vale vocabulary, so Vale doesn’t flag it again';
+      b.addEventListener('mousedown', (e) => e.preventDefault());
+      b.addEventListener('click', () => {
+        accept(alert.Match);
+        this.hide();
+        this.view.focus();
+      });
+      check.append(b);
     }
     dom.append(check);
     document.body.append(dom);

@@ -9,7 +9,7 @@ import { dirname, join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { buildInputsOf, firstHeading, isBuildInput, listDocuments, openProject, readDocument, readTitle, IMAGE_EXTENSIONS, placeImage, resolveInside, saveImage, searchPages, UNWATCHED_DIRS, unwatchedDir, writeDocument } from './project.js';
 import { FolderWatcher } from './watch.js';
-import { lint as lintWithVale } from './vale.js';
+import { accept as acceptWithVale, lint as lintWithVale } from './vale.js';
 import { Snapshots } from './history.js';
 import { SphinxManager } from './sphinx/manager.js';
 import { ASSET_SCHEME, BUILD_SCHEME, type MenuCommand, type ProjectInfo } from '../shared/api.js';
@@ -527,6 +527,7 @@ function registerIpc() {
   });
   ipcMain.handle('add-image-data', (_e, page: string, name: string, bytes: Uint8Array) => saveImage(requireProject().root, page, name, bytes));
   ipcMain.handle('vale-lint', (_e, rel: string) => lintWithVale(resolveInside(requireProject().root, rel)));
+  ipcMain.handle('vale-accept', (_e, rel: string, word: string) => acceptWithVale(resolveInside(requireProject().root, rel), String(word)));
   ipcMain.handle('about', () => ({
     version: appVersion,
     electron: process.versions.electron,

@@ -19,6 +19,7 @@ const api: MystApi = {
   searchPages: (query, caseSensitive) => ipcRenderer.invoke('search-pages', query, caseSensitive),
   about: () => ipcRenderer.invoke('about'),
   valeLint: (rel) => ipcRenderer.invoke('vale-lint', rel),
+  valeAccept: (rel, word) => ipcRenderer.invoke('vale-accept', rel, word),
   pageHistory: (rel) => ipcRenderer.invoke('page-history', rel),
   pageVersion: (rel, version) => ipcRenderer.invoke('page-version', rel, version),
   snapshotPage: (rel) => ipcRenderer.invoke('snapshot-page', rel),
