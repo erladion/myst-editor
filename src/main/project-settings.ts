@@ -1,0 +1,94 @@
+// Project Settings: the window's view of a project's .mysteditor.toml, and its
+// changes to it (written into the file's text, see core/project-settings.ts).
+import { dialog, ipcMain } from 'electron';
+import { existsSync, promises as fs, realpathSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { capabilityNames, loadEditorConfig, SETTINGS_FILE, type SettingsSource } from '../core/editor-config.js';
+import { editConditions, type ConditionsPatch } from '../core/project-settings.js';
+import { tomlAt } from '../core/toml-edit.js';
+import type { ProjectInfo, ProjectSettingsInfo } from '../shared/api.js';
+import { resolveInside, settingsSources } from './project.js';
+import { current, requireProject } from './state.js';
+import { refreshProject } from './workspace.js';
+
+const slashes = (p: string) => p.split(sep).join('/');
+const plain = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+// The settings file a project's changes go to: the innermost one that sets up
+// conditional content, else the innermost there is, else a new one next to its
+// conf.py (the opened folder's, for pages outside every project).
+function settingsFor(p: ProjectInfo, projectId: string | null) {
+  const dir = p.projects.find((x) => x.id === projectId)?.sourceDir ?? p.root;
+  const sources = settingsSources(p.root, dir);
+  const has = (s: SettingsSource) => {
+    try {
+      return tomlAt(s.text, ['conditions']) !== undefined;
+    } catch {
+      return false;
+    }
+  };
+  let index = sources.length - 1;
+  while (index > 0 && !has(sources[index])) index--;
+  if (index >= 0 && !has(sources[index])) index = sources.length - 1;
+  const rel = index >= 0 ? sources[index].file : slashes(relative(p.root, join(dir, SETTINGS_FILE)));
+  return { sources, index, rel, path: join(p.root, rel) };
+}
+
+export function registerProjectSettingsIpc() {
+  ipcMain.handle('project-settings', (_e, projectId: string | null): ProjectSettingsInfo => {
+    const p = requireProject();
+    const { sources, rel } = settingsFor(p, projectId);
+    const config = loadEditorConfig(sources);
+    return { file: rel, exists: existsSync(join(p.root, rel)), conditions: config.conditionSettings, enabled: config.conditions !== null, problems: config.problems };
+  });
+
+  ipcMain.handle('save-project-settings', async (_e, projectId: string | null, patch: ConditionsPatch) => {
+    const p = requireProject();
+    const { sources, index, rel } = settingsFor(p, projectId);
+    try {
+      const text = index >= 0 ? sources[index].text : '';
+      const outer = loadEditorConfig(index >= 0 ? sources.slice(0, index) : sources);
+      const next = editConditions(text, patch, outer.conditionSettings !== null && outer.conditions === null);
+      if (next !== text) await fs.writeFile(resolveInside(p.root, rel), next);
+      // Without waiting for the folder watcher.
+      await refreshProject(p);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, message: `Couldn’t change ${rel}: ${plain(e)}. Change it in a text editor instead.` };
+    }
+  });
+
+  // A capabilities file, chosen or new, as the settings file would name it.
+  ipcMain.handle('choose-capabilities-file', async (_e, projectId: string | null, create: boolean) => {
+    const p = requireProject();
+    const { path } = settingsFor(p, projectId);
+    const result = create
+      ? await dialog.showSaveDialog(current.win!, { title: 'New capabilities file', defaultPath: join(dirname(path), 'capabilities.json'), filters: [{ name: 'JSON', extensions: ['json'] }] })
+      : await dialog.showOpenDialog(current.win!, { title: 'Choose the capabilities file', defaultPath: dirname(path), properties: ['openFile'], filters: [{ name: 'JSON', extensions: ['json'] }] });
+    const file = 'filePaths' in result ? result.filePaths[0] : result.filePath;
+    if (result.canceled || !file) return null;
+    try {
+      resolveInside(p.root, relative(p.root, file));
+    } catch {
+      return { error: 'Choose a file in the opened folder, so everyone working on the project has it.' };
+    }
+    if (create && !existsSync(file)) await fs.writeFile(file, '{\n  "capabilities": []\n}\n');
+    // Both as the disk spells them (Windows dialogs may give C:\PROGRA~1\… names).
+    const real = (f: string) => join(realpathSync.native(dirname(f)), basename(f));
+    return { path: slashes(relative(realpathSync.native(dirname(path)), real(file))) };
+  });
+
+  // The capabilities a file lists (`file` relative to the settings file), for the
+  // window to show before it's saved.
+  ipcMain.handle('read-capabilities', async (_e, projectId: string | null, file: string, key: string | null) => {
+    const p = requireProject();
+    const { path } = settingsFor(p, projectId);
+    try {
+      const target = isAbsolute(file) ? file : resolve(dirname(path), file);
+      const names = capabilityNames(JSON.parse(await fs.readFile(resolveInside(p.root, relative(p.root, target)), 'utf8')), key || null);
+      return names ? { names } : { error: `There’s no list of capabilities in it${key ? ` under “${key}”` : ''}.` };
+    } catch (e) {
+      return { error: (e as NodeJS.ErrnoException).code === 'ENOENT' ? 'There’s no such file.' : plain(e) };
+    }
+  });
+}

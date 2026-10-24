@@ -115,7 +115,7 @@ async function existing(root: string, rels: Iterable<string>): Promise<string[]>
 
 // Re-read the folder's projects and settings, and tell the renderer if they changed.
 // The same projects keep their build managers; new or removed ones restart them all.
-async function refreshProject(p: ProjectInfo) {
+export async function refreshProject(p: ProjectInfo) {
   const next = await openProject(p.root);
   if (current.project !== p) return;
   const same = (a: ProjectInfo, b: ProjectInfo) => JSON.stringify([a.projects, a.defaultConfig]) === JSON.stringify([b.projects, b.defaultConfig]);

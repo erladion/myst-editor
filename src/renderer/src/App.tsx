@@ -19,6 +19,7 @@ import { nextValeRemark, SourceEditor } from './components/SourceEditor';
 import { LivePreview } from './components/LivePreview';
 import { AdvancedBar } from './components/AdvancedBar';
 import { AboutDialog } from './components/About';
+import { ProjectSettingsDialog } from './components/ProjectSettings';
 import { ValeChip } from './components/ValeChip';
 import { OpeningCard, Welcome } from './components/Welcome';
 import { AskPassHost, BranchDialog, CloneDialog, ConflictsDialog, GitChip, GitPanel } from './components/GitUi';
@@ -58,6 +59,8 @@ export function App() {
   const [showPreview, setShowPreview] = useState(false);
   const [about, setAbout] = useState(false);
   const closeAbout = useCallback(() => setAbout(false), []);
+  const [projectSettings, setProjectSettings] = useState(false);
+  const closeProjectSettings = useCallback(() => setProjectSettings(false), []);
   const [reveal, setReveal] = useState<number | null>(null);
   const [sphinxDialog, setSphinxDialog] = useState<'details' | 'environment' | null>(null);
   const [viewAs, setViewAs] = useState<string[] | null>(null);
@@ -165,6 +168,7 @@ export function App() {
       else if (cmd === 'search-pages' && ws) setSearchAll((s) => ({ focusKey: (s?.focusKey ?? 0) + 1 }));
       else if (cmd === 'toggle-emacs') setKeyMode((k) => (k === 'emacs' ? 'standard' : 'emacs'));
       else if (cmd === 'about') setAbout(true);
+      else if (cmd === 'project-settings' && ws) setProjectSettings(true);
       else if (cmd === 'toggle-outline') setOutline((o) => (o === 'shown' ? 'hidden' : 'shown'));
     },
   });
@@ -473,6 +477,7 @@ export function App() {
         />
       )}
       {about && <AboutDialog sphinx={info?.sphinxVersion ?? null} onClose={closeAbout} />}
+      {projectSettings && <ProjectSettingsDialog projectId={activeProject?.id ?? null} projectName={projects.length > 1 ? activeProject?.name : undefined} onClose={closeProjectSettings} />}
       <AskPassHost />
       {renaming && (
         <RenamePageDialog

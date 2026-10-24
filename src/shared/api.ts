@@ -1,5 +1,7 @@
 // The API the preload script exposes to the renderer as `window.myst`.
 import type { MystConfig } from '../core/project-config.js';
+import type { ConditionsDef, SettingsProblem } from '../core/editor-config.js';
+import type { ConditionsPatch } from '../core/project-settings.js';
 import type { EnvironmentChoice, PythonCandidate, SphinxState } from './sphinx.js';
 import type { Branches, ConflictFile, GitInfo, GitOperation, PageVersion } from './git.js';
 import type { ValeResult } from './vale.js';
@@ -68,7 +70,17 @@ export interface AppMenuItem {
   submenu?: AppMenuItem[];
 }
 
-export type MenuCommand = 'open-folder' | 'save' | 'toggle-source' | 'clone' | 'new-page' | 'delete-page' | 'go-to-page' | 'toggle-outline' | 'page-history' | 'switch-branch' | 'rename-page' | 'find' | 'toggle-emacs' | 'search-pages' | 'about';
+// Project Settings' view of a project's settings: the file changes go to (relative
+// to the opened folder), and conditional content as set up there and further out.
+export interface ProjectSettingsInfo {
+  file: string;
+  exists: boolean;
+  conditions: ConditionsDef | null; // even when turned off
+  enabled: boolean;
+  problems: SettingsProblem[];
+}
+
+export type MenuCommand = 'open-folder' | 'save' | 'toggle-source' | 'clone' | 'new-page' | 'delete-page' | 'go-to-page' | 'toggle-outline' | 'page-history' | 'switch-branch' | 'rename-page' | 'find' | 'toggle-emacs' | 'search-pages' | 'about' | 'project-settings';
 
 export interface MystApi {
   // The project from the command line or the last session, if any.
@@ -106,6 +118,14 @@ export interface MystApi {
   searchPages(query: string, caseSensitive: boolean): Promise<{ results: PageMatches[]; truncated: boolean }>;
   // Add a capability to the capabilities file (relative to the opened folder).
   addCapability(path: string, key: string | null, name: string): Promise<{ ok: true } | { ok: false; message: string }>;
+  // Project Settings, for a project (null: pages outside every project): what its
+  // .mysteditor.toml files set up, and changes to the one it uses.
+  projectSettings(projectId: string | null): Promise<ProjectSettingsInfo>;
+  saveProjectSettings(projectId: string | null, patch: ConditionsPatch): Promise<{ ok: true } | { ok: false; message: string }>;
+  // A capabilities file picked (or made, with an empty list), relative to the settings
+  // file; null if cancelled.
+  chooseCapabilitiesFile(projectId: string | null, create: boolean): Promise<{ path: string } | { error: string } | null>;
+  readCapabilities(projectId: string | null, file: string, key: string | null): Promise<{ names: string[] } | { error: string }>;
   // Vale's alerts for a saved page, when Vale is installed and configured for it.
   valeLint(rel: string): Promise<ValeResult>;
   // Add a word to the vocabulary of the Vale configuration that applies to the page.

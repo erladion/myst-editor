@@ -15,6 +15,7 @@ import { createWindow, decideTitleBar, followTheme, registerWindowIpc } from './
 import { registerMenuIpc, setRecentFolders, setTheme } from './menu.js';
 import { registerWorkspaceIpc, stopWatching } from './workspace.js';
 import { registerFileIpc } from './files.js';
+import { registerProjectSettingsIpc } from './project-settings.js';
 import { registerGitIpc } from './git/ipc.js';
 import { startAskPass, stopAskPass } from './git/service.js';
 import { registerSphinxIpc, stopSphinx } from './sphinx/service.js';
@@ -28,6 +29,7 @@ app.whenReady().then(async () => {
   await startAskPass();
   registerWorkspaceIpc();
   registerFileIpc();
+  registerProjectSettingsIpc();
   registerGitIpc();
   registerSphinxIpc();
   registerWindowIpc();

@@ -2955,3 +2955,82 @@ button.secondary {
   gap: 4px 12px;
   margin-top: 4px;
 }
+
+/* ---- File → Project Settings ---- */
+
+.modal.project-settings {
+  width: min(600px, 92vw);
+}
+
+.settings-section {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.settings-section > .muted {
+  margin: 4px 0 0 26px;
+  font-size: 13px;
+}
+
+.settings-switch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-body {
+  margin: 14px 0 0 26px;
+}
+
+.field-label {
+  font-weight: 600;
+}
+
+.field-error {
+  color: var(--tone-danger) !important;
+}
+
+.marker-keywords {
+  display: grid;
+  grid-template-columns: 70px 1fr 1fr;
+  align-items: center;
+  gap: 4px 8px;
+  margin-bottom: 4px;
+}
+
+.marker-keywords code {
+  grid-column: 2 / -1;
+  font-size: 12px;
+  color: var(--fg-muted);
+  overflow-wrap: anywhere;
+}
+
+.condition-colors {
+  display: grid;
+  gap: 6px;
+}
+
+.condition-colors label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.color-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  flex: none;
+}
+
+.condition-colors select {
+  width: 180px;
+}
+
+.color-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -102,7 +102,8 @@ leaves these keys alone; fields in dialogs keep their usual keys.
 A `.mysteditor.toml` next to `conf.py` (or at the top of the folder, for all its
 projects) tells the editor about the project's own extensions. It's reloaded when
 saved, and mistakes show as "Settings: N problems" in the status bar. Everything is
-optional:
+optional. **File → Project Settings…** turns conditional content on or off and sets it
+up, writing into this file without touching the rest of it.
 
 ```toml
 # A directive, edited like a callout with a form for its options.
@@ -133,6 +134,7 @@ rowspan_role = "rowspan"
 # Conditional content: <!-- if: X or Y --> … <!-- endif --> and
 # <!-- if-inline: X --> … <!-- endif-inline -->.
 [conditions]
+enabled = true                       # false turns it off, keeping these settings
 capabilities = "capabilities.json"   # relative to this file
 key = "product.capabilities"         # where the names are in it (optional)
 block = ["if", "endif"]

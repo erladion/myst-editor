@@ -19,6 +19,7 @@
 //   rowspan_role = "rowspan"
 //
 //   [conditions]
+//   enabled = true                       # false turns it off, keeping the settings
 //   capabilities = "capabilities.json"   # relative to this file
 //   block = ["if", "endif"]
 //   inline = ["if-inline", "endif-inline"]
@@ -92,7 +93,10 @@ export interface EditorConfig {
   directives: Record<string, DirectiveDef>;
   roles: Record<string, RoleDef>;
   tables: TableSpans;
-  conditions: ConditionsDef | null;
+  conditions: ConditionsDef | null; // null when not used (or turned off)
+  // The [conditions] settings even when turned off (enabled = false): for Project
+  // Settings, to turn them on again as they were.
+  conditionSettings: ConditionsDef | null;
   // Environment variables for the project's Sphinx builds.
   sphinxEnv: Record<string, string>;
   problems: SettingsProblem[];
@@ -101,7 +105,7 @@ export interface EditorConfig {
 // A name a process environment can hold (and a shell would accept).
 export const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-export const EMPTY_EDITOR_CONFIG: EditorConfig = { directives: {}, roles: {}, tables: {}, conditions: null, sphinxEnv: {}, problems: [] };
+export const EMPTY_EDITOR_CONFIG: EditorConfig = { directives: {}, roles: {}, tables: {}, conditions: null, conditionSettings: null, sphinxEnv: {}, problems: [] };
 
 const DEFAULT_CONDITIONS: Omit<ConditionsDef, 'capabilities' | 'capabilitiesFile' | 'capabilitiesPath' | 'capabilitiesKey' | 'colors'> = {
   block: ['if', 'endif'],
@@ -123,7 +127,7 @@ export interface SettingsSource {
 // Merge the settings files that apply to a project, outermost first: later files
 // override earlier ones per directive, per role and per conditions setting.
 export function loadEditorConfig(sources: SettingsSource[]): EditorConfig {
-  const config: EditorConfig = { directives: {}, roles: {}, tables: {}, conditions: null, sphinxEnv: {}, problems: [] };
+  const config: EditorConfig = { directives: {}, roles: {}, tables: {}, conditions: null, conditionSettings: null, sphinxEnv: {}, problems: [] };
   for (const source of sources) applySettings(config, source);
   return config;
 }
@@ -201,7 +205,12 @@ function applySettings(config: EditorConfig, { file, text, readCapabilities }: S
       problem('[conditions] must be a table');
       return;
     }
-    const prev = config.conditions;
+    const prev = config.conditionSettings;
+    let enabled = prev ? config.conditions !== null : true;
+    if (c.enabled !== undefined) {
+      if (typeof c.enabled === 'boolean') enabled = c.enabled;
+      else problem('[conditions] enabled must be true or false');
+    }
     const next: ConditionsDef = {
       ...DEFAULT_CONDITIONS,
       capabilities: prev?.capabilities ?? [],
@@ -248,9 +257,10 @@ function applySettings(config: EditorConfig, { file, text, readCapabilities }: S
       }
     }
     for (const key of Object.keys(c)) {
-      if (!['block', 'inline', 'case_sensitive', 'capabilities', 'key', 'colors'].includes(key)) problem(`[conditions] unknown setting "${key}"`);
+      if (!['enabled', 'block', 'inline', 'case_sensitive', 'capabilities', 'key', 'colors'].includes(key)) problem(`[conditions] unknown setting "${key}"`);
     }
-    config.conditions = next;
+    config.conditionSettings = next;
+    config.conditions = enabled ? next : null;
   }
 }
 
