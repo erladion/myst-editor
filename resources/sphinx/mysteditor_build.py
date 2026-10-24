@@ -3,7 +3,10 @@
 Run with the project's environment's Python:
 
     python mysteditor_build.py --srcdir DIR --outdir DIR --doctreedir DIR \
-        --result FILE [--builder html] [--fresh]
+        --result FILE [--builder html] [--fresh] [--pdf]
+
+--pdf builds the whole project as one page (singlehtml) with Sphinx's plain theme,
+for the editor to lay out and print as a PDF.
 
 The result file holds the toctree, page titles, every cross-reference target and
 the warnings, each tagged with the build phase it came from:
@@ -176,7 +179,12 @@ def main():
     parser.add_argument("--result", required=True)
     parser.add_argument("--builder", default="html")
     parser.add_argument("--fresh", action="store_true")
+    parser.add_argument("--pdf", action="store_true")
     args = parser.parse_args()
+    if args.pdf:
+        args.builder = "singlehtml"
+    # The plain theme: the HTML theme's screen layout doesn't print well.
+    overrides = {"html_theme": "basic", "html_theme_options": {}, "html_sidebars": {}} if args.pdf else {}
 
     started = time.time()
     warnings = WarningCollector()
@@ -196,6 +204,7 @@ def main():
             status=sys.stderr,
             warning=warnings,
             freshenv=args.fresh,
+            confoverrides=overrides,
         )
 
         # Sphinx buffers warnings while reading and flushes them when reading ends,
@@ -216,6 +225,8 @@ def main():
         def doctree_resolved(_app, doctree, docname):
             warnings.phase = "write"  # for Sphinx < 7.3, which lacks write-started
             written_docs.add(docname)
+            if args.pdf:
+                return
             try:
                 export_fragments(_app, doctree, docname, args.outdir)
                 mark_lines(_app, doctree, docname)

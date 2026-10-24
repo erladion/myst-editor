@@ -3,7 +3,8 @@
 // strings, booleans and lists of strings: what the app's settings use.
 import { parse as parseToml } from 'smol-toml';
 
-export type TomlValue = string | boolean | string[];
+export type TomlScalar = string | boolean | number;
+export type TomlValue = TomlScalar | string[] | Record<string, TomlScalar>[];
 
 // A table header or a key = value line (with the lines its value runs over), as
 // character offsets: `end` is past the line break after it.
@@ -149,7 +150,14 @@ const fullPath = (p: Extract<Item, { kind: 'pair' }>) => [...p.table, ...p.key];
 const tableOf = (i: Item) => (i.kind === 'header' ? i.path : i.table);
 
 export const tomlKey = (k: string) => (/^[A-Za-z0-9_-]+$/.test(k) ? k : JSON.stringify(k));
-export const tomlValue = (v: TomlValue): string => (typeof v === 'boolean' ? String(v) : Array.isArray(v) ? `[${v.map((x) => JSON.stringify(x)).join(', ')}]` : JSON.stringify(v));
+const scalar = (v: TomlScalar) => (typeof v === 'string' ? JSON.stringify(v) : String(v));
+// A list of tables is written one inline table to a line.
+export const tomlValue = (v: TomlValue): string =>
+  !Array.isArray(v)
+    ? scalar(v)
+    : v.some((x) => typeof x === 'object')
+      ? `[\n${(v as Record<string, TomlScalar>[]).map((t) => `  { ${Object.entries(t).map(([k, x]) => `${tomlKey(k)} = ${scalar(x)}`).join(', ')} },\n`).join('')}]`
+      : `[${(v as string[]).map((x) => JSON.stringify(x)).join(', ')}]`;
 const withBreak = (text: string) => (text && !text.endsWith('\n') ? `${text}\n` : text);
 
 // Where a new table goes, so the file reads in order: before its first subtable, if

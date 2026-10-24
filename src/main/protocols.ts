@@ -11,7 +11,8 @@ import { builtPage } from './sphinx/preview.js';
 // Before the app is ready: the schemes act like https (fetch, streaming, origins).
 export function registerSchemes() {
   protocol.registerSchemesAsPrivileged([
-    { scheme: ASSET_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+    // CORS: the window loads the project's fonts from here (Project Settings' PDF fonts).
+    { scheme: ASSET_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } },
     { scheme: BUILD_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
   ]);
 }
@@ -31,8 +32,16 @@ function serveFrom(base: (url: URL) => string | null) {
 }
 
 export function registerProtocols() {
-  // myst-asset://project/<path relative to the project root>: images in pages
-  protocol.handle(ASSET_SCHEME, serveFrom(() => current.project?.root ?? null));
+  // myst-asset://project/<path relative to the project root>: images in pages, and
+  // fonts (which, unlike images, a page may only use from another origin with CORS).
+  const assets = serveFrom(() => current.project?.root ?? null);
+  protocol.handle(ASSET_SCHEME, async (request) => {
+    const response = await assets(request);
+    if (!response.ok || !/\.(ttf|otf|woff2?)$/i.test(new URL(request.url).pathname)) return response;
+    const headers = new Headers(response.headers);
+    headers.set('Access-Control-Allow-Origin', '*');
+    return new Response(response.body, { status: response.status, headers });
+  });
   // myst-build://<project id>/<path in its HTML output>: the Sphinx preview, one
   // origin per project; _mysteditor/fragment.html previews a single block. Pages get
   // a script that follows the editor's scrolling.

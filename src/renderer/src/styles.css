@@ -2959,7 +2959,96 @@ button.secondary {
 /* ---- File → Project Settings ---- */
 
 .modal.project-settings {
-  width: min(600px, 92vw);
+  width: min(860px, 96vw);
+}
+
+/* A list of panes on the left, the chosen one on the right. */
+.settings-layout {
+  display: grid;
+  grid-template-columns: 170px 1fr;
+  gap: 20px;
+  min-height: 440px;
+}
+
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-right: 12px;
+  border-right: 1px solid var(--border);
+}
+
+.settings-nav button {
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  color: var(--fg);
+}
+
+.settings-nav button:hover {
+  background: var(--bg-soft);
+}
+
+.settings-nav button.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.settings-nav-group {
+  padding: 14px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+.settings-nav-group ~ button {
+  padding-left: 18px;
+}
+
+.settings-pane {
+  min-width: 0;
+}
+
+.settings-pane .settings-section {
+  border: 0;
+  padding: 0;
+}
+
+.settings-pane h3 {
+  margin: 0 0 2px;
+  font-size: 15px;
+}
+
+.settings-section > h3 + .muted {
+  margin: 0 0 14px;
+}
+
+/* What can go in the cover's texts, and the headers and footers. */
+.placeholders {
+  margin-top: 16px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--bg-soft);
+  font-size: 12.5px;
+}
+
+.placeholders table {
+  border-collapse: collapse;
+  margin: 6px 0 4px;
+}
+
+.placeholders td {
+  padding: 2px 12px 2px 0;
+  vertical-align: top;
+}
+
+.placeholders small {
+  color: var(--fg-muted);
 }
 
 .settings-section {
@@ -3033,4 +3122,208 @@ button.secondary {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ---- File → Export PDF ---- */
+
+.modal.export-pdf {
+  width: min(520px, 92vw);
+}
+
+.pdf-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.modal.export-pdf code {
+  overflow-wrap: anywhere;
+}
+
+.settings-section + .settings-section {
+  margin-top: 12px;
+}
+
+.settings-section > strong + .muted {
+  margin-left: 0;
+}
+
+.settings-row {
+  display: flex;
+  gap: 16px;
+}
+
+.settings-row .field {
+  flex: 1;
+}
+
+
+/* Headers and footers, where they go on a page. */
+.page-sketch {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-soft);
+}
+
+.page-sketch-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.page-sketch-row input {
+  min-width: 0;
+  font-size: 12px;
+}
+
+.page-sketch-row input:nth-child(2) {
+  text-align: center;
+}
+
+.page-sketch-row input:nth-child(3) {
+  text-align: right;
+}
+
+.page-sketch-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 8px;
+}
+
+.page-sketch-body span {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border);
+}
+
+.page-sketch-body span:last-child {
+  width: 60%;
+}
+
+/* The PDF's cover: a preview at scale, beside its fields; graphics below. */
+.cover-designer {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 18px;
+  align-items: start;
+}
+
+.cover-preview {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: #fff center / cover no-repeat;
+  color: #1f2328;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.12);
+  font-family: "Noto Sans", "Segoe UI", "DejaVu Sans", Arial, sans-serif;
+  user-select: none;
+}
+
+.cover-preview-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cover-preview-title {
+  margin-top: auto;
+  font-weight: 700;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.cover-preview-subtitle,
+.cover-preview-note {
+  opacity: 0.8;
+}
+
+.cover-preview-note {
+  margin-top: auto;
+  white-space: pre-line;
+}
+
+.cover-preview-graphic {
+  position: absolute;
+  cursor: grab;
+  touch-action: none;
+}
+
+.cover-preview-graphic:active {
+  cursor: grabbing;
+}
+
+.cover-preview-graphic:focus-visible {
+  outline: 2px solid var(--accent, #2f6fde);
+  outline-offset: 1px;
+}
+
+.cover-fields .field {
+  margin-bottom: 8px;
+}
+
+.cover-color {
+  align-items: center;
+}
+
+.cover-color input[type='color'] {
+  flex: none;
+  width: 40px;
+  height: 28px;
+  padding: 2px;
+}
+
+.cover-graphics {
+  grid-column: 1 / -1;
+  margin-top: 8px;
+}
+
+.cover-graphics-list {
+  display: grid;
+  grid-template-columns: 1fr repeat(4, 64px) 28px;
+  gap: 4px 6px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.cover-graphic-row {
+  display: contents;
+}
+
+.cover-graphics-list input {
+  min-width: 0;
+}
+
+.pdf-fonts .field {
+  margin-bottom: 8px;
+}
+
+.font-sample {
+  color: var(--fg);
+  font-size: 13px;
+}
+
+.pdf-font-files {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pdf-font-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.pdf-font-file code {
+  flex: 1;
+  overflow-wrap: anywhere;
 }

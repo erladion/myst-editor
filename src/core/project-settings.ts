@@ -27,12 +27,54 @@ export function editConditions(text: string, patch: ConditionsPatch, outerOff = 
   if (patch.caseSensitive !== undefined) writes.push([['case_sensitive'], patch.caseSensitive]);
   for (const [expr, color] of Object.entries(patch.colors ?? {})) writes.push([['colors', expr], color ?? undefined]);
 
-  let next = text;
-  if (patch.enabled) next = ensureTomlTable(next, ['conditions']);
-  for (const [path, value] of writes) next = setTomlKey(next, ['conditions', ...path.slice(0, -1)], path[path.length - 1], value);
-  for (const [path, value] of writes) {
-    if (JSON.stringify(tomlAt(next, ['conditions', ...path])) !== JSON.stringify(value)) throw new Error(`couldn’t set ${['conditions', ...path].join('.')}`);
-  }
+  const next = write(patch.enabled ? ensureTomlTable(text, ['conditions']) : text, 'conditions', writes);
   if (patch.enabled && tomlAt(next, ['conditions']) === undefined) throw new Error('couldn’t add [conditions]');
   return next;
+}
+
+// Writes into a table (paths within it; undefined takes a key out), checked by
+// reading the result back.
+function write(text: string, table: string, writes: [string[], TomlValue | undefined][]): string {
+  let next = text;
+  for (const [path, value] of writes) next = setTomlKey(next, [table, ...path.slice(0, -1)], path[path.length - 1], value);
+  for (const [path, value] of writes) {
+    if (JSON.stringify(tomlAt(next, [table, ...path])) !== JSON.stringify(value)) throw new Error(`couldn’t set ${[table, ...path].join('.')}`);
+  }
+  return next;
+}
+
+// What changed in the PDF settings; null takes a setting out (back to its default).
+export interface PdfPatch {
+  paper?: string | null;
+  logo?: string | null;
+  title?: string | null;
+  subtitle?: string | null;
+  note?: string | null;
+  coverBackground?: string | null;
+  coverColor?: string | null;
+  coverImages?: { file: string; x: number; y: number; width: number; height?: number }[] | null;
+  font?: string | null;
+  headingFont?: string | null;
+  codeFont?: string | null;
+  fonts?: string[] | null;
+  header?: [string, string, string] | null;
+  footer?: [string, string, string] | null;
+  numbering?: string | null;
+  tocDepth?: number | null;
+}
+
+export function editPdf(text: string, patch: PdfPatch): string {
+  const keys: [keyof PdfPatch, string][] = [
+    ['paper', 'paper'], ['logo', 'logo'], ['title', 'title'], ['subtitle', 'subtitle'], ['note', 'note'],
+    ['coverBackground', 'cover_background'], ['coverColor', 'cover_color'], ['coverImages', 'cover_images'],
+    ['font', 'font'], ['headingFont', 'heading_font'], ['codeFont', 'code_font'], ['fonts', 'fonts'],
+    ['header', 'header'], ['footer', 'footer'], ['numbering', 'numbering'], ['tocDepth', 'toc_depth'],
+  ];
+  const writes: [string[], TomlValue | undefined][] = [];
+  for (const [field, key] of keys) {
+    const v = patch[field];
+    // An empty list (of graphics, of fonts): the setting goes.
+    if (v !== undefined) writes.push([[key], v === null || (Array.isArray(v) && !v.length) ? undefined : (v as TomlValue)]);
+  }
+  return write(text, 'pdf', writes);
 }

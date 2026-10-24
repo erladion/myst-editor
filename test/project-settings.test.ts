@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ensureTomlTable, setTomlKey } from '../src/core/toml-edit.js';
-import { editConditions } from '../src/core/project-settings.js';
+import { editConditions, editPdf } from '../src/core/project-settings.js';
 import { loadEditorConfig } from '../src/core/editor-config.js';
 
 const FILE = `# Our project's editor settings
@@ -94,5 +94,59 @@ describe('editConditions', () => {
 
   it('refuses what it can’t write into the text', () => {
     expect(() => editConditions('conditions = { block = ["a", "b"] }\n', { caseSensitive: false })).toThrow();
+  });
+});
+
+describe('editPdf and [pdf]', () => {
+  const read = (text: string) => loadEditorConfig([{ file: 'docs/.mysteditor.toml', text, readCapabilities: () => '[]' }]);
+
+  it('writes the settings into [pdf], and reads them back', () => {
+    const text = editPdf('[roles.jira]\nlabel = "Jira"\n', { paper: 'Letter', logo: '_static/logo.svg', header: ['{logo}', '', '{chapter}'], tocDepth: 3, title: null });
+    expect(text).toBe('[roles.jira]\nlabel = "Jira"\n\n[pdf]\npaper = "Letter"\nlogo = "_static/logo.svg"\nheader = ["{logo}", "", "{chapter}"]\ntoc_depth = 3\n');
+    const { pdf, problems } = read(text);
+    expect(problems).toEqual([]);
+    expect(pdf).toMatchObject({ paper: 'Letter', logo: '_static/logo.svg', logoPath: 'docs/_static/logo.svg', header: ['{logo}', '', '{chapter}'], footer: ['', '{page}', ''], tocDepth: 3, numbering: 'content' });
+    expect(editPdf(text, { paper: null, tocDepth: null })).not.toMatch(/paper|toc_depth/);
+  });
+
+  it('says what’s wrong with a setting', () => {
+    const { problems, pdf } = read('[pdf]\npaper = "A5"\nheader = ["a", "b"]\ntoc_depth = 9\nnumbering = "roman"\ncolour = "red"\n');
+    expect(problems.map((p) => p.message)).toEqual([
+      '[pdf] paper must be A4 or Letter',
+      '[pdf] header must be three texts (left, centre, right), like ["", "{page}", ""]',
+      '[pdf] numbering must be "content" or "cover"',
+      '[pdf] toc_depth must be 1, 2, 3 or 4',
+      '[pdf] unknown setting "colour"',
+    ]);
+    expect(pdf.paper).toBe('A4');
+  });
+});
+
+describe('the cover and fonts in [pdf]', () => {
+  const read = (text: string) => loadEditorConfig([{ file: 'docs/.mysteditor.toml', text, readCapabilities: () => '[]' }]);
+
+  it('writes graphics one to a line, and reads them back', () => {
+    const text = editPdf('', { coverImages: [{ file: 'a.svg', x: 10, y: 20.5, width: 40 }, { file: 'b.png', x: 0, y: 0, width: 210, height: 30 }], fonts: ['f/Brand.ttf'], font: 'Brand' });
+    expect(text).toBe('[pdf]\ncover_images = [\n  { file = "a.svg", x = 10, y = 20.5, width = 40 },\n  { file = "b.png", x = 0, y = 0, width = 210, height = 30 },\n]\nfont = "Brand"\nfonts = ["f/Brand.ttf"]\n');
+    const { pdf, problems } = read(text);
+    expect(problems).toEqual([]);
+    expect(pdf.coverImages).toEqual([
+      { file: 'a.svg', path: 'docs/a.svg', x: 10, y: 20.5, width: 40, height: null },
+      { file: 'b.png', path: 'docs/b.png', x: 0, y: 0, width: 210, height: 30 },
+    ]);
+    expect(pdf.fonts).toEqual([{ file: 'f/Brand.ttf', path: 'docs/f/Brand.ttf' }]);
+    // Changed in place; an empty list takes the setting out.
+    expect(editPdf(text, { coverImages: [{ file: 'a.svg', x: 12, y: 20, width: 40 }] })).toContain('cover_images = [\n  { file = "a.svg", x = 12, y = 20, width = 40 },\n]\nfont');
+    expect(editPdf(text, { coverImages: [] })).not.toContain('cover_images');
+  });
+
+  it('says what’s wrong with a graphic or a font', () => {
+    const { problems } = read('[pdf]\ncover_images = [{ x = 1 }, { file = "a.svg", x = "20mm", y = 1, width = 2 }]\nfonts = ["brand.css"]\ncover_color = "rgb(1,2,3)"\n');
+    expect(problems.map((p) => p.message)).toEqual([
+      '[pdf] cover_color must be a colour, like "#ffffff" or "white"',
+      '[pdf] fonts must be a list of font files (.ttf, .otf, .woff or .woff2)',
+      '[pdf] cover_images, number 1: needs a file',
+      '[pdf] cover_images, number 2: x, y, width (and height) are numbers of mm',
+    ]);
   });
 });

@@ -30,6 +30,26 @@
 //   [conditions.colors]                  # optional; otherwise chosen automatically
 //   CapabilityX = "teal"                 # a palette colour, or "#0a7f6f"
 //   "CapabilityX or CapabilityY" = "orange"
+//
+//   [pdf]                                # File → Export PDF
+//   paper = "A4"                         # A4 | Letter
+//   logo = "_static/logo.svg"            # relative to this file: on the cover, and {logo}
+//   title = "Harbor manual"              # the cover; default: the root page's title
+//   subtitle = "Version {version}, {date}"
+//   note = "© Example AB"                # at the foot of the cover
+//   cover_background = "_static/cover.png"   # fills the whole cover page
+//   cover_color = "#ffffff"              # the cover's text, on a dark background
+//   cover_images = [                     # graphics on the cover; mm from its top left
+//     { file = "_static/badge.svg", x = 150, y = 240, width = 40 },   # height optional
+//   ]
+//   font = "Source Serif 4"              # the text: a font in fonts, or on the computer
+//   heading_font = "Source Sans 3"       # headings and the cover's title; default: font
+//   code_font = "JetBrains Mono"
+//   fonts = ["_static/fonts/SourceSerif4-Regular.ttf"]   # font files, the same everywhere
+//   header = ["{logo}", "", "{chapter}"] # left, centre, right
+//   footer = ["", "{page}", ""]          # {page} {pages} {chapter} {title} {date} {version} {logo}
+//   numbering = "content"                # content: from the first page after the contents | cover
+//   toc_depth = 2                        # levels in the contents
 import { parse as parseToml } from 'smol-toml';
 
 export const SETTINGS_FILE = '.mysteditor.toml';
@@ -78,6 +98,67 @@ export interface ConditionsDef {
 // Neighbours contrast, since capabilities take them in order.
 export const CONDITION_PALETTE = ['purple', 'orange', 'teal', 'magenta', 'blue', 'olive', 'green', 'slate'] as const;
 
+export type PaperSize = 'A4' | 'Letter';
+export const PAPER_SIZES: PaperSize[] = ['A4', 'Letter'];
+// In mm.
+export const PAPER_MM: Record<PaperSize, { width: number; height: number }> = { A4: { width: 210, height: 297 }, Letter: { width: 215.9, height: 279.4 } };
+// The PDF's margins (mm): headers and footers are drawn in them. The cover has none
+// (its background reaches the edges), and its text keeps to these.
+export const PDF_MARGIN_MM = { top: 22, bottom: 20, side: 20 };
+
+// A graphic on the cover, in mm from the page's top-left corner.
+export interface CoverImage {
+  file: string; // as written (relative to the settings file)
+  path: string | null; // relative to the opened folder; null when it can't be told
+  x: number;
+  y: number;
+  width: number;
+  height: number | null; // null: as the image's shape makes it
+}
+
+// How File → Export PDF lays out the project.
+export interface PdfDef {
+  paper: PaperSize;
+  logo: string | null; // as written (relative to the settings file)
+  logoPath: string | null; // relative to the opened folder; null when it can't be told
+  title: string | null; // null: the root page's title
+  subtitle: string;
+  note: string;
+  coverBackground: string | null; // as written
+  coverBackgroundPath: string | null; // relative to the opened folder
+  coverColor: string | null; // null: the usual dark text
+  coverImages: CoverImage[];
+  font: string | null; // family names; null: the usual
+  headingFont: string | null; // null: as font
+  codeFont: string | null;
+  fonts: { file: string; path: string | null }[]; // font files: as written, and relative to the opened folder
+  header: [string, string, string];
+  footer: [string, string, string];
+  numbering: 'content' | 'cover';
+  tocDepth: number;
+}
+
+export const DEFAULT_PDF: PdfDef = {
+  paper: 'A4',
+  logo: null,
+  logoPath: null,
+  title: null,
+  subtitle: '{date}',
+  note: '',
+  coverBackground: null,
+  coverBackgroundPath: null,
+  coverColor: null,
+  coverImages: [],
+  font: null,
+  headingFont: null,
+  codeFont: null,
+  fonts: [],
+  header: ['', '', '{chapter}'],
+  footer: ['', '{page}', ''],
+  numbering: 'content',
+  tocDepth: 2,
+};
+
 export interface SettingsProblem {
   file: string; // relative to the opened folder
   message: string;
@@ -99,13 +180,14 @@ export interface EditorConfig {
   conditionSettings: ConditionsDef | null;
   // Environment variables for the project's Sphinx builds.
   sphinxEnv: Record<string, string>;
+  pdf: PdfDef;
   problems: SettingsProblem[];
 }
 
 // A name a process environment can hold (and a shell would accept).
 export const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-export const EMPTY_EDITOR_CONFIG: EditorConfig = { directives: {}, roles: {}, tables: {}, conditions: null, conditionSettings: null, sphinxEnv: {}, problems: [] };
+export const EMPTY_EDITOR_CONFIG: EditorConfig = { directives: {}, roles: {}, tables: {}, conditions: null, conditionSettings: null, sphinxEnv: {}, pdf: DEFAULT_PDF, problems: [] };
 
 const DEFAULT_CONDITIONS: Omit<ConditionsDef, 'capabilities' | 'capabilitiesFile' | 'capabilitiesPath' | 'capabilitiesKey' | 'colors'> = {
   block: ['if', 'endif'],
@@ -127,7 +209,7 @@ export interface SettingsSource {
 // Merge the settings files that apply to a project, outermost first: later files
 // override earlier ones per directive, per role and per conditions setting.
 export function loadEditorConfig(sources: SettingsSource[]): EditorConfig {
-  const config: EditorConfig = { directives: {}, roles: {}, tables: {}, conditions: null, conditionSettings: null, sphinxEnv: {}, problems: [] };
+  const config: EditorConfig = { directives: {}, roles: {}, tables: {}, conditions: null, conditionSettings: null, sphinxEnv: {}, pdf: DEFAULT_PDF, problems: [] };
   for (const source of sources) applySettings(config, source);
   return config;
 }
@@ -142,7 +224,7 @@ function applySettings(config: EditorConfig, { file, text, readCapabilities }: S
     return;
   }
   for (const key of Object.keys(raw)) {
-    if (!['directives', 'roles', 'tables', 'conditions', 'sphinx'].includes(key)) problem(`Unknown section [${key}] (expected directives, roles, tables, conditions or sphinx)`);
+    if (!['directives', 'roles', 'tables', 'conditions', 'sphinx', 'pdf'].includes(key)) problem(`Unknown section [${key}] (expected directives, roles, tables, conditions, sphinx or pdf)`);
   }
 
   if (raw.sphinx !== undefined) {
@@ -159,6 +241,11 @@ function applySettings(config: EditorConfig, { file, text, readCapabilities }: S
         }
       }
     }
+  }
+
+  if (raw.pdf !== undefined) {
+    if (!isTable(raw.pdf)) problem('[pdf] must be a table');
+    else config.pdf = readPdf(raw.pdf, config.pdf, file, problem);
   }
 
   if (raw.tables !== undefined) {
@@ -262,6 +349,75 @@ function applySettings(config: EditorConfig, { file, text, readCapabilities }: S
     config.conditionSettings = next;
     config.conditions = enabled ? next : null;
   }
+}
+
+function readPdf(t: Raw, prev: PdfDef, file: string, problem: (m: string) => void): PdfDef {
+  const pdf: PdfDef = { ...prev };
+  const text = (key: string, set: (v: string) => void) => {
+    if (t[key] === undefined) return;
+    if (typeof t[key] === 'string') set(t[key] as string);
+    else problem(`[pdf] ${key} must be text`);
+  };
+  if (t.paper !== undefined) {
+    if (PAPER_SIZES.includes(t.paper as PaperSize)) pdf.paper = t.paper as PaperSize;
+    else problem(`[pdf] paper must be ${PAPER_SIZES.join(' or ')}`);
+  }
+  // A file named in the settings, relative to the opened folder (null if absolute).
+  const near = (v: string) => (!v || /^([a-z]:)?[\\/]/i.test(v) ? null : joinPath(file.split('/').slice(0, -1).join('/'), v));
+  text('logo', (v) => {
+    pdf.logo = v || null;
+    pdf.logoPath = near(v);
+  });
+  text('cover_background', (v) => {
+    pdf.coverBackground = v || null;
+    pdf.coverBackgroundPath = near(v);
+  });
+  text('cover_color', (v) => {
+    if (!v || /^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(v) || /^[a-z]+$/i.test(v)) pdf.coverColor = v || null;
+    else problem(`[pdf] cover_color must be a colour, like "#ffffff" or "white"`);
+  });
+  text('font', (v) => (pdf.font = v.trim() || null));
+  text('heading_font', (v) => (pdf.headingFont = v.trim() || null));
+  text('code_font', (v) => (pdf.codeFont = v.trim() || null));
+  if (t.fonts !== undefined) {
+    if (isStrings(t.fonts) && t.fonts.every((f) => /\.(ttf|otf|woff2?)$/i.test(f))) pdf.fonts = t.fonts.map((f) => ({ file: f, path: near(f) }));
+    else problem('[pdf] fonts must be a list of font files (.ttf, .otf, .woff or .woff2)');
+  }
+  if (t.cover_images !== undefined) {
+    const list = t.cover_images;
+    const mm = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= -1000 && v <= 1000;
+    if (!Array.isArray(list)) problem('[pdf] cover_images must be a list, like [{ file = "badge.svg", x = 20, y = 200, width = 40 }]');
+    else {
+      pdf.coverImages = [];
+      list.forEach((img, i) => {
+        const where = `[pdf] cover_images, number ${i + 1}`;
+        if (!isTable(img) || typeof img.file !== 'string' || !img.file) return problem(`${where}: needs a file`);
+        if (![img.x, img.y, img.width].every(mm) || (img.height !== undefined && !mm(img.height))) return problem(`${where}: x, y, width (and height) are numbers of mm`);
+        pdf.coverImages.push({ file: img.file, path: near(img.file), x: img.x as number, y: img.y as number, width: img.width as number, height: img.height === undefined ? null : (img.height as number) });
+      });
+    }
+  }
+  text('title', (v) => (pdf.title = v || null));
+  text('subtitle', (v) => (pdf.subtitle = v));
+  text('note', (v) => (pdf.note = v));
+  for (const key of ['header', 'footer'] as const) {
+    const v = t[key];
+    if (v === undefined) continue;
+    if (isStrings(v) && v.length === 3) pdf[key] = [v[0], v[1], v[2]];
+    else problem(`[pdf] ${key} must be three texts (left, centre, right), like ["", "{page}", ""]`);
+  }
+  if (t.numbering !== undefined) {
+    if (t.numbering === 'content' || t.numbering === 'cover') pdf.numbering = t.numbering;
+    else problem('[pdf] numbering must be "content" or "cover"');
+  }
+  if (t.toc_depth !== undefined) {
+    if (Number.isInteger(t.toc_depth) && (t.toc_depth as number) >= 1 && (t.toc_depth as number) <= 4) pdf.tocDepth = t.toc_depth as number;
+    else problem('[pdf] toc_depth must be 1, 2, 3 or 4');
+  }
+  for (const key of Object.keys(t)) {
+    if (!['paper', 'logo', 'title', 'subtitle', 'note', 'cover_background', 'cover_color', 'cover_images', 'font', 'heading_font', 'code_font', 'fonts', 'header', 'footer', 'numbering', 'toc_depth'].includes(key)) problem(`[pdf] unknown setting "${key}"`);
+  }
+  return pdf;
 }
 
 function readDirective(name: string, def: unknown, problem: (m: string) => void): DirectiveDef | null {

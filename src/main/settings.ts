@@ -22,6 +22,8 @@ export interface Settings {
   // Per project root: the writer's own environment variables for Sphinx builds, on
   // top of (and overriding) the projects' [sphinx.env].
   sphinxEnv?: Record<string, Record<string, string>>;
+  // Per Sphinx project (its source directory): where its PDF was last exported.
+  pdfPaths?: Record<string, string>;
 }
 
 const settingsPath = () => join(app.getPath('userData'), 'settings.json');

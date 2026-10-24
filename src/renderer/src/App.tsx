@@ -20,6 +20,7 @@ import { LivePreview } from './components/LivePreview';
 import { AdvancedBar } from './components/AdvancedBar';
 import { AboutDialog } from './components/About';
 import { ProjectSettingsDialog } from './components/ProjectSettings';
+import { ExportPdfDialog } from './components/ExportPdf';
 import { ValeChip } from './components/ValeChip';
 import { OpeningCard, Welcome } from './components/Welcome';
 import { AskPassHost, BranchDialog, CloneDialog, ConflictsDialog, GitChip, GitPanel } from './components/GitUi';
@@ -61,6 +62,8 @@ export function App() {
   const closeAbout = useCallback(() => setAbout(false), []);
   const [projectSettings, setProjectSettings] = useState(false);
   const closeProjectSettings = useCallback(() => setProjectSettings(false), []);
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const closeExportPdf = useCallback(() => setExportingPdf(false), []);
   const [reveal, setReveal] = useState<number | null>(null);
   const [sphinxDialog, setSphinxDialog] = useState<'details' | 'environment' | null>(null);
   const [viewAs, setViewAs] = useState<string[] | null>(null);
@@ -169,6 +172,7 @@ export function App() {
       else if (cmd === 'toggle-emacs') setKeyMode((k) => (k === 'emacs' ? 'standard' : 'emacs'));
       else if (cmd === 'about') setAbout(true);
       else if (cmd === 'project-settings' && ws) setProjectSettings(true);
+      else if (cmd === 'export-pdf' && ws) setExportingPdf(true);
       else if (cmd === 'toggle-outline') setOutline((o) => (o === 'shown' ? 'hidden' : 'shown'));
     },
   });
@@ -477,6 +481,7 @@ export function App() {
         />
       )}
       {about && <AboutDialog sphinx={info?.sphinxVersion ?? null} onClose={closeAbout} />}
+      {exportingPdf && <ExportPdfDialog projectId={activeProject?.id ?? null} onClose={closeExportPdf} />}
       {projectSettings && <ProjectSettingsDialog projectId={activeProject?.id ?? null} projectName={projects.length > 1 ? activeProject?.name : undefined} onClose={closeProjectSettings} />}
       <AskPassHost />
       {renaming && (

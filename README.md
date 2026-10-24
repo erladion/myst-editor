@@ -64,6 +64,17 @@ and come back when you return. Pull requests stay in your git server.
 | Ctrl+Shift+F | Search all pages |
 | Ctrl+Shift+B | Switch branch |
 
+**PDF:** File → Export PDF… builds the whole project as one PDF: a cover, one table
+of contents with page numbers, then the pages in the order of the contents (each
+top-level entry starting a new page), with PDF bookmarks for every heading. It uses
+the project's Sphinx with a plain print layout instead of its HTML theme, and Chromium
+(in the app) to print, so nothing else needs installing. A manual of 400 pages takes
+about a minute. File → Project Settings sets it up (`[pdf]` below): the paper; the
+cover, on a preview where graphics are dragged into place (a background to the page's
+edges, the logo, title, subtitle, a note, and any graphics); the fonts (font files in
+the project are put in the PDF, so it looks the same everywhere); the headers and
+footers; and the page numbering.
+
 View → Appearance switches between light and dark. The menus are in the title bar;
 View → Use System Title Bar puts them back in a menu bar of their own.
 
@@ -147,6 +158,29 @@ inline = ["if-inline", "endif-inline"]
 case_sensitive = true
 [conditions.colors]                  # optional
 CapabilityX = "teal"                 # purple, orange, teal, magenta, blue, olive, green, slate or "#rrggbb"
+
+# File → Export PDF. {page} {pages} {chapter} {title} {date} {version} {logo} can be
+# used in the cover's texts and in the headers and footers.
+[pdf]
+paper = "A4"                         # A4 | Letter
+logo = "_static/logo.svg"            # relative to this file: on the cover, and {logo}
+title = "Harbor manual"              # the cover's; default: the root page's title
+subtitle = "Version {version}, {date}"
+note = "© Example AB"                # at the foot of the cover
+cover_background = "_static/cover.png"   # fills the cover page to its edges
+cover_color = "#ffffff"              # the cover's text, on a dark background
+cover_images = [                     # mm from the page's top-left corner
+  { file = "_static/badge.svg", x = 150, y = 240, width = 40 },   # height optional
+]
+font = "Source Serif 4"              # the text: a font in fonts, or on the computer
+heading_font = "Source Sans 3"       # headings and the cover's title; default: font
+code_font = "JetBrains Mono"
+fonts = ["_static/fonts/SourceSerif4-Regular.ttf", "_static/fonts/SourceSerif4-Bold.ttf"]
+header = ["{logo}", "", "{chapter}"] # left, centre, right
+footer = ["", "{page}", ""]
+numbering = "content"                # from the first chapter (the pages before it
+                                     # are unnumbered) | cover
+toc_depth = 2                        # levels in the contents
 
 # Environment variables for Sphinx builds (writers can add their own in the app).
 [sphinx.env]

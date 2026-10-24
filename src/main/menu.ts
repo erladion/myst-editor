@@ -99,6 +99,7 @@ export function buildMenu(theme: Theme = nativeTheme.themeSource) {
         { id: 'page-history', label: 'Page History…', click: () => send('page-history') },
         { id: 'rename-page', label: 'Rename Page…', click: () => send('rename-page') },
         { type: 'separator' },
+        { id: 'export-pdf', label: 'Export PDF…', click: () => send('export-pdf') },
         { id: 'project-settings', label: 'Project Settings…', click: () => send('project-settings') },
         { type: 'separator' },
         { id: 'switch-branch', label: 'Switch Branch…', accelerator: 'CmdOrCtrl+Shift+B', click: () => send('switch-branch') },

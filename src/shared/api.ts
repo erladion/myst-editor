@@ -1,7 +1,7 @@
 // The API the preload script exposes to the renderer as `window.myst`.
 import type { MystConfig } from '../core/project-config.js';
-import type { ConditionsDef, SettingsProblem } from '../core/editor-config.js';
-import type { ConditionsPatch } from '../core/project-settings.js';
+import type { ConditionsDef, PdfDef, SettingsProblem } from '../core/editor-config.js';
+import type { ConditionsPatch, PdfPatch } from '../core/project-settings.js';
 import type { EnvironmentChoice, PythonCandidate, SphinxState } from './sphinx.js';
 import type { Branches, ConflictFile, GitInfo, GitOperation, PageVersion } from './git.js';
 import type { ValeResult } from './vale.js';
@@ -77,10 +77,18 @@ export interface ProjectSettingsInfo {
   exists: boolean;
   conditions: ConditionsDef | null; // even when turned off
   enabled: boolean;
+  pdf: PdfDef;
   problems: SettingsProblem[];
 }
 
-export type MenuCommand = 'open-folder' | 'save' | 'toggle-source' | 'clone' | 'new-page' | 'delete-page' | 'go-to-page' | 'toggle-outline' | 'page-history' | 'switch-branch' | 'rename-page' | 'find' | 'toggle-emacs' | 'search-pages' | 'about' | 'project-settings';
+export interface PdfFonts {
+  files: ({ file: string; family: string; weight: string; style: 'normal' | 'italic' } | { file: string; error: string })[];
+  installed: string[];
+}
+
+export type PdfResult = { ok: true; path: string; pages: number } | { ok: false; message: string };
+
+export type MenuCommand = 'open-folder' | 'save' | 'toggle-source' | 'clone' | 'new-page' | 'delete-page' | 'go-to-page' | 'toggle-outline' | 'page-history' | 'switch-branch' | 'rename-page' | 'find' | 'toggle-emacs' | 'search-pages' | 'about' | 'project-settings' | 'export-pdf';
 
 export interface MystApi {
   // The project from the command line or the last session, if any.
@@ -121,11 +129,19 @@ export interface MystApi {
   // Project Settings, for a project (null: pages outside every project): what its
   // .mysteditor.toml files set up, and changes to the one it uses.
   projectSettings(projectId: string | null): Promise<ProjectSettingsInfo>;
-  saveProjectSettings(projectId: string | null, patch: ConditionsPatch): Promise<{ ok: true } | { ok: false; message: string }>;
-  // A capabilities file picked (or made, with an empty list), relative to the settings
-  // file; null if cancelled.
-  chooseCapabilitiesFile(projectId: string | null, create: boolean): Promise<{ path: string } | { error: string } | null>;
+  saveProjectSettings(projectId: string | null, patch: { conditions?: ConditionsPatch; pdf?: PdfPatch }): Promise<{ ok: true } | { ok: false; message: string }>;
+  // A file for the settings: a capabilities file picked (or made, with an empty list),
+  // or an image (a logo, the cover's); relative to the settings file, null if cancelled.
+  chooseSettingsFile(projectId: string | null, kind: 'capabilities' | 'new-capabilities' | 'image' | 'font'): Promise<{ path: string } | { error: string } | null>;
   readCapabilities(projectId: string | null, file: string, key: string | null): Promise<{ names: string[] } | { error: string }>;
+  // What font files are (relative to the settings file), and the fonts installed here.
+  pdfFonts(projectId: string | null, files: string[]): Promise<PdfFonts>;
+  // A PDF of a Sphinx project, saved where the writer chooses (null if cancelled);
+  // onPdfProgress says what it's doing. openPdf opens the last one, or its folder.
+  exportPdf(projectId: string | null): Promise<PdfResult | null>;
+  cancelPdf(): Promise<void>;
+  openPdf(inFolder: boolean): Promise<void>;
+  onPdfProgress(cb: (step: string) => void): () => void;
   // Vale's alerts for a saved page, when Vale is installed and configured for it.
   valeLint(rel: string): Promise<ValeResult>;
   // Add a word to the vocabulary of the Vale configuration that applies to the page.

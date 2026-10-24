@@ -26,6 +26,7 @@ function envFor(p: ProjectInfo, id: string): Record<string, string> {
 
 // Where a project's built pages are, for the preview (see protocols.ts).
 export const outputDirOf = (id: string) => sphinx.get(id)?.outputDir ?? null;
+export const managerOf = (id: string) => sphinx.get(id) ?? null;
 
 // Trust and the environment choice belong to the opened folder, so one decision
 // covers all its projects (e.g. two guides sharing one .venv). `onBuilt` hears about

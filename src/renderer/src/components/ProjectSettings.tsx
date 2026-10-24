@@ -1,12 +1,23 @@
 // File → Project Settings: what a project uses, saved in its .mysteditor.toml (so it
-// applies to everyone working on it). For now, conditional content.
+// applies to everyone working on it): conditional content, and the PDF's layout.
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { CONDITION_PALETTE, type ConditionsDef } from '../../../core/editor-config';
 import type { ConditionsPatch } from '../../../core/project-settings';
 import type { ProjectSettingsInfo } from '../../../shared/api';
 import { conditionColor } from '../editor/conditions';
+import { PdfSettings, pdfForm, pdfPatch, type PdfForm } from './PdfSettings';
 
 const api = window.myst;
+
+// The list on the left: each entry a pane ('pdf' heads the PDF's).
+const PANES: [string, string][] = [
+  ['conditions', 'Conditional content'],
+  ['pdf', 'PDF'],
+  ['pdf-pages', 'Pages'],
+  ['pdf-cover', 'Cover'],
+  ['pdf-fonts', 'Fonts'],
+  ['pdf-margins', 'Headers and footers'],
+];
 
 const DEFAULTS = { block: ['if', 'endif'], inline: ['if-inline', 'endif-inline'] } as const;
 const KEYWORD = /^[\w-]+$/;
@@ -27,6 +38,8 @@ export function ProjectSettingsDialog({ projectId, projectName, onClose }: Props
   const [caseSensitive, setCaseSensitive] = useState(true);
   const [colors, setColors] = useState<Record<string, string>>({});
   const [listed, setListed] = useState<{ names: string[] } | { error: string } | null>(null);
+  const [pdf, setPdf] = useState<PdfForm | null>(null);
+  const [pane, setPane] = useState<string>('conditions');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -34,6 +47,7 @@ export function ProjectSettingsDialog({ projectId, projectName, onClose }: Props
     void api.projectSettings(projectId).then((i) => {
       setInfo(i);
       setEnabled(i.enabled);
+      setPdf(pdfForm(i.pdf));
       const c = i.conditions;
       if (!c) return;
       setFile(c.capabilitiesFile ?? '');
@@ -91,22 +105,30 @@ export function ProjectSettingsDialog({ projectId, projectName, onClose }: Props
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const p = patch();
-    if (!Object.keys(p).length) return onClose();
+    const conditions = patch();
+    const pdfChanges = pdf ? pdfPatch(info!.pdf, pdf) : {};
+    if (!Object.keys(conditions).length && !Object.keys(pdfChanges).length) return onClose();
     setBusy(true);
     setError(null);
-    const result = await api.saveProjectSettings(projectId, p);
+    const result = await api.saveProjectSettings(projectId, {
+      ...(Object.keys(conditions).length ? { conditions } : {}),
+      ...(Object.keys(pdfChanges).length ? { pdf: pdfChanges } : {}),
+    });
     if (result.ok) return onClose();
     setError(result.message);
     setBusy(false);
   };
 
-  const choose = async (create: boolean) => {
-    const result = await api.chooseCapabilitiesFile(projectId, create);
-    if (!result) return;
-    if ('error' in result) return setError(result.error);
+  const choose = async (kind: 'capabilities' | 'new-capabilities' | 'image' | 'font'): Promise<string | null> => {
+    const result = await api.chooseSettingsFile(projectId, kind);
+    if (!result) return null;
+    if ('error' in result) {
+      setError(result.error);
+      return null;
+    }
     setError(null);
-    setFile(result.path);
+    if (kind === 'capabilities' || kind === 'new-capabilities') setFile(result.path);
+    return result.path;
   };
 
   const keywords = (label: string, value: [string, string], set: (v: [string, string]) => void) => (
@@ -130,84 +152,102 @@ export function ProjectSettingsDialog({ projectId, projectName, onClose }: Props
               Saved in <code>{info.file}</code>
               {info.exists ? '' : ' (a new file)'}, so they apply to everyone working on the project.
             </p>
-            <section className="settings-section">
-              <label className="settings-switch">
-                <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-                <strong>Conditional content</strong>
-              </label>
-              <p className="muted">
-                Mark parts of pages, and table rows, as only for some products or capabilities, and see a page as each of them would. The Sphinx build needs an extension that reads the
-                markers.
-              </p>
-              {enabled && (
-                <div className="settings-body">
-                  <div className="field">
-                    <label htmlFor="caps-file">Capabilities file</label>
-                    <div className="row">
-                      <input id="caps-file" value={file} spellCheck={false} placeholder="None: any name can be used" onChange={(e) => setFile(e.target.value)} />
-                      <button type="button" onClick={() => void choose(false)}>
-                        Choose…
-                      </button>
-                      <button type="button" onClick={() => void choose(true)}>
-                        New…
-                      </button>
-                    </div>
-                    <small>
-                      {!file.trim()
-                        ? 'A JSON file listing the capabilities, relative to the settings file. Conditions are checked against it, and View as offers them.'
-                        : !listed
-                          ? ' '
-                          : 'error' in listed
-                            ? listed.error
-                            : listed.names.length
-                              ? `${listed.names.length} capabilit${listed.names.length === 1 ? 'y' : 'ies'}: ${listed.names.join(', ')}`
-                              : 'No capabilities in it yet. Add them from the condition dialog.'}
-                    </small>
-                  </div>
-                  {file.trim() && (
-                    <div className="field">
-                      <label htmlFor="caps-key">Where the list is in the file</label>
-                      <input id="caps-key" value={key} spellCheck={false} placeholder="At the top, or under “capabilities”" onChange={(e) => setKey(e.target.value)} />
-                      <small>Keys with dots between them, like product.capabilities.</small>
-                    </div>
-                  )}
-                  <div className="field">
-                    <span className="field-label">Markers</span>
-                    {keywords('Blocks', block, setBlock)}
-                    {keywords('In a line', inline, setInline)}
-                    {badKeywords && <small className="field-error">Each marker needs its own keyword: letters, digits, - or _.</small>}
-                  </div>
-                  <div className="field">
-                    <label className="check">
-                      <input type="checkbox" checked={caseSensitive} onChange={(e) => setCaseSensitive(e.target.checked)} />
-                      Capability names are case sensitive
-                    </label>
-                  </div>
-                  {shown.length > 0 && (
-                    <div className="field">
-                      <span className="field-label">Colours</span>
-                      <div className="condition-colors">
-                        {shown.map(({ expr, color, swatch, auto }) => (
-                          <label key={expr}>
-                            <span className="color-swatch" style={{ background: swatch }} />
-                            <span className="color-name">{expr}</span>
-                            <select aria-label={`Colour of ${expr}`} value={color} onChange={(e) => setColors((c) => ({ ...c, [expr]: e.target.value }))}>
-                              <option value="">Automatic ({auto.replace(/^var\(--cond-(\w+)\)$/, '$1')})</option>
-                              {CONDITION_PALETTE.map((name) => (
-                                <option key={name} value={name}>
-                                  {name}
-                                </option>
-                              ))}
-                              {color.startsWith('#') && <option value={color}>{color}</option>}
-                            </select>
-                          </label>
-                        ))}
+            <div className="settings-layout">
+              <nav className="settings-nav" role="tablist" aria-orientation="vertical" aria-label="Settings">
+                {PANES.map(([id, label]) =>
+                  id === 'pdf' ? (
+                    <span key={id} className="settings-nav-group">
+                      {label}
+                    </span>
+                  ) : (
+                    <button key={id} type="button" role="tab" aria-selected={pane === id} className={pane === id ? 'active' : undefined} onClick={() => setPane(id)}>
+                      {label}
+                    </button>
+                  ),
+                )}
+              </nav>
+              <div className="settings-pane" role="tabpanel">
+                <section className="settings-section" hidden={pane !== 'conditions'} aria-label="Conditional content">
+                  <label className="settings-switch">
+                    <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+                    <strong>Conditional content</strong>
+                  </label>
+                  <p className="muted">
+                    Mark parts of pages, and table rows, as only for some products or capabilities, and see a page as each of them would. The Sphinx build needs an extension that reads the
+                    markers.
+                  </p>
+                  {enabled && (
+                    <div className="settings-body">
+                      <div className="field">
+                        <label htmlFor="caps-file">Capabilities file</label>
+                        <div className="row">
+                          <input id="caps-file" value={file} spellCheck={false} placeholder="None: any name can be used" onChange={(e) => setFile(e.target.value)} />
+                          <button type="button" onClick={() => void choose('capabilities')}>
+                            Choose…
+                          </button>
+                          <button type="button" onClick={() => void choose('new-capabilities')}>
+                            New…
+                          </button>
+                        </div>
+                        <small>
+                          {!file.trim()
+                            ? 'A JSON file listing the capabilities, relative to the settings file. Conditions are checked against it, and View as offers them.'
+                            : !listed
+                              ? ' '
+                              : 'error' in listed
+                                ? listed.error
+                                : listed.names.length
+                                  ? `${listed.names.length} capabilit${listed.names.length === 1 ? 'y' : 'ies'}: ${listed.names.join(', ')}`
+                                  : 'No capabilities in it yet. Add them from the condition dialog.'}
+                        </small>
                       </div>
+                      {file.trim() && (
+                        <div className="field">
+                          <label htmlFor="caps-key">Where the list is in the file</label>
+                          <input id="caps-key" value={key} spellCheck={false} placeholder="At the top, or under “capabilities”" onChange={(e) => setKey(e.target.value)} />
+                          <small>Keys with dots between them, like product.capabilities.</small>
+                        </div>
+                      )}
+                      <div className="field">
+                        <span className="field-label">Markers</span>
+                        {keywords('Blocks', block, setBlock)}
+                        {keywords('In a line', inline, setInline)}
+                        {badKeywords && <small className="field-error">Each marker needs its own keyword: letters, digits, - or _.</small>}
+                      </div>
+                      <div className="field">
+                        <label className="check">
+                          <input type="checkbox" checked={caseSensitive} onChange={(e) => setCaseSensitive(e.target.checked)} />
+                          Capability names are case sensitive
+                        </label>
+                      </div>
+                      {shown.length > 0 && (
+                        <div className="field">
+                          <span className="field-label">Colours</span>
+                          <div className="condition-colors">
+                            {shown.map(({ expr, color, swatch, auto }) => (
+                              <label key={expr}>
+                                <span className="color-swatch" style={{ background: swatch }} />
+                                <span className="color-name">{expr}</span>
+                                <select aria-label={`Colour of ${expr}`} value={color} onChange={(e) => setColors((c) => ({ ...c, [expr]: e.target.value }))}>
+                                  <option value="">Automatic ({auto.replace(/^var\(--cond-(\w+)\)$/, '$1')})</option>
+                                  {CONDITION_PALETTE.map((name) => (
+                                    <option key={name} value={name}>
+                                      {name}
+                                    </option>
+                                  ))}
+                                  {color.startsWith('#') && <option value={color}>{color}</option>}
+                                </select>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
-                </div>
-              )}
-            </section>
+                </section>
+                {pdf && <PdfSettings pane={pane} projectId={projectId} form={pdf} settingsFile={info.file} onChange={setPdf} choose={choose} />}
+              </div>
+            </div>
             {error && (
               <p className="sphinx-error" role="alert">
                 {error}

@@ -62,13 +62,13 @@ test('right-click offers cut, copy and paste where they apply', async () => {
   });
   await page.mouse.click(at.x, at.y, { button: 'right' });
   await expect.poll(items).toEqual(['cut:true', 'copy:true', 'paste:true', 'selectall:true']);
-  // What's selected is what Copy copies.
+  // What's selected is what Copy copies (over "from elsewhere"). The menu is left
+  // open: closing a native menu from code (closePopup) now and then brings the app
+  // down (a SIGSEGV, on Linux and Windows); a click closes it itself.
   const selected = 'Welcome';
-  await app.evaluate(({ clipboard }) => {
-    clipboard.writeText('');
+  await app.evaluate(() => {
     const m = (globalThis as { lastContextMenu?: Electron.Menu }).lastContextMenu!;
     m.getMenuItemById('copy')!.click();
-    m.closePopup();
   });
   await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText())).toBe(selected);
 });
@@ -89,7 +89,6 @@ test('on a misspelled word, right-click offers the spellchecker’s suggestions'
     const wc = BrowserWindow.getAllWindows()[0].webContents;
     wc.emit('context-menu', {}, { isEditable: true, selectionText: 'Welcome', misspelledWord: 'Welcome', dictionarySuggestions: ['Welcomed', 'Welcomes'], editFlags: { canCut: true, canCopy: true, canPaste: true, canSelectAll: true } });
     const m = (globalThis as { lastContextMenu?: Electron.Menu }).lastContextMenu!;
-    m.closePopup();
     return m.items.map((i) => (i.type === 'separator' ? '—' : i.label));
   });
   // (Choosing one replaces the word Chromium marked: there's none here, without its
