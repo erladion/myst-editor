@@ -19,7 +19,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirro
 import { markdown } from '@codemirror/lang-markdown';
 import { HighlightStyle, bracketMatching, syntaxHighlighting } from '@codemirror/language';
 import { highlightSelectionMatches, search, searchKeymap } from '@codemirror/search';
-import { lintGutter, setDiagnostics, type Diagnostic } from '@codemirror/lint';
+import { forEachDiagnostic, lintGutter, openLintPanel, setDiagnostics, type Diagnostic } from '@codemirror/lint';
 import { tags } from '@lezer/highlight';
 import { imageFiles } from '../editor/images';
 import { registerSourceView } from '../emacs';
@@ -154,6 +154,27 @@ function diagnostics(state: EditorState, problems: SphinxWarning[], vale: ValeAl
   return [...sphinx, ...style];
 }
 
+// The Markdown view, while it's open: for the status bar's Vale chip.
+let openView: EditorView | null = null;
+
+// Go to Vale's next remark after the cursor (round to the first), and show it in the
+// problems panel, with its corrections.
+export function nextValeRemark(): boolean {
+  const view = openView;
+  if (!view) return false;
+  const remarks: { from: number; to: number }[] = [];
+  forEachDiagnostic(view.state, (d, from, to) => {
+    if (d.source?.startsWith('Vale')) remarks.push({ from, to });
+  });
+  if (!remarks.length) return false;
+  const head = view.state.selection.main.head;
+  const next = remarks.find((r) => r.from > head) ?? remarks[0];
+  view.dispatch({ selection: { anchor: next.from, head: next.to }, scrollIntoView: true });
+  view.focus();
+  openLintPanel(view);
+  return true;
+}
+
 export function SourceEditor({ text, onChange, problems, vale, onAcceptWord, onLine, goto, onGotoDone, onImage, onImageError }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -232,10 +253,12 @@ export function SourceEditor({ text, onChange, problems, vale, onAcceptWord, onL
     view.scrollDOM.addEventListener('scroll', onScroll);
     viewRef.current = view;
     registerSourceView(view);
+    openView = view;
     view.focus();
     return () => {
       cancelAnimationFrame(frame);
       registerSourceView(null);
+      if (openView === view) openView = null;
       view.destroy();
       viewRef.current = null;
     };

@@ -15,7 +15,7 @@ import { Toolbar } from './components/Toolbar';
 import { Banner, StatusBar } from './components/Status';
 import { DialogHost, type DialogApi } from './components/Dialogs';
 import { EnvironmentDialog, Preview, ProblemsPanel, SphinxChip, SphinxDialog, TrustBanner } from './components/SphinxUi';
-import { SourceEditor } from './components/SourceEditor';
+import { nextValeRemark, SourceEditor } from './components/SourceEditor';
 import { LivePreview } from './components/LivePreview';
 import { AdvancedBar } from './components/AdvancedBar';
 import { AboutDialog } from './components/About';
@@ -409,7 +409,7 @@ export function App() {
               {echo}
             </span>
           )}
-          {vale.result && <ValeChip result={vale.result} onNext={() => view && nextAlert(view)} onShowError={(text) => void dialogs.current?.showText({ title: 'Vale', text })} />}
+          {vale.result && <ValeChip result={vale.result} onNext={() => (textMode ? nextValeRemark() : view && nextAlert(view))} onShowError={(text) => void dialogs.current?.showText({ title: 'Vale', text })} />}
           <GitChip info={gitInfo} onOpen={() => (gitInfo?.operation ? setConflicts(true) : setGitPanel(true))} onBranches={() => setBranchesOpen(true)} />
           <SphinxChip
             state={sphinx}

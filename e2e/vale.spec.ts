@@ -53,6 +53,12 @@ test('Vale’s remarks are underlined, and a correction can be picked', async ()
   // In the Markdown view too, on the word.
   await page.getByRole('button', { name: 'Markdown' }).click();
   await expect(page.locator('.cm-lintRange-warning')).toHaveText('utilize');
+  // The status bar goes to it there too: selected, and shown with its correction.
+  await page.locator('.vale-chip').click();
+  await expect.poll(() => page.evaluate(() => getSelection()!.toString())).toBe('utilize');
+  const panel = page.locator('.cm-panel-lint');
+  await expect(panel).toContainText("Use 'use' instead of 'utilize'.");
+  await expect(panel.getByRole('button', { name: 'use' })).toBeVisible();
   // And still underlined back in the formatted view.
   await page.getByRole('button', { name: '← Formatted editing' }).click();
   await expect(page.locator('.prose .vale-warning')).toHaveText('utilize');
