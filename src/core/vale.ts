@@ -3,7 +3,7 @@
 // so an alert is found by its text instead: the same occurrence of it, counting from
 // the start of its block, as in the file.
 import type { Node as PMNode } from 'prosemirror-model';
-import { loadDocument } from './document.js';
+import { parseSaved } from './document.js';
 import { blockPathAtLine, positionOfPath } from './lines.js';
 import type { MystConfig } from './project-config.js';
 import type { ValeAlert } from '../shared/vale.js';
@@ -52,7 +52,7 @@ function textOf(node: PMNode, pos: number): { text: string; starts: number[] } {
 }
 
 export function locateAlerts(doc: PMNode, savedText: string, config: MystConfig, alerts: ValeAlert[]): LocatedAlert[] {
-  const saved = loadDocument(savedText, config);
+  const saved = parseSaved(savedText, config);
   const lines = savedText.split('\n');
   const lineStart: number[] = [];
   for (let i = 0, at = 0; i < lines.length; at += lines[i].length + 1, i++) lineStart.push(at);

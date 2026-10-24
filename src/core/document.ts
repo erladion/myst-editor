@@ -28,9 +28,22 @@ export function loadDocument(text: string, config: MystConfig = DEFAULT_CONFIG):
   });
 }
 
+// A page's saved text, parsed, for the parts that locate things in it after each save
+// (problems, previews, Vale's remarks, the preview's scroll lines). They share one
+// parse, which the save's own check has usually done already. Not to be changed.
+const parsed: { text: string; config: MystConfig; result: LoadedDocument }[] = [];
+export function parseSaved(text: string, config: MystConfig = DEFAULT_CONFIG): LoadedDocument {
+  const hit = parsed.find((p) => p.config === config && p.text === text);
+  if (hit) return hit.result;
+  const result = loadDocument(text, config);
+  parsed.unshift({ text, config, result });
+  parsed.length = Math.min(parsed.length, 4);
+  return result;
+}
+
 export function saveDocument(doc: PMNode, map: SourceMap, config: MystConfig = DEFAULT_CONFIG): SaveResult {
   const text = serializeMyst(doc, map, { tableSpans: config.editor.tables });
-  const reparsed = loadDocument(text, config).doc;
+  const reparsed = parseSaved(text, config).doc;
   const problem = firstDifference(semanticForm(doc), semanticForm(reparsed), 'document');
   return problem ? { text, verified: false, problem } : { text, verified: true };
 }

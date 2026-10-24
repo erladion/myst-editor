@@ -3,6 +3,7 @@
 import type { Node as PMNode } from 'prosemirror-model';
 import { Plugin, PluginKey, type Command, type EditorState, type Transaction } from 'prosemirror-state';
 import { Decoration, DecorationSet } from 'prosemirror-view';
+import { AddMarkStep, RemoveMarkStep, ReplaceStep } from 'prosemirror-transform';
 import { CONDITION_PALETTE, type ConditionsDef } from '../../../core/editor-config';
 import { endMarker, evaluate, parseCondition, readMarker, startMarker, unknownNames, type ParseResult } from '../../../core/conditions';
 import { schema } from '../../../core/schema';
@@ -119,7 +120,8 @@ function decorate(doc: PMNode, settings: ConditionsDef | null, viewAs: string[] 
     const to = region.end.pos;
     if (from >= to) continue;
     if (region.start.inline) {
-      decorations.push(Decoration.inline(from, to, { class: `cond-inline${hidden ? ' cond-off' : ''}`, style }));
+      // Text typed right next to a marker is inside the condition (see textOnly).
+      decorations.push(Decoration.inline(from, to, { class: `cond-inline${hidden ? ' cond-off' : ''}`, style }, { inclusiveStart: true, inclusiveEnd: true }));
       continue;
     }
     // The outermost blocks entirely between the markers.
@@ -157,6 +159,28 @@ function decorate(doc: PMNode, settings: ConditionsDef | null, viewAs: string[] 
   return DecorationSet.create(doc, decorations);
 }
 
+// Whether a change only edits text within a paragraph (typing, deleting, formatting)
+// and touches no marker: the conditions are then where they were, so their
+// decorations only move along, and a long page isn't scanned on every keystroke.
+function textOnly(tr: Transaction): boolean {
+  return tr.steps.every((step, i) => {
+    if (step instanceof AddMarkStep || step instanceof RemoveMarkStep) return true;
+    if (!(step instanceof ReplaceStep) || step.slice.openStart || step.slice.openEnd) return false;
+    const doc = tr.docs[i];
+    const $from = doc.resolve(step.from);
+    if (!$from.parent.isTextblock || !$from.sameParent(doc.resolve(step.to))) return false;
+    let ok = true;
+    step.slice.content.forEach((n) => {
+      if (!n.isInline || n.type.name === 'html_inline') ok = false;
+    });
+    doc.nodesBetween(step.from, step.to, (n) => {
+      if (n.type.name === 'html_inline') ok = false;
+      return ok;
+    });
+    return ok;
+  });
+}
+
 export const conditionsPlugin = new Plugin<PluginState>({
   key: conditionsKey,
   state: {
@@ -164,6 +188,7 @@ export const conditionsPlugin = new Plugin<PluginState>({
     apply(tr, prev) {
       const meta = tr.getMeta(conditionsKey) as Partial<Pick<PluginState, 'settings' | 'viewAs'>> | undefined;
       if (!meta && !tr.docChanged) return prev;
+      if (!meta && textOnly(tr)) return { ...prev, decorations: prev.decorations.map(tr.mapping, tr.doc) };
       const next = { ...prev, ...meta };
       return { ...next, decorations: decorate(tr.doc, next.settings, next.viewAs) };
     },

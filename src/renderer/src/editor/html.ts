@@ -2,7 +2,7 @@
 // with a little HTML, such as `<br>` or a `<ul>` list inside a table cell. The source
 // is never changed; this only decides how it's displayed.
 import type { Node as PMNode } from 'prosemirror-model';
-import { Plugin } from 'prosemirror-state';
+import { Plugin, type Transaction } from 'prosemirror-state';
 import { Decoration, DecorationSet } from 'prosemirror-view';
 
 // Elements shown as themselves. Anything else is unwrapped (its text kept), and
@@ -106,10 +106,8 @@ export interface LineTag {
 
 // Formats the text between inline tags (`<b>…</b>` shows bold) and lays out tags that
 // start lines, paragraph by paragraph (or table cell by cell).
-function decorate(doc: PMNode): DecorationSet {
-  const decorations: Decoration[] = [];
-  doc.descendants((block, blockPos) => {
-    if (!block.isTextblock) return true;
+function decorateBlock(block: PMNode, blockPos: number, decorations: Decoration[]) {
+  {
     const open: { name: string; end: number }[] = [];
     const lists: { ordered: boolean; n: number }[] = [];
     const children: { child: PMNode; offset: number; tag: InlineTag | null }[] = [];
@@ -154,16 +152,46 @@ function decorate(doc: PMNode): DecorationSet {
         lineStart = true;
       } else if (tag.kind !== 'close') lineStart = false;
     });
+  }
+}
+
+function decorate(doc: PMNode): DecorationSet {
+  const decorations: Decoration[] = [];
+  doc.descendants((block, pos) => {
+    if (!block.isTextblock) return true;
+    decorateBlock(block, pos, decorations);
     return false;
   });
   return DecorationSet.create(doc, decorations);
+}
+
+// After a change: only the paragraphs (or cells) it touched are looked at again, the
+// rest keep theirs, so typing on a long page doesn't go through all of it.
+function redecorate(tr: Transaction, set: DecorationSet): DecorationSet {
+  let next = set.map(tr.mapping, tr.doc);
+  const touched: [number, number][] = [];
+  tr.mapping.maps.forEach((map, i) => {
+    const rest = tr.mapping.slice(i + 1);
+    map.forEach((_oldStart, _oldEnd, newStart, newEnd) => touched.push([rest.map(newStart, -1), rest.map(newEnd, 1)]));
+  });
+  const size = tr.doc.content.size;
+  for (const [from, to] of touched) {
+    tr.doc.nodesBetween(Math.max(0, from), Math.min(size, to), (block, pos) => {
+      if (!block.isTextblock) return true;
+      const decorations: Decoration[] = [];
+      decorateBlock(block, pos, decorations);
+      next = next.remove(next.find(pos + 1, pos + block.nodeSize - 1)).add(tr.doc, decorations);
+      return false;
+    });
+  }
+  return next;
 }
 
 export function inlineHtmlPlugin(): Plugin {
   return new Plugin({
     state: {
       init: (_config, state) => decorate(state.doc),
-      apply: (tr, set) => (tr.docChanged ? decorate(tr.doc) : set),
+      apply: (tr, set) => (tr.docChanged ? redecorate(tr, set) : set),
     },
     props: {
       decorations(state) {

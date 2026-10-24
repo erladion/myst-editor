@@ -40,6 +40,9 @@ export function Editor({ state, ctx, onChange, viewRef, onView, problems, savedT
   const host = useRef<HTMLDivElement>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  // States the view made itself (by editing): the page passes them back as `state`,
+  // possibly from before the latest edits, and those must not be put back.
+  const own = useRef(new WeakSet<EditorState>());
 
   useEffect(() => {
     const view: EditorView = new EditorView(host.current!, {
@@ -49,6 +52,7 @@ export function Editor({ state, ctx, onChange, viewRef, onView, problems, savedT
       attributes: { class: 'prose', spellcheck: 'true', 'aria-label': 'Page content' },
       dispatchTransaction(tr) {
         const next = view.state.apply(tr);
+        own.current.add(next);
         view.updateState(next);
         onChangeRef.current(next, tr.docChanged);
       },
@@ -69,11 +73,12 @@ export function Editor({ state, ctx, onChange, viewRef, onView, problems, savedT
 
   // State replaced from outside (e.g. reloaded from disk or edited as source). It
   // comes without what the effects below add (problems, previews, Vale, …), so they
-  // run again.
+  // run again. A state the view made itself is never one of those: by the time this
+  // runs, the writer may have typed on.
   const [replaced, setReplaced] = useState(0);
   useEffect(() => {
     const view = viewRef.current;
-    if (view && view.state !== state) {
+    if (view && view.state !== state && !own.current.has(state)) {
       view.updateState(state);
       setReplaced((n) => n + 1);
     }

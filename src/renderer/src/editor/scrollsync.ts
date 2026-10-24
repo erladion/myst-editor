@@ -2,13 +2,13 @@
 // preview to follow: the start line of the block at the top of the view, plus how far
 // into it.
 import type { EditorView } from 'prosemirror-view';
-import { loadDocument } from '../../../core/document';
+import { parseSaved } from '../../../core/document';
 import type { MystConfig } from '../../../core/project-config';
 import type { PreviewLine } from '../components/SphinxUi';
 
 // The start line of each top-level block of the saved page, then the line after it.
 export function blockLines(savedText: string, config: MystConfig): number[] {
-  const { doc, map } = loadDocument(savedText, config);
+  const { doc, map } = parseSaved(savedText, config);
   const lines: number[] = [];
   doc.forEach((node) => lines.push(map.get(node.attrs.sid)?.line ?? lines[lines.length - 1] ?? 1));
   lines.push(savedText.split('\n').length + 1);

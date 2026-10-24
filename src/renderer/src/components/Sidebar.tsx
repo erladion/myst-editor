@@ -1,5 +1,5 @@
 // Page tree: one section per Sphinx project in the opened folder, plus other files.
-import { useEffect, useMemo, useState, type ReactElement } from 'react';
+import { memo, useEffect, useMemo, useState, type ReactElement } from 'react';
 import type { SphinxProject } from '../../../shared/api';
 import type { SphinxInfo } from '../../../shared/sphinx';
 import { projectFor } from '../../../shared/projects';
@@ -75,7 +75,8 @@ function buildTree(files: string[], base: string): Folder {
   return root;
 }
 
-export function Sidebar({ projectName, files, titles, projects, builds, current, unsaved, onOpen, onOpenFolder, onNewPage, onDeletePage, onMoveInContents, onHistory, onRename, search, saveAll, onSearchResult, onCloseSearch }: Props) {
+// Memoized: in a large folder, drawing the tree again on every keystroke slows typing.
+export const Sidebar = memo(function Sidebar({ projectName, files, titles, projects, builds, current, unsaved, onOpen, onOpenFolder, onNewPage, onDeletePage, onMoveInContents, onHistory, onRename, search, saveAll, onSearchResult, onCloseSearch }: Props) {
   const [menu, setMenu] = useState<PageMenu | null>(null);
   useEffect(() => {
     if (!menu) return;
@@ -222,7 +223,7 @@ export function Sidebar({ projectName, files, titles, projects, builds, current,
       )}
     </nav>
   );
-}
+});
 
 interface ProjectPagesProps {
   onPageMenu: (e: React.MouseEvent, path: string, extra?: MenuItem[]) => void;

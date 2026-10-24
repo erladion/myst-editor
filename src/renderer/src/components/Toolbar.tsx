@@ -159,7 +159,7 @@ export function Toolbar({ view, ctx, onMarkdown, previewAvailable, previewOpen, 
         aria-label="Link"
         disabled={disabled}
         onMouseDown={(e) => e.preventDefault()}
-        onClick={() => state && editLink(ctx, state, run)}
+        onClick={() => view && editLink(ctx, view.state, run)}
       >
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
           <path d="M6.5 9.5a3 3 0 0 0 4.2 0l2.4-2.4a3 3 0 0 0-4.2-4.2l-.9.9M9.5 6.5a3 3 0 0 0-4.2 0L2.9 8.9a3 3 0 0 0 4.2 4.2l.9-.9" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
@@ -170,7 +170,7 @@ export function Toolbar({ view, ctx, onMarkdown, previewAvailable, previewOpen, 
       <Btn label="1." title="Numbered list" cmd={toggleList(schema.nodes.ordered_list)} active={list === 'ordered_list'} />
       <Btn label="❝" title="Quote" cmd={toggleQuote} />
       <span className="tb-sep" />
-      <InsertMenu disabled={disabled} ctx={ctx} state={state} run={run} />
+      <InsertMenu disabled={disabled} ctx={ctx} view={view} run={run} />
       {conditions && (
         <>
           <span className="tb-sep" />
@@ -292,7 +292,7 @@ const VERSION_NOTES = [
 const FILE_HELP = 'Relative to this page.';
 const LIST_TABLE = '* - Name\n  - Value\n* - first\n  - 1';
 
-function InsertMenu({ disabled, ctx, state, run }: { disabled: boolean; ctx: EditorContext; state: EditorState | undefined; run: (cmd: Command) => void }) {
+function InsertMenu({ disabled, ctx, view, run }: { disabled: boolean; ctx: EditorContext; view: EditorView | null; run: (cmd: Command) => void }) {
   const [open, setOpen] = useState(false);
   const projectDirectives = Object.entries(ctx.config.editor.directives).filter(([, d]) => d.insert);
   const ref = useRef<HTMLDivElement>(null);
@@ -371,7 +371,7 @@ function InsertMenu({ disabled, ctx, state, run }: { disabled: boolean; ctx: Edi
             {projectDirectives.map(([name, def]) => item(def.label ?? name, () => run(insertProjectDirective(ctx, name, def))))}
             <div className="menu-heading">Inline</div>
             {item('Cross-reference…', () => insertReference(ctx, run))}
-            {state && item('Link target…', () => insertTarget(ctx, state, run))}
+            {view && item('Link target…', () => insertTarget(ctx, view.state, run))}
           </div>
         </div>
       )}

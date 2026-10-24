@@ -3,7 +3,7 @@
 import type { Node as PMNode } from 'prosemirror-model';
 import { Plugin, PluginKey, type Transaction } from 'prosemirror-state';
 import { Decoration, DecorationSet } from 'prosemirror-view';
-import { loadDocument } from '../../../core/document';
+import { parseSaved } from '../../../core/document';
 import { positionOfPath } from '../../../core/lines';
 import type { MystConfig } from '../../../core/project-config';
 
@@ -29,7 +29,7 @@ export interface PreviewBuild {
 // through the saved text like warnings are (see problems.ts).
 export function locatePreviews(doc: PMNode, savedText: string, config: MystConfig, build: PreviewBuild | null): DecorationSet {
   if (!build) return DecorationSet.empty;
-  const saved = loadDocument(savedText, config);
+  const saved = parseSaved(savedText, config);
   const decorations: Decoration[] = [];
   doc.descendants((node, pos) => {
     const card = node.type.name === 'opaque_directive' || (node.type.name === 'raw_block' && PREVIEWED_RAW.test(node.attrs.kind));

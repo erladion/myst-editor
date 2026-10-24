@@ -5,7 +5,7 @@
 // lead + seg0 + gap0 + seg1 + ... + trail reproduces the container text exactly.
 // Nested containers (directive bodies, list items, blockquotes) get their inner text
 // extracted (fence/marker/`>` removed) and are parsed again recursively.
-import { mystParse, createTokenizer } from 'myst-parser';
+import { createTokenizer, tokensToMyst } from 'myst-parser';
 import type { Node as PMNode, Mark } from 'prosemirror-model';
 import { schema } from './schema.js';
 import { splitDirective, headerKey } from './directive.js';
@@ -75,10 +75,7 @@ class Context {
 
   private parse(text: string, isDoc: boolean): MdNode[] {
     const input = !isDoc && this.suffix ? `${text}\n\n${this.suffix}\n` : text;
-    const tree = mystParse(input, {
-      extensions: { ...SPHINX_DIALECT, ...this.opts.extensions },
-    }) as unknown as MdNode;
-    return tree.children;
+    return parseMdast(input, { ...SPHINX_DIALECT, ...this.opts.extensions }).children;
   }
 
   // Parse `text` as a sequence of blocks. Returns PM nodes plus the source entry
@@ -486,6 +483,18 @@ function inline(children: MdNode[] = [], marks: readonly Mark[] = []): PMNode[] 
 }
 
 const tokenizer = createTokenizer();
+
+// What mystParse does, minus two things: it builds a new tokenizer every time (which
+// compiles its link-detection patterns: slow, and a page is parsed in many pieces), and
+// it runs directives' and roles' own processing, which the editor doesn't use (it
+// reads their source). One tokenizer per set of extensions, then.
+const tokenizers = new Map<string, ReturnType<typeof createTokenizer>>();
+function parseMdast(input: string, extensions: Record<string, boolean>): MdNode {
+  const key = JSON.stringify(extensions);
+  let t = tokenizers.get(key);
+  if (!t) tokenizers.set(key, (t = createTokenizer({ extensions })));
+  return tokensToMyst(input, t.parse(input, {})) as unknown as MdNode;
+}
 
 function inferStyle(source: string): SourceMap['style'] {
   const count = (re: RegExp) => source.match(re)?.length ?? 0;

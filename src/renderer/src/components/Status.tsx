@@ -1,5 +1,6 @@
 // Save status: the status bar line and the banner for problems that need a decision.
-import type { ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import type { Node as PMNode } from 'prosemirror-model';
 import type { MystConfig } from '../../../core/project-config';
 import type { Session } from '../workspace';
 
@@ -10,8 +11,27 @@ interface StatusProps {
   children?: ReactNode; // build status
 }
 
+const countWords = (doc: PMNode | undefined) => (doc ? doc.textBetween(0, doc.content.size, ' ', ' ').split(/\s+/).filter(Boolean).length : 0);
+
+// Counting a long page's words on every keystroke slows typing down: they're counted
+// when typing pauses (and straight away for another page).
+function useWordCount(path: string | undefined, doc: PMNode | undefined) {
+  const [words, setWords] = useState(() => countWords(doc));
+  const counted = useRef(path);
+  useEffect(() => {
+    if (counted.current !== path) {
+      counted.current = path;
+      setWords(countWords(doc));
+      return;
+    }
+    const timer = setTimeout(() => setWords(countWords(doc)), 300);
+    return () => clearTimeout(timer);
+  }, [path, doc]);
+  return words;
+}
+
 export function StatusBar({ session, config, confPy, children }: StatusProps) {
-  const words = session ? session.state.doc.textBetween(0, session.state.doc.content.size, ' ', ' ').split(/\s+/).filter(Boolean).length : 0;
+  const words = useWordCount(session?.path, session?.state.doc);
   const status = session?.status;
   const label =
     !status ? '' :

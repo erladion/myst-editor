@@ -40,6 +40,7 @@ import { useFind } from './app/find';
 import { useEmacs, useShortcuts } from './app/keys';
 import { useMainEvents } from './app/menuCommands';
 import { useOutline } from './app/outline';
+import { useStable } from './app/stable';
 
 const api = window.myst;
 const noop = () => () => {};
@@ -219,6 +220,28 @@ export function App() {
   const vale = useVale(session?.path ?? null, session?.savedText ?? null, ws?.project.root ?? null, notify);
   const preview = usePreviewFollow(ws, session, showPreview, scrollRef, viewRef);
 
+  // The sidebar's props, unchanged while what it shows is, so it isn't drawn again on
+  // every keystroke.
+  const unsavedKey = ws ? ws.unsavedPaths().join('\n') : '';
+  const unsaved = useMemo(() => new Set(unsavedKey ? unsavedKey.split('\n') : []), [unsavedKey]);
+  const builds = useMemo(() => Object.fromEntries(projects.map((p) => [p.id, buildStates[p.id]?.info ?? null])), [projects, buildStates]);
+  const sidebar = {
+    onOpen: useStable((path: string) => void openPage(path)),
+    onOpenFolder: useStable(() => void chooseFolder()),
+    onNewPage: useStable((folder: string | null) => setNewPage({ folder })),
+    onDeletePage: useStable((path: string) => void deletePage(path)),
+    onMoveInContents: useStable(moveInContentsOf),
+    onHistory: useStable((path: string) => void openPage(path).then(() => setHistory(path))),
+    onRename: useStable((path: string) => setRenaming(path)),
+    saveAll: useStable(() => (ws ? ws.saveAll() : Promise.resolve(true))),
+    onCloseSearch: useStable(() => setSearchAll(null)),
+    onSearchResult: useStable((path: string, line: number, query: string, caseSensitive: boolean) => {
+      // The page, at that line; in the formatted view with the find bar showing the matches.
+      showMatches(path, query, caseSensitive);
+      void openPage(path).then(() => (mode === 'rich' ? setReveal(line) : setGotoLine(line)));
+    }),
+  };
+
   if (!ws) {
     return (
       <Welcome opening={opening} starting={starting} recentFolders={recentFolders} onChoose={chooseFolder} onClone={() => setCloning(true)} onOpenRecent={(f) => void openFolder(f)}>
@@ -238,11 +261,9 @@ export function App() {
     );
   }
 
-  const unsaved = new Set(ws.unsavedPaths());
   const previewUrl = previewUrlOf(pageProject?.id ?? null, info, session);
   // Trust and the environment are decided once for all of the folder's projects.
   const trustState = Object.values(buildStates).find((st) => st.status.kind === 'needs-trust') ?? sphinx;
-  const builds = Object.fromEntries(projects.map((p) => [p.id, buildStates[p.id]?.info ?? null]));
   const allWarnings = Object.values(buildStates).flatMap((st) => st.info?.warnings ?? []);
   const anyBuilt = projects.some((p) => builds[p.id]);
   // Mistakes in .mysteditor.toml files, once each (a folder-level file applies to every project).
@@ -251,7 +272,11 @@ export function App() {
     .filter((p, i, all) => all.findIndex((q) => q.file === p.file && q.message === p.message) === i);
 
   return (
-    <div className="app">
+    // When the pointer comes over something, the window catches up with the latest
+    // edits (it hears of them when typing pauses), so buttons and menus show the page as
+    // it is before they're clicked. (Not on the click itself: redrawing a button between
+    // its mousedown and mouseup would lose the click.)
+    <div className="app" onPointerOverCapture={() => ws.flushChanges()}>
       <OpeningCard opening={opening} />
       <Sidebar
         projectName={ws.project.name}
@@ -261,21 +286,8 @@ export function App() {
         builds={builds}
         current={ws.current}
         unsaved={unsaved}
-        onOpen={openPage}
-        onOpenFolder={chooseFolder}
-        onNewPage={(folder) => setNewPage({ folder })}
-        onDeletePage={(path) => void deletePage(path)}
-        onMoveInContents={moveInContentsOf}
-        onHistory={(path) => void openPage(path).then(() => setHistory(path))}
-        onRename={(path) => setRenaming(path)}
         search={searchAll}
-        saveAll={() => ws.saveAll()}
-        onCloseSearch={() => setSearchAll(null)}
-        onSearchResult={(path, line, query, caseSensitive) => {
-          // The page, at that line; in the formatted view with the find bar showing the matches.
-          showMatches(path, query, caseSensitive);
-          void openPage(path).then(() => (mode === 'rich' ? setReveal(line) : setGotoLine(line)));
-        }}
+        {...sidebar}
       />
       <main className="main">
         {mode === 'markdown' ? (

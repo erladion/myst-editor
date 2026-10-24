@@ -63,7 +63,27 @@ export class Workspace {
 
   getVersion = () => this.version;
 
+  // Edits in the editor: the window hears of them once typing pauses, and at most
+  // every half second while it goes on. React saves the selection before each update
+  // by walking every node of the focused editor, which on a long page takes longer
+  // than a keystroke should. (The editor itself updates at once, without React.)
+  private soon: { timer?: ReturnType<typeof setTimeout>; since: number } = { since: 0 };
+  // Tell the window now about edits it hasn't heard of yet (before it acts on the page:
+  // a click in the toolbar, say).
+  flushChanges() {
+    if (this.soon.since) this.changed();
+  }
+
+  private changedSoon() {
+    clearTimeout(this.soon.timer);
+    if (!this.soon.since) this.soon.since = Date.now();
+    const wait = Math.max(0, Math.min(120, this.soon.since + 500 - Date.now()));
+    this.soon.timer = setTimeout(() => this.changed(), wait);
+  }
+
   private changed() {
+    clearTimeout(this.soon.timer);
+    this.soon.since = 0;
     this.version++;
     this.api.setUnsaved([...this.sessions.values()].some((s) => s.dirty));
     this.listeners.forEach((fn) => fn());
@@ -157,12 +177,16 @@ export class Workspace {
     const s = this.sessions.get(path);
     if (!s) return;
     s.state = state;
+    const before = s.status.kind;
     if (docChanged) {
       s.dirty = true;
       if (s.status.kind !== 'conflict') s.status = { kind: 'pending' };
       this.schedule(path);
     }
-    this.changed();
+    // The first edit after a save shows at once ("Editing…", and unsaved, so closing
+    // the window asks first); those after it when typing pauses.
+    if (s.status.kind !== before) this.changed();
+    else this.changedSoon();
   }
 
   absorb(path: string, map: SourceMap) {
@@ -307,6 +331,7 @@ export class Workspace {
 
   dispose() {
     this.timers.forEach(clearTimeout);
+    clearTimeout(this.soon.timer);
     this.listeners.clear();
   }
 }
