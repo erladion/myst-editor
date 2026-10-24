@@ -5,7 +5,7 @@
 // serialized, and their header/marker/fence style is carried over from the original.
 import type { Node as PMNode, Mark } from 'prosemirror-model';
 import { MarkdownSerializerState, defaultMarkdownSerializer } from 'prosemirror-markdown';
-import { schema } from './schema.js';
+import { schema, type RowCondition } from './schema.js';
 import { SourceMap, type ContainerEntry, type InlineStyle } from './sourcemap.js';
 import { headerKey, renderHeader, fenceFor } from './directive.js';
 
@@ -179,7 +179,21 @@ class Writer {
     const rule = aligns.map((a, c) => (a ? ALIGN_RULE[a](ruleWidth[c]) : '-'.repeat(ruleWidth[c])));
     const line = (cells: string[]) => `| ${cells.map((t, c) => t.padEnd(textWidth[c])).join(' | ')} |`;
     const ruleLine = ruleSpaces ? line(rule) : `|${rule.join('|')}|`;
-    return [line(rows[0]), ruleLine, ...rows.slice(1).map(line)].join('\n');
+    // Rows in conditions go between their markers: a group's start before its first
+    // row, its end after its last (inner groups inside outer ones).
+    const out = [line(rows[0]), ruleLine];
+    let open: RowCondition[] = [];
+    rows.slice(1).forEach((cells, i) => {
+      const conds: RowCondition[] = node.child(i + 1).attrs.conds;
+      let keep = 0;
+      while (keep < open.length && keep < conds.length && open[keep].id === conds[keep].id) keep++;
+      for (let g = open.length - 1; g >= keep; g--) out.push(open[g].end);
+      for (let g = keep; g < conds.length; g++) out.push(conds[g].start);
+      open = conds;
+      out.push(line(cells));
+    });
+    for (let g = open.length - 1; g >= 0; g--) out.push(open[g].end);
+    return out.join('\n');
   }
 
   private list(node: PMNode): string {

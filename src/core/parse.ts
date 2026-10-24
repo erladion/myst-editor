@@ -7,7 +7,7 @@
 // extracted (fence/marker/`>` removed) and are parsed again recursively.
 import { createTokenizer, tokensToMyst } from 'myst-parser';
 import type { Node as PMNode, Mark } from 'prosemirror-model';
-import { schema } from './schema.js';
+import { schema, type RowCondition } from './schema.js';
 import { splitDirective, headerKey } from './directive.js';
 import { readMarker } from './conditions.js';
 import { SourceMap } from './sourcemap.js';
@@ -119,6 +119,9 @@ class Context {
     this.parse(text, isDoc).forEach(visit);
     // Stable sort; on equal start the longer block wins and the other is dropped below.
     blocks.sort((a, b) => a.start - b.start || b.end - a.end);
+    // A table whose rows have condition markers between them: Markdown ends the table
+    // at the first marker, but it's one table.
+    this.joinConditionalRows(blocks, lines);
 
     // 2. Clamp each block to end before the next one starts, and turn any non-blank
     //    lines not owned by a block (e.g. link reference definitions) into raw blocks.
@@ -259,6 +262,8 @@ class Context {
       }
       case 'comment':
         return this.raw('comment', src);
+      case 'conditionalTable':
+        return this.conditionalTable(src);
       case 'table':
         return this.table(md, src);
       case 'footnoteDefinition':
@@ -320,6 +325,70 @@ class Context {
   // colspan/rowspan and the cells they cover must be empty; anything that can't be
   // represented exactly stays a raw block (the caller catches Unsupported).
   private table(md: MdNode, src: string): PMNode {
+    const { rows, attrs } = this.tableParts(md, src);
+    return this.withSid('table', attrs, rows, src);
+  }
+
+  // Joins a table and what follows it without a blank line, when that's condition
+  // markers and rows of the table: rows the condition extension leaves out of the build
+  // (it removes lines before Sphinx reads the page). Only when the markers pair up and
+  // the rows have the table's number of cells; otherwise they stay as they are.
+  private joinConditionalRows(blocks: { node: MdNode; start: number; end: number }[], lines: string[]) {
+    const keywords = this.opts.conditionKeywords;
+    if (!keywords) return;
+    const cells = (line: string) => line.trim().replace(/^\|/, '').replace(/\|$/, '').split(/(?<!\\)\|/).length;
+    for (let i = 0; i < blocks.length; i++) {
+      const table = blocks[i];
+      if (table.node.type !== 'table') continue;
+      const width = cells(lines[table.start]);
+      let depth = 0;
+      let markers = false;
+      let last = -1;
+      let end = table.end;
+      for (let j = i + 1; j < blocks.length && blocks[j].start === end + 1; j++) {
+        const b = blocks[j];
+        const own = lines.slice(b.start, b.end + 1);
+        const marker = b.node.type === 'html' && own.length === 1 ? readMarker(own[0], keywords) : null;
+        if (marker?.kind === 'start') depth++;
+        else if (marker?.kind === 'end') {
+          if (!depth) break;
+          depth--;
+        } else if (b.node.type !== 'paragraph' || !own.every((l) => /^\s{0,3}\|.*\|\s*$/.test(l) && cells(l) === width)) break;
+        markers ||= !!marker;
+        end = b.end;
+        if (!depth && markers) last = j;
+      }
+      if (last > i) blocks.splice(i, last - i + 1, { node: { type: 'conditionalTable' }, start: table.start, end: blocks[last].end });
+    }
+  }
+
+  // A table with condition markers between its rows: the table as it is without them,
+  // each row knowing which conditions it's in.
+  private conditionalTable(src: string): PMNode {
+    const keywords = this.opts.conditionKeywords!;
+    const lines = src.split('\n');
+    const plain = lines.filter((l) => !readMarker(l, keywords)).join('\n');
+    const [md] = parseMdast(plain, { ...SPHINX_DIALECT, ...this.opts.extensions }).children;
+    if (md?.type !== 'table') throw new Unsupported();
+    const { rows, attrs } = this.tableParts(md, plain);
+    const open: RowCondition[] = [];
+    const conds: RowCondition[][] = [];
+    let k = 0; // the table's own lines: header, delimiter, then a line per row
+    for (const line of lines) {
+      const marker = readMarker(line, keywords);
+      if (marker?.kind === 'start') open.push({ id: `c${++rowGroups}`, start: line, end: '' });
+      else if (marker?.kind === 'end') open.pop()!.end = line;
+      else if (line.trim()) {
+        if (k !== 1) conds[k === 0 ? 0 : k - 1] = [...open];
+        k++;
+      }
+    }
+    // Copied once every group's end marker is known.
+    const withConds = rows.map((row, r) => (conds[r]?.length ? row.type.create({ conds: conds[r].map((c) => ({ ...c })) }, row.content) : row));
+    return this.withSid('table', attrs, withConds, src);
+  }
+
+  private tableParts(md: MdNode, src: string): { rows: PMNode[]; attrs: { pretty: boolean; ruleSpaces: boolean } } {
     const spans = this.opts.tableSpans ?? {};
     const rows: MdNode[] = md.children ?? [];
     const ncols = rows[0]?.children?.length ?? 0;
@@ -372,7 +441,7 @@ class Context {
     if (lines.some((l) => cellCount(l) > cellCount(lines[0]))) throw new Unsupported();
     const pretty = lines.length > 1 && lines.every((l) => l.trimEnd().length === lines[0].trimEnd().length);
     const ruleSpaces = /\|\s+:?-/.test(lines[1] ?? '');
-    return this.withSid('table', { pretty, ruleSpaces }, pmRows, src);
+    return { rows: pmRows, attrs: { pretty, ruleSpaces } };
   }
 
   private list(md: MdNode, src: string): PMNode {
@@ -483,6 +552,9 @@ function inline(children: MdNode[] = [], marks: readonly Mark[] = []): PMNode[] 
 }
 
 const tokenizer = createTokenizer();
+
+// Numbers the groups of table rows inside a condition (see conditionalTable).
+let rowGroups = 0;
 
 // What mystParse does, minus two things: it builds a new tokenizer every time (which
 // compiles its link-detection patterns: slow, and a page is parsed in many pieces), and

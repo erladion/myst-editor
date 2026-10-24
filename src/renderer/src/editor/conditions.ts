@@ -5,8 +5,9 @@ import { Plugin, PluginKey, type Command, type EditorState, type Transaction } f
 import { Decoration, DecorationSet } from 'prosemirror-view';
 import { AddMarkStep, RemoveMarkStep, ReplaceStep } from 'prosemirror-transform';
 import { CONDITION_PALETTE, type ConditionsDef } from '../../../core/editor-config';
-import { endMarker, evaluate, parseCondition, readMarker, startMarker, unknownNames, type ParseResult } from '../../../core/conditions';
-import { schema } from '../../../core/schema';
+import { endMarker, evaluate, parseCondition, readMarker, startMarker, unknownNames, withExpression, type ParseResult } from '../../../core/conditions';
+import { isInTable, selectedRect } from 'prosemirror-tables';
+import { schema, type RowCondition } from '../../../core/schema';
 
 interface MarkerAt {
   pos: number;
@@ -148,6 +149,7 @@ function decorate(doc: PMNode, settings: ConditionsDef | null, viewAs: string[] 
       }),
     );
   }
+  decorateRows(doc, settings, viewAs, decorations);
   for (const m of unmatched) {
     decorations.push(
       Decoration.node(m.pos, m.pos + m.node.nodeSize, {
@@ -178,6 +180,44 @@ function textOnly(tr: Transaction): boolean {
       return ok;
     });
     return ok;
+  });
+}
+
+// Table rows in conditions (their markers sit between the rows, see RowCondition):
+// each tinted in its condition's colour, with a stripe per condition it's in; the
+// first row of a group names the condition; "View as" dims what wouldn't be seen.
+function decorateRows(doc: PMNode, settings: ConditionsDef, viewAs: string[] | null, decorations: Decoration[]) {
+  doc.descendants((table, pos) => {
+    if (table.type.name !== 'table') return !table.isTextblock;
+    let prev: RowCondition[] = [];
+    table.forEach((row, offset) => {
+      const conds: RowCondition[] = row.attrs.conds;
+      const at = pos + 1 + offset;
+      if (conds.length) {
+        const exprs = conds.map((c) => {
+          const m = readMarker(c.start, settings.block);
+          return m?.kind === 'start' ? m.expr : '';
+        });
+        const parsed = exprs.map((e) => parseCondition(e));
+        const hidden = parsed.some((p) => !regionVisible({ parsed: p } as Region, settings, viewAs));
+        const problems = parsed.flatMap((p, i) => (!p.ok ? [`${exprs[i]}: ${p.error}`] : unknownNames(p.names, settings).map((n) => `Unknown capability “${n}”`)));
+        const colors = exprs.map((e) => conditionColor(e, settings));
+        decorations.push(
+          Decoration.node(at, at + row.nodeSize, {
+            class: `cond-row${conds.length > 1 ? ' cond-row-nested' : ''}${hidden ? ' cond-off' : ''}${problems.length ? ' cond-row-problem' : ''}`,
+            style: `--cond: ${colors[colors.length - 1]}; --cond-outer: ${colors[0]}`,
+            title: problems.join('\n') || `Only for ${exprs.join(', within ')}`,
+          }),
+        );
+        // A group starts here: its condition above the first cell's text.
+        const starting = conds.findIndex((c, i) => prev[i]?.id !== c.id);
+        if (starting >= 0 && row.firstChild) {
+          decorations.push(Decoration.node(at + 1, at + 1 + row.firstChild.nodeSize, { class: 'cond-row-label', 'data-cond': exprs.slice(starting).join(' › ') }));
+        }
+      }
+      prev = conds;
+    });
+    return false;
   });
 }
 
@@ -269,6 +309,70 @@ export function removeCondition(settings: ConditionsDef, markerPos: number): Com
     let tr = state.tr;
     for (const m of targets) tr = tr.delete(m.pos, m.pos + m.node.nodeSize); // end first, so start's position holds
     dispatch?.(tr);
+    return true;
+  };
+}
+
+// ---- table rows ---------------------------------------------------------------
+
+let rowGroup = 0;
+
+// The body rows of the table the selection is in (all of them, by position), and
+// which of them the selection covers. The header row can't be conditional.
+function tableRows(state: EditorState) {
+  if (!isInTable(state)) return null;
+  const rect = selectedRect(state);
+  const rows: { node: PMNode; pos: number; index: number }[] = [];
+  rect.table.forEach((node, offset, index) => rows.push({ node, pos: rect.tableStart + offset, index }));
+  const selected = rows.slice(Math.max(1, rect.top), rect.bottom);
+  return selected.length ? { rows, selected } : null;
+}
+
+// The condition the selected rows are all in, innermost: what "Condition…" edits.
+export function rowCondition(state: EditorState, settings: ConditionsDef): { id: string; expr: string } | null {
+  const t = tableRows(state);
+  const inner = t?.selected.map((r) => (r.node.attrs.conds as RowCondition[]).at(-1));
+  const first = inner?.[0];
+  if (!first || inner!.some((c) => c?.id !== first.id)) return null;
+  const m = readMarker(first.start, settings.block);
+  return { id: first.id, expr: m?.kind === 'start' ? m.expr : '' };
+}
+
+export const canConditionRows = (state: EditorState) => !!tableRows(state);
+
+// The selected rows' condition, as `expr`: the one they're all in gets the new
+// expression (for the whole group), or else they go into a new one.
+export function setRowCondition(settings: ConditionsDef, expr: string): Command {
+  return (state, dispatch) => {
+    const t = tableRows(state);
+    if (!t) return false;
+    if (!dispatch) return true;
+    const shared = rowCondition(state, settings);
+    const group: RowCondition = { id: `r${++rowGroup}`, start: startMarker(settings.block[0], expr), end: endMarker(settings.block[1]) };
+    const tr = state.tr;
+    for (const row of shared ? t.rows : t.selected) {
+      const conds: RowCondition[] = row.node.attrs.conds;
+      const next = shared ? conds.map((c) => (c.id === shared.id ? { ...c, start: withExpression(c.start, expr) } : c)) : [...conds, group];
+      if (next !== conds) tr.setNodeMarkup(row.pos, null, { ...row.node.attrs, conds: next });
+    }
+    dispatch(tr);
+    return true;
+  };
+}
+
+// No condition around the selected rows' group any more (its markers go; its rows stay).
+export function removeRowCondition(settings: ConditionsDef): Command {
+  return (state, dispatch) => {
+    const t = tableRows(state);
+    const shared = rowCondition(state, settings);
+    if (!t || !shared) return false;
+    if (!dispatch) return true;
+    const tr = state.tr;
+    for (const row of t.rows) {
+      const conds: RowCondition[] = row.node.attrs.conds;
+      if (conds.some((c) => c.id === shared.id)) tr.setNodeMarkup(row.pos, null, { ...row.node.attrs, conds: conds.filter((c) => c.id !== shared.id) });
+    }
+    dispatch(tr);
     return true;
   };
 }

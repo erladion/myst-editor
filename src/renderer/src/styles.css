@@ -1939,7 +1939,35 @@ button.toc-toggle:hover {
   white-space: nowrap;
 }
 
-/* "View as": what the chosen capabilities wouldn't see. */
+/* Table rows in conditions: tinted, a stripe per condition on the first cell, and the
+   condition named on the first row of each group. */
+.prose tr.cond-row > * {
+  background: color-mix(in srgb, var(--cond) 8%, var(--bg));
+}
+
+.prose tr.cond-row > :first-child {
+  box-shadow: inset 4px 0 0 var(--cond);
+}
+
+.prose tr.cond-row-nested > :first-child {
+  box-shadow:
+    inset 4px 0 0 var(--cond-outer),
+    inset 8px 0 0 var(--cond);
+}
+
+.prose .cond-row-label::before {
+  content: attr(data-cond);
+  display: block;
+  font: 600 11px/1.5 var(--font-ui);
+  color: var(--cond);
+  user-select: none;
+}
+
+.prose tr.cond-row-problem .cond-row-label::before {
+  color: var(--tone-danger);
+}
+
+
 .cond-off,
 .cond-off.cond-inline {
   opacity: 0.32;

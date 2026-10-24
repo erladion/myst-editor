@@ -10,12 +10,23 @@ import {
 } from '../editor/commands';
 import type { EditorContext } from '../editor/context';
 import { ADMONITIONS, CALLOUT_CHOICES } from '../editor/directives';
-import { conditionColor, conditionKind, makeConditional } from '../editor/conditions';
+import { canConditionRows, conditionColor, conditionKind, makeConditional, removeRowCondition, rowCondition, setRowCondition } from '../editor/conditions';
 import type { ConditionsDef } from '../../../core/editor-config';
 import {
   addColumnAfter, addColumnBefore, addRowAfter, addRowBefore, alignColumn, columnAlign, deleteColumn, deleteRow, deleteTable,
   insertTable, isInTable, mergeCells, splitCell,
 } from '../editor/tables';
+
+// The selected table rows' condition: edit the one they're in, or put them in one.
+async function editRowCondition(ctx: EditorContext, view: EditorView) {
+  const settings = ctx.config.editor.conditions;
+  if (!settings) return;
+  const current = rowCondition(view.state, settings);
+  const result = await ctx.ui.editCondition({ expr: current?.expr ?? '', settings, allowRemove: !!current });
+  if (!result) return;
+  ('remove' in result ? removeRowCondition(settings) : setRowCondition(settings, result.expr))(view.state, view.dispatch);
+  view.focus();
+}
 
 // Ask for the condition, then wrap the selection (inline) or the blocks (block).
 async function makeConditionalInteractive(ctx: EditorContext, view: EditorView) {
@@ -227,6 +238,21 @@ export function Toolbar({ view, ctx, onMarkdown, previewAvailable, previewOpen, 
           <span className="tb-hint" title="Set colspan_role and rowspan_role under [tables] in .mysteditor.toml to write merged cells the way your project's extension expects">
             Merging cells needs span roles in .mysteditor.toml
           </span>
+        )}
+        {ctx.config.editor.conditions && (
+          <>
+            <span className="tb-sep" />
+            <button
+              type="button"
+              className="tb wide"
+              title="Show the selected rows only for some capabilities (their markers go between the rows)"
+              disabled={!state || !canConditionRows(state)}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => view && void editRowCondition(ctx, view)}
+            >
+              Row condition…
+            </button>
+          </>
         )}
         <span className="spacer" />
         <MenuButton

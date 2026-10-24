@@ -66,6 +66,8 @@ function clean(node: Json): Json {
     // A Markdown table stores alignment per column, in its header row.
     const skip = (k: string) => BOOKKEEPING.has(k) || (node.type === 'table_cell' && k === 'align');
     const attrs = Object.fromEntries(Object.entries(node.attrs).filter(([k]) => !skip(k)));
+    // A table row's conditions: their markers, not which group they're numbered as.
+    if (node.type === 'table_row' && Array.isArray(attrs.conds)) attrs.conds = (attrs.conds as { start: string; end: string }[]).map((c) => [c.start, c.end]);
     if (Object.keys(attrs).length) out.attrs = attrs;
   }
   if (node.text !== undefined) out.text = node.text;

@@ -252,8 +252,12 @@ const nodes: Record<string, NodeSpec> = {
   table_row: {
     content: '(table_cell | table_header)*',
     tableRole: 'row',
-    parseDOM: [{ tag: 'tr' }],
-    toDOM: () => ['tr', 0],
+    // The conditions the row is in (outermost first), each with its marker lines as
+    // written: rows can sit between condition markers. Rows of one group share its id,
+    // and are written inside one pair of markers.
+    attrs: { conds: { default: [] as RowCondition[] } },
+    parseDOM: [{ tag: 'tr', getAttrs: (dom) => ({ conds: JSON.parse((dom as HTMLElement).getAttribute('data-conds') ?? '[]') }) }],
+    toDOM: (node) => ['tr', node.attrs.conds.length ? { 'data-conds': JSON.stringify(node.attrs.conds) } : {}, 0],
   },
   table_cell: cellSpec('td', 'cell'),
   table_header: cellSpec('th', 'header_cell'),
@@ -373,6 +377,14 @@ const marks: Record<string, MarkSpec> = {
 function withoutFence<T extends Record<string, unknown>>(attrs: T): Omit<T, 'fence'> {
   const { fence: _fence, ...rest } = attrs;
   return rest;
+}
+
+// A condition a table row is in: its start and end marker lines, and which group of
+// consecutive rows it belongs to.
+export interface RowCondition {
+  id: string;
+  start: string;
+  end: string;
 }
 
 export const schema = new Schema({ nodes, marks });
