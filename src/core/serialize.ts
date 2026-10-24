@@ -163,6 +163,9 @@ class Writer {
     const ncols = Math.max(1, ...grid.map((row) => row.length));
     const role = (name: string | undefined, n: number) => (name && n > 1 ? `{${name}}\`${n}\`` : '');
     const text = (cell: PMNode) => {
+      // Untouched since parsing: as it was written.
+      const written = this.fresh ? undefined : this.map.cellSource(cell);
+      if (written !== undefined) return written;
       const parts: string[] = [];
       cell.forEach((p) => parts.push(inlineMarkdown(p, this.map.style, true).replace(/\n/g, ' ')));
       const content = parts.filter(Boolean).join(' ').replace(/\|/g, '\\|');

@@ -13,8 +13,8 @@ const TABLE = `| Plan       | Price  |
 |------------|--------|
 | Basic      | Free   |
 <!-- if: CapabilityX -->
-| Pro        | 10 EUR |
-| Team       | 50 EUR |
+| Pro        | $10    |
+| Team       | $50    |
 <!-- if: CapabilityY -->
 | Enterprise | Ask us |
 <!-- endif -->
@@ -70,7 +70,7 @@ describe('table rows in conditions', () => {
     const next = state.apply(state.tr.delete(pro, pro + doc.firstChild!.child(2).nodeSize)).doc;
     const r = saveDocument(next, map, config);
     expect(r.verified).toBe(true);
-    expect(r.text).toBe(TABLE.replace('<!-- if: CapabilityX -->\n| Pro        | 10 EUR |\n', '<!-- if: CapabilityX -->\n'));
+    expect(r.text).toBe(TABLE.replace('<!-- if: CapabilityX -->\n| Pro        | $10    |\n', '<!-- if: CapabilityX -->\n'));
   });
 
   it('are left as they are when they aren’t clearly the table’s', () => {

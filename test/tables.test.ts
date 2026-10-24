@@ -149,3 +149,22 @@ describe('tables', () => {
     expect(save(state.doc, map, DEFAULT_CONFIG).text).toBe(src);
   });
 });
+
+describe('editing a table', () => {
+  it('writes the cells nobody touched as they were', async () => {
+    const { EditorState } = await import('prosemirror-state');
+    const { loadDocument, saveDocument } = await import('../src/core/document.js');
+    const src = '| Item | Price | Note |\n|---|---|---|\n| Pro | $10 | _billed_ yearly |\n| Pipe | 0 | a \\| b |\n| Old | 5 | gone |\n';
+    const { doc, map } = loadDocument(src);
+    let at = -1;
+    doc.descendants((n, pos) => {
+      if (at < 0 && n.isText && n.text === 'gone') at = pos;
+    });
+    const state = EditorState.create({ doc });
+    const edited = state.apply(state.tr.insertText('kept', at, at + 4)).doc;
+    const r = saveDocument(edited, map);
+    expect(r.verified).toBe(true);
+    // Only the edited cell is new; $10, _billed_ and the escaped pipe stay as written.
+    expect(r.text).toBe(src.replace('| Old | 5 | gone |', '| Old | 5 | kept |'));
+  });
+});

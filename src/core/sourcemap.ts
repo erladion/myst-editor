@@ -38,6 +38,20 @@ export class SourceMap {
 
   merge(other: SourceMap) {
     for (const [sid, entry] of other.entries) this.entries.set(sid, entry);
+    for (const [cell, text] of other.cells) this.cells.set(cell, text);
+  }
+
+  // Table cells' original text (between the pipes, spans and escapes included), so an
+  // edited table writes the cells nobody touched as they were. A node is never changed
+  // in place: an untouched cell is still the one parsed.
+  private cells = new Map<PMNode, string>();
+
+  recordCell(cell: PMNode, text: string) {
+    this.cells.set(cell, text);
+  }
+
+  cellSource(cell: PMNode): string | undefined {
+    return this.cells.get(cell);
   }
 
   record(sid: string, node: PMNode, text: string, container: ContainerEntry | undefined, line: number) {

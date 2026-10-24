@@ -390,6 +390,11 @@ class Context {
 
   private tableParts(md: MdNode, src: string): { rows: PMNode[]; attrs: { pretty: boolean; ruleSpaces: boolean } } {
     const spans = this.opts.tableSpans ?? {};
+    // Each row's cells as written (the delimiter row is line 1).
+    const written = src
+      .split('\n')
+      .filter((l) => l.trim())
+      .map((l) => l.trim().replace(/^\|/, '').replace(/(?<!\\)\|$/, '').split(/(?<!\\)\|/).map((c) => c.trim()));
     const rows: MdNode[] = md.children ?? [];
     const ncols = rows[0]?.children?.length ?? 0;
     if (!ncols) throw new Unsupported();
@@ -431,7 +436,10 @@ class Context {
           }
         }
         const align = cell?.align ?? rows[0].children[c]?.align ?? null;
-        cells.push(schema.node(r === 0 ? 'table_header' : 'table_cell', { colspan, rowspan, align }, [schema.node('paragraph', null, inline(children))]));
+        const node = schema.node(r === 0 ? 'table_header' : 'table_cell', { colspan, rowspan, align }, [schema.node('paragraph', null, inline(children))]);
+        const asWritten = written[r === 0 ? 0 : r + 1]?.[c];
+        if (asWritten !== undefined) this.map.recordCell(node, asWritten);
+        cells.push(node);
       }
       return schema.node('table_row', null, cells);
     });
