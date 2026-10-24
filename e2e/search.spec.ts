@@ -72,3 +72,27 @@ test('right-click offers cut, copy and paste where they apply', async () => {
   });
   await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText())).toBe(selected);
 });
+
+test('on a misspelled word, right-click offers the spellchecker’s suggestions', async () => {
+  const { app, page } = ctx;
+  // A right-click on "Welcome", as Chromium reports one on a misspelled word.
+  await page.locator('.prose').getByText('Welcome to the').click();
+  await page.evaluate(() => {
+    const p = [...document.querySelectorAll('.prose p')].find((el) => el.textContent!.startsWith('Welcome to the'))!;
+    const range = document.createRange();
+    range.setStart(p.firstChild!, 0);
+    range.setEnd(p.firstChild!, 'Welcome'.length);
+    getSelection()!.removeAllRanges();
+    getSelection()!.addRange(range);
+  });
+  const items = await app.evaluate(({ BrowserWindow }) => {
+    const wc = BrowserWindow.getAllWindows()[0].webContents;
+    wc.emit('context-menu', {}, { isEditable: true, selectionText: 'Welcome', misspelledWord: 'Welcome', dictionarySuggestions: ['Welcomed', 'Welcomes'], editFlags: { canCut: true, canCopy: true, canPaste: true, canSelectAll: true } });
+    const m = (globalThis as { lastContextMenu?: Electron.Menu }).lastContextMenu!;
+    m.closePopup();
+    return m.items.map((i) => (i.type === 'separator' ? '—' : i.label));
+  });
+  // (Choosing one replaces the word Chromium marked: there's none here, without its
+  // dictionary, which it downloads.)
+  expect(items).toEqual(['Welcomed', 'Welcomes', 'Add “Welcome” to Dictionary', '—', 'Cut', 'Copy', 'Paste', '—', 'Select All']);
+});

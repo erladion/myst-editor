@@ -46,10 +46,11 @@ export function followTheme() {
   });
 }
 
-// The right-click menu for a place in the page: editing commands where text can be
-// typed, Copy where text is selected. Null where there's nothing to offer.
+// The right-click menu for a place in the page: on a misspelled word, the spellchecker's
+// suggestions; editing commands where text can be typed, Copy where text is selected.
+// Null where there's nothing to offer.
 export function contextMenu(params: Electron.ContextMenuParams, page: Electron.WebContents): Menu | null {
-  const { isEditable, editFlags, selectionText } = params;
+  const { isEditable, editFlags, selectionText, misspelledWord, dictionarySuggestions } = params;
   // Each acts on the app's page itself (a role would act on whichever window has focus).
   const item = (id: string, label: string, accelerator: string, enabled: boolean, act: () => void): MenuItemConstructorOptions => ({
     id,
@@ -60,6 +61,16 @@ export function contextMenu(params: Electron.ContextMenuParams, page: Electron.W
     click: act,
   });
   const items: MenuItemConstructorOptions[] = [];
+  if (isEditable && misspelledWord) {
+    for (const [i, word] of dictionarySuggestions.slice(0, 6).entries()) {
+      items.push({ id: `spelling-${i}`, label: word, click: () => page.replaceMisspelling(word) });
+    }
+    if (!dictionarySuggestions.length) items.push({ id: 'spelling-none', label: 'No spelling suggestions', enabled: false });
+    items.push(
+      { id: 'spelling-add', label: `Add “${misspelledWord}” to Dictionary`, click: () => page.session.addWordToSpellCheckerDictionary(misspelledWord) },
+      { type: 'separator' },
+    );
+  }
   if (isEditable) {
     items.push(
       item('cut', 'Cut', 'CmdOrCtrl+X', editFlags.canCut && !!selectionText, () => page.cut()),
