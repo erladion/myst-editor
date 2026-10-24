@@ -149,6 +149,10 @@ PRODUCT = "enterprise"
 Directives and roles that aren't declared still work: they're kept exactly as
 written, shown as cards with a preview from the build, and editable as source.
 
+Conditions can also wrap table rows (markers between the rows; set them with **Row
+condition…** in the table toolbar). New capabilities can be added from the condition
+dialog: they're written into the capabilities file.
+
 ## Known limitations
 
 - Some blocks are cards, edited as source: list and CSV tables, grid tables, tables

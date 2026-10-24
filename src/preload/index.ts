@@ -23,6 +23,7 @@ const api: MystApi = {
   onWindowTitle: (cb) => on('window-title', cb),
   clickMenu: (path) => ipcRenderer.send('app-menu-click', path),
   valeLint: (rel) => ipcRenderer.invoke('vale-lint', rel),
+  addCapability: (path, key, name) => ipcRenderer.invoke('add-capability', path, key, name),
   valeAccept: (rel, word) => ipcRenderer.invoke('vale-accept', rel, word),
   pageHistory: (rel) => ipcRenderer.invoke('page-history', rel),
   pageVersion: (rel, version) => ipcRenderer.invoke('page-version', rel, version),

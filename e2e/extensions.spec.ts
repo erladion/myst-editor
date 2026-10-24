@@ -152,3 +152,37 @@ test('settings reload when .mysteditor.toml changes, and mistakes are reported',
   await chip.click();
   await expect(page().locator('.log-text')).toHaveText('docs/.mysteditor.toml: [directives.broken] body must be "markdown", "text" or "none"');
 });
+
+test('new capabilities go into the capabilities file, from the condition dialog', async () => {
+  const caps = () => readFileSync(join(ctx.project, 'docs', 'capabilities.json'), 'utf8');
+  await page().locator('.prose').getByText('Closing words.').click();
+  await page().getByRole('button', { name: 'Condition…', exact: true }).click();
+  const dialog = page().getByRole('dialog', { name: 'Make conditional' });
+  await dialog.getByRole('button', { name: 'New capability…' }).click();
+  await dialog.getByLabel('New capability').fill('CapabilityW');
+  if (process.env.ROW_SHOTS) await dialog.screenshot({ path: join(process.env.ROW_SHOTS, '6-new-capability.png') });
+  await dialog.getByRole('button', { name: 'Add to capabilities.json' }).click();
+  // In the file, in its shape (one line, under product.capabilities), and ticked.
+  await expect(dialog.getByRole('checkbox', { name: 'CapabilityW' })).toBeChecked();
+  if (process.env.ROW_SHOTS) await dialog.screenshot({ path: join(process.env.ROW_SHOTS, '7-added.png') });
+  expect(caps()).toBe('{"product":{"capabilities":["CapabilityX","CapabilityY","CapabilityZ","CapabilityW"]}}\n');
+  await dialog.getByRole('button', { name: 'Make conditional' }).click();
+  await saved();
+  expect(changes().added).toEqual(['<!-- if: CapabilityW -->', '<!-- endif -->']);
+
+  // A name typed into a condition that the file doesn't have: offered too.
+  const marker = page().locator('.cond-start', { hasText: 'CapabilityW' });
+  await marker.hover();
+  await marker.getByRole('button', { name: 'Edit…' }).click();
+  const edit = page().getByRole('dialog', { name: 'Edit condition' });
+  await edit.getByLabel('Condition', { exact: true }).fill('CapabilityW or Beta');
+  await expect(edit.locator('#condition-help')).toHaveText('Not in capabilities.json: Beta');
+  await edit.getByRole('button', { name: 'Add “Beta” to capabilities.json' }).click();
+  await expect(edit.locator('#condition-help')).toHaveText(/Shown when CapabilityW or Beta/);
+  expect(JSON.parse(caps()).product.capabilities).toContain('Beta');
+  await edit.getByRole('button', { name: 'Save' }).click();
+  await saved();
+  // The project reads the file again: "View as" offers them.
+  await page().getByRole('button', { name: 'View as ▾' }).click();
+  await expect(page().getByRole('checkbox', { name: 'Beta' })).toBeVisible();
+});

@@ -5,6 +5,7 @@ import { existsSync, promises as fs } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { firstHeading, IMAGE_EXTENSIONS, placeImage, readDocument, resolveInside, saveImage, searchPages, writeDocument } from './project.js';
 import { Snapshots } from './history.js';
+import { addCapability, isCapabilityName } from '../core/editor-config.js';
 import { accept as acceptWithVale, lint as lintWithVale } from './vale.js';
 import type { PageVersion } from '../shared/git.js';
 import { current, requireProject, toWindow } from './state.js';
@@ -35,6 +36,21 @@ export function registerFileIpc() {
       filters: [{ name: 'Images', extensions: IMAGE_EXTENSIONS }],
     });
     return result.canceled ? null : placeImage(p.root, page, result.filePaths[0]);
+  });
+  // A new capability, into the project's capabilities file (see editor-config's
+  // addCapability); the project's settings are read again when the file changes.
+  ipcMain.handle('add-capability', async (_e, path: string, key: string | null, name: string) => {
+    if (!isCapabilityName(String(name))) return { ok: false, message: `“${name}” can’t be used in a condition: start with a letter, then letters, digits, _ . : or -.` };
+    const file = resolveInside(requireProject().root, String(path));
+    try {
+      const text = await fs.readFile(file, 'utf8');
+      const next = addCapability(text, key ? String(key) : null, String(name));
+      if (next === null) return { ok: false, message: `There’s no list of capabilities in ${path} to add it to.` };
+      if (next !== text) await fs.writeFile(file, next);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, message: `Couldn’t add it to ${path}: ${e instanceof Error ? e.message : e}` };
+    }
   });
   ipcMain.handle('vale-lint', (_e, rel: string) => lintWithVale(resolveInside(requireProject().root, rel)));
   ipcMain.handle('vale-accept', (_e, rel: string, word: string) => acceptWithVale(resolveInside(requireProject().root, rel), String(word)));

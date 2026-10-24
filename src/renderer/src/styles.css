@@ -2933,3 +2933,25 @@ button.secondary {
   color: inherit;
   border-radius: 2px;
 }
+
+/* The condition dialog: adding a capability to the capabilities file. */
+.new-capability-open {
+  margin: 0 0 14px;
+}
+
+.new-capability {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.new-capability input {
+  flex: 1;
+}
+
+.add-capabilities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 4px;
+}

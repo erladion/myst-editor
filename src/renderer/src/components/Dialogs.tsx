@@ -1,7 +1,7 @@
 // Modal dialogs, opened imperatively through the EditorUi interface.
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type FormEvent } from 'react';
 import type { EditorUi, Field } from '../editor/context';
-import type { ConditionsDef, OptionDef } from '../../../core/editor-config';
+import { isCapabilityName, type ConditionsDef, type OptionDef } from '../../../core/editor-config';
 import { describe, parseCondition, unknownNames } from '../../../core/conditions';
 
 type Request =
@@ -317,7 +317,13 @@ function orList(expr: string): string[] | null {
 
 function ConditionForm({ request, cancel }: { request: Extract<Request, { kind: 'condition' }>; cancel: () => void }) {
   const [expr, setExpr] = useState(request.expr);
-  const { settings } = request;
+  // Capabilities added to the capabilities file while the dialog is open.
+  const [added, setAdded] = useState<string[]>([]);
+  const [newName, setNewName] = useState<string | null>(null); // the New capability field, when open
+  const [addError, setAddError] = useState<string | null>(null);
+  const settings = { ...request.settings, capabilities: [...request.settings.capabilities, ...added] };
+  const file = settings.capabilitiesFile;
+  const canAdd = !!settings.capabilitiesPath;
   const parsed = parseCondition(expr);
   const unknown = parsed.ok ? unknownNames(parsed.names, settings) : [];
   const selected = orList(expr);
@@ -326,6 +332,15 @@ function ConditionForm({ request, cancel }: { request: Extract<Request, { kind: 
     const next = names.includes(name) ? names.filter((n) => n !== name) : [...names, name];
     setExpr(next.join(' or '));
   };
+  // Into the capabilities file; `tick` it too (when the condition is a list of them).
+  const add = async (name: string, tick: boolean) => {
+    const result = await window.myst.addCapability(settings.capabilitiesPath!, settings.capabilitiesKey, name);
+    if (!result.ok) return setAddError(result.message);
+    setAddError(null);
+    setAdded((a) => (a.includes(name) ? a : [...a, name]));
+    setNewName(null);
+    if (tick && selected && !selected.includes(name)) setExpr([...selected, name].join(' or '));
+  };
   return (
     <form
       onSubmit={(e) => {
@@ -333,7 +348,7 @@ function ConditionForm({ request, cancel }: { request: Extract<Request, { kind: 
         if (parsed.ok) request.resolve({ expr: expr.trim() });
       }}
     >
-      {settings.capabilities.length > 0 && (
+      {(settings.capabilities.length > 0 || canAdd) && (
         <fieldset className="capabilities" disabled={selected === null}>
           <legend>Show when any of these is available</legend>
           {settings.capabilities.map((c) => (
@@ -345,6 +360,35 @@ function ConditionForm({ request, cancel }: { request: Extract<Request, { kind: 
           {selected === null && <small>This condition uses and/not; edit it below.</small>}
         </fieldset>
       )}
+      {canAdd &&
+        (newName === null ? (
+          <button type="button" className="link-button new-capability-open" onClick={() => setNewName('')}>
+            New capability…
+          </button>
+        ) : (
+          <div className="new-capability">
+            <input
+              aria-label="New capability"
+              value={newName}
+              autoFocus
+              spellCheck={false}
+              placeholder="CapabilityW"
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  if (isCapabilityName(newName.trim())) void add(newName.trim(), true);
+                } else if (e.key === 'Escape') {
+                  e.stopPropagation();
+                  setNewName(null);
+                }
+              }}
+            />
+            <button type="button" disabled={!isCapabilityName(newName.trim())} onClick={() => void add(newName.trim(), true)}>
+              Add to {file}
+            </button>
+          </div>
+        ))}
       <div className="field">
         <label htmlFor="condition-expr">Condition</label>
         <input
@@ -361,9 +405,23 @@ function ConditionForm({ request, cancel }: { request: Extract<Request, { kind: 
           {!parsed.ok
             ? parsed.error
             : unknown.length
-              ? `Not in ${settings.capabilitiesFile}: ${unknown.join(', ')}`
+              ? `Not in ${file}: ${unknown.join(', ')}`
               : `Shown when ${describe(parsed.expr)}. Combine capabilities with and, or, not and parentheses.`}
         </small>
+        {canAdd && parsed.ok && unknown.length > 0 && (
+          <div className="add-capabilities">
+            {unknown.map((name) => (
+              <button key={name} type="button" className="link-button" onClick={() => void add(name, false)}>
+                Add “{name}” to {file}
+              </button>
+            ))}
+          </div>
+        )}
+        {addError && (
+          <small className="invalid" role="alert">
+            {addError}
+          </small>
+        )}
       </div>
       <div className="modal-actions">
         {request.allowRemove && (

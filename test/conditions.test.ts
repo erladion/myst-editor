@@ -59,7 +59,7 @@ describe('unknownNames', () => {
     inline: ['if-inline', 'endif-inline'],
     caseSensitive,
     capabilities: ['CapabilityX', 'CapabilityY'],
-    capabilitiesFile: 'c.json',
+    capabilitiesFile: 'c.json', capabilitiesPath: null, capabilitiesKey: null,
     colors: {},
   });
   it('flags names the capabilities file does not list', () => {
@@ -142,7 +142,7 @@ describe('condition colours', () => {
     inline: ['if-inline', 'endif-inline'],
     caseSensitive,
     capabilities: ['CapabilityX', 'CapabilityY', 'CapabilityZ'],
-    capabilitiesFile: 'c.json',
+    capabilitiesFile: 'c.json', capabilitiesPath: null, capabilitiesKey: null,
     colors,
   });
 

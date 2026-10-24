@@ -104,6 +104,8 @@ export interface MystApi {
   snapshotPage(rel: string): Promise<void>;
   // Search every page's Markdown for some text.
   searchPages(query: string, caseSensitive: boolean): Promise<{ results: PageMatches[]; truncated: boolean }>;
+  // Add a capability to the capabilities file (relative to the opened folder).
+  addCapability(path: string, key: string | null, name: string): Promise<{ ok: true } | { ok: false; message: string }>;
   // Vale's alerts for a saved page, when Vale is installed and configured for it.
   valeLint(rel: string): Promise<ValeResult>;
   // Add a word to the vocabulary of the Vale configuration that applies to the page.

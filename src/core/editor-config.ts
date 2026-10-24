@@ -64,6 +64,10 @@ export interface ConditionsDef {
   caseSensitive: boolean;
   capabilities: string[]; // known capability names, from the JSON file
   capabilitiesFile: string | null; // as written in the settings
+  // Where it is (relative to the opened folder), and where the list is in it: for
+  // adding a capability from the app. Null when it can't be told.
+  capabilitiesPath: string | null;
+  capabilitiesKey: string | null;
   // Colours chosen for conditions, by expression as written (a capability name, or
   // "X or Y"): a palette colour name or a #hex colour.
   colors: Record<string, string>;
@@ -99,7 +103,7 @@ export const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export const EMPTY_EDITOR_CONFIG: EditorConfig = { directives: {}, roles: {}, tables: {}, conditions: null, sphinxEnv: {}, problems: [] };
 
-const DEFAULT_CONDITIONS: Omit<ConditionsDef, 'capabilities' | 'capabilitiesFile' | 'colors'> = {
+const DEFAULT_CONDITIONS: Omit<ConditionsDef, 'capabilities' | 'capabilitiesFile' | 'capabilitiesPath' | 'capabilitiesKey' | 'colors'> = {
   block: ['if', 'endif'],
   inline: ['if-inline', 'endif-inline'],
   caseSensitive: true,
@@ -202,6 +206,8 @@ function applySettings(config: EditorConfig, { file, text, readCapabilities }: S
       ...DEFAULT_CONDITIONS,
       capabilities: prev?.capabilities ?? [],
       capabilitiesFile: prev?.capabilitiesFile ?? null,
+      capabilitiesPath: prev?.capabilitiesPath ?? null,
+      capabilitiesKey: prev?.capabilitiesKey ?? null,
       colors: { ...prev?.colors },
       ...(prev ? { block: prev.block, inline: prev.inline, caseSensitive: prev.caseSensitive } : {}),
     };
@@ -219,9 +225,11 @@ function applySettings(config: EditorConfig, { file, text, readCapabilities }: S
       if (typeof c.capabilities !== 'string') problem('[conditions] capabilities must be the path of a JSON file');
       else {
         next.capabilitiesFile = c.capabilities;
+        const key = typeof c.key === 'string' ? c.key : null;
+        next.capabilitiesPath = /^([a-z]:)?[\\/]/i.test(c.capabilities) ? null : joinPath(file.split('/').slice(0, -1).join('/'), c.capabilities);
+        next.capabilitiesKey = key;
         try {
           const json = JSON.parse(readCapabilities(c.capabilities));
-          const key = typeof c.key === 'string' ? c.key : null;
           const names = capabilityNames(json, key);
           if (names) next.capabilities = names;
           else problem(`Couldn’t find a list of capabilities in ${c.capabilities}${key ? ` under "${key}"` : ''}`);
@@ -284,6 +292,44 @@ function readDirective(name: string, def: unknown, problem: (m: string) => void)
     }
   }
   return d;
+}
+
+// `p` relative to the folder `dir` (both with /), with . and .. resolved.
+function joinPath(dir: string, p: string): string {
+  const out: string[] = [];
+  for (const part of `${dir}/${p}`.split(/[\\/]/)) {
+    if (!part || part === '.') continue;
+    if (part === '..') out.pop();
+    else out.push(part);
+  }
+  return out.join('/');
+}
+
+// A name a condition can use (see conditions.ts: and, or and not are the syntax's).
+export const isCapabilityName = (name: string) => /^[A-Za-z_][\w.:-]*$/.test(name) && !/^(and|or|not)$/i.test(name);
+
+// The capabilities file's text with `name` added to its list, in the list's own shape
+// (a name, an object with a name or id, or a key), and written the way the file is
+// (its indentation, or on one line). Null when there's no list to add to.
+export function addCapability(text: string, key: string | null, name: string): string | null {
+  const json: unknown = JSON.parse(text);
+  let list: unknown = json;
+  if (key) {
+    for (const part of key.split('.')) list = isTable(list) ? list[part] : undefined;
+  } else if (isTable(list) && 'capabilities' in list) {
+    list = list.capabilities;
+  }
+  if (capabilityNames(list, null)?.includes(name)) return text;
+  if (isStrings(list)) list.push(name);
+  else if (Array.isArray(list) && list.every(isTable)) {
+    const field = list.length && 'id' in list[0] && !('name' in list[0]) ? 'id' : 'name';
+    list.push({ [field]: name });
+  } else if (isTable(list)) {
+    const like = Object.values(list)[0];
+    list[name] = typeof like === 'boolean' ? true : typeof like === 'string' ? '' : typeof like === 'number' ? 0 : isTable(like) ? {} : null;
+  } else return null;
+  const indent = text.trimEnd().includes('\n') ? (/\n([ \t]+)\S/.exec(text)?.[1] ?? 2) : undefined;
+  return (indent === undefined ? JSON.stringify(json) : JSON.stringify(json, null, indent)) + (text.endsWith('\n') ? '\n' : '');
 }
 
 // Capability names from a JSON file whose exact shape isn't fixed: a list of names,
