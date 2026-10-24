@@ -1,0 +1,4 @@
+sphinx>=7
+myst-parser>=3
+sphinx-design
+furo

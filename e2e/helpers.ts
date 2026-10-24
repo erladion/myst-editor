@@ -21,6 +21,7 @@ export interface App {
 
 export interface LaunchOptions {
   fixture?: string; // folder under e2e/ to copy; default "fixture"
+  folder?: string; // what the copy is called; default "project"
   env?: Record<string, string>;
   // Runs on the project copy before the app starts (e.g. to add a .venv).
   prepare?: (project: string) => void;
@@ -46,7 +47,7 @@ export async function launch(opts: LaunchOptions = {}): Promise<App> {
   }
   const work = opts.again ? dirname(opts.again.project) : mkdtempSync(join(workDir(), 'mysteditor-e2e-'));
   if (!opts.again) earlier.push(work);
-  const project = join(work, 'project');
+  const project = opts.again ? opts.again.project : join(work, opts.folder ?? 'project');
   if (!opts.again) {
     cpSync(join(import.meta.dirname, opts.fixture ?? 'fixture'), project, { recursive: true });
     opts.prepare?.(project);

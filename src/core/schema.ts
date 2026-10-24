@@ -371,7 +371,8 @@ const marks: Record<string, MarkSpec> = {
     toDOM: () => ['strong', 0],
   },
   strike: { parseDOM: [{ tag: 's' }, { tag: 'del' }, { tag: 'strike' }], toDOM: () => ['s', 0] },
-  code: { parseDOM: [{ tag: 'code' }], toDOM: () => ['code', 0] },
+  // Not spellchecked: commands, file names and identifiers aren't words.
+  code: { parseDOM: [{ tag: 'code' }], toDOM: () => ['code', { spellcheck: 'false' }, 0] },
 };
 
 function withoutFence<T extends Record<string, unknown>>(attrs: T): Omit<T, 'fence'> {

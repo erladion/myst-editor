@@ -4,6 +4,11 @@ A WYSIWYG editor for Sphinx documentation written in MyST Markdown, for writers 
 shouldn't have to see Markdown syntax. Only what you change is saved; the rest of
 every file stays exactly as written.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/showcase-dark.png">
+  <img alt="MyST Editor: a page being edited as formatted text, with the Sphinx build of it alongside" src=".github/showcase.png">
+</picture>
+
 Downloads: [releases](https://github.com/erladion/myst-editor/releases).
 
 ## Install
