@@ -72,13 +72,14 @@ test.describe('with span roles configured', () => {
     // Add a row so there are two cells side by side to merge.
     await cell(page, 'Free').click();
     await page.getByRole('button', { name: 'Row below' }).click();
-    // Drag across the header cells to select them.
-    const from = await cell(page, 'Plan').boundingBox();
-    const to = await cell(page, 'Price').boundingBox();
-    await page.mouse.move(from!.x + 10, from!.y + 10);
+    await expect(page.locator('.prose tr')).toHaveCount(3);
+    // Drag across the header cells to select them. Where they are is found as the
+    // mouse gets there (the new row may scroll the page on a slow machine).
+    await cell(page, 'Plan').hover({ position: { x: 10, y: 10 } });
     await page.mouse.down();
-    await page.mouse.move(to!.x + 10, to!.y + 10, { steps: 5 });
+    await cell(page, 'Price').hover({ position: { x: 10, y: 10 } });
     await page.mouse.up();
+    await expect(page.locator('.prose .selectedCell')).toHaveCount(2);
     await page.getByRole('button', { name: 'Merge cells' }).click();
     await saved(page);
     // The covered cell stays empty, padded to its column like the rest of the table.
