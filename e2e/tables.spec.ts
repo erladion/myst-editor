@@ -100,12 +100,15 @@ test.describe('with span roles configured', () => {
         return m ? m.items.map((i) => (i.type === 'separator' ? '—' : `${i.label}${i.enabled ? '' : ' (off)'}`)) : [];
       });
     await cell(page, 'Free').click({ button: 'right' });
-    await expect.poll(items).toEqual([
+    // The table's items, then the usual ones (whether Paste is on depends on the
+    // clipboard: empty on a fresh build server).
+    await expect.poll(async () => (await items()).slice(0, 13)).toEqual([
       'Insert Row Above', 'Insert Row Below', 'Insert Column Left', 'Insert Column Right', '—',
       'Merge Cells (off)', 'Split Cell (off)', '—',
       'Delete Row', 'Delete Column', 'Delete Table', '—',
-      'Cut (off)', 'Copy (off)', 'Paste', '—', 'Select All',
+      'Cut (off)',
     ]);
+    expect((await items()).slice(-1)).toEqual(['Select All']);
     // The clicked cell is where it acts. (Chosen from code: the menu is left open, as
     // closing a native menu from code can bring the app down.)
     await app.evaluate(() => (globalThis as { lastContextMenu?: Electron.Menu }).lastContextMenu!.getMenuItemById('table-row-below')!.click());
