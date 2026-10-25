@@ -110,10 +110,11 @@ describe('editPdf and [pdf]', () => {
   });
 
   it('says what’s wrong with a setting', () => {
-    const { problems, pdf } = read('[pdf]\npaper = "A5"\nheader = ["a", "b"]\ntoc_depth = 9\nnumbering = "roman"\ncolour = "red"\n');
+    const { problems, pdf } = read('[pdf]\npaper = "A5"\nheader = ["a", "b"]\ntoc_depth = 9\nnumbering = "roman"\nheaders_on = "odd"\ncolour = "red"\n');
     expect(problems.map((p) => p.message)).toEqual([
       '[pdf] paper must be A4 or Letter',
       '[pdf] header must be three texts (left, centre, right), like ["", "{page}", ""]',
+      '[pdf] headers_on must be "numbered", "not-cover" or "all"',
       '[pdf] numbering must be "content" or "cover"',
       '[pdf] toc_depth must be 1, 2, 3 or 4',
       '[pdf] unknown setting "colour"',

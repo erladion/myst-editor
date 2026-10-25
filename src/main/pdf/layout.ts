@@ -20,6 +20,7 @@ export interface LayoutOptions {
   // Font families (CSS lists, with fallbacks), and @font-face rules for the project's
   // font files.
   fonts: { text: string; heading: string; code: string; faces: string };
+  headersOn: 'numbered' | 'not-cover' | 'all';
   numbering: 'content' | 'cover';
   tocDepth: number; // levels of the contents: 1 is chapters only
   date: string;
@@ -158,8 +159,9 @@ export const layoutScript = (opts: LayoutOptions) => `
   for (const m of main.querySelectorAll('[id^="document-"]')) if (isMarker(m)) m.style.display = 'none';
   main.prepend(cover, toc);
 
-  // Headers and footers: CSS page margin boxes, none on the cover. With numbering
-  // from the content, the front pages aren't counted (or numbered).
+  // Headers and footers: CSS page margin boxes (the cover has no margins: drawn on it,
+  // when it has them). With numbering from the content, the front pages aren't counted
+  // or numbered, and slots with {page} or {pages} stay empty there.
   const style = document.createElement('style');
   document.head.append(style);
   const str = (t) => '"' + t.replace(/\\\\/g, '\\\\\\\\').replace(/"/g, '\\\\"').replace(/\\n/g, '\\\\A ') + '"';
@@ -175,15 +177,45 @@ export const layoutScript = (opts: LayoutOptions) => `
   };
   const SLOTS = ['top-left', 'top-center', 'top-right', 'bottom-left', 'bottom-center', 'bottom-right'];
   const box = 'font-family: ' + opts.fonts.text + '; font-size: 8.5pt; color: #57606a;';
-  const boxes = (chapter, pages) => SLOTS.map((slot, i) => '@' + slot + ' { content: ' + content([...opts.header, ...opts.footer][i], chapter, pages) + '; ' + box + ' }').join(' ');
+  const templates = [...opts.header, ...opts.footer];
+  const counts = (template) => /\\{pages?\\}/.test(template);
+  const boxes = (chapter, pages, unnumbered) =>
+    SLOTS.map((slot, i) => '@' + slot + ' { content: ' + (unnumbered && counts(templates[i]) ? 'none' : content(templates[i], chapter, pages)) + '; ' + box + ' }').join(' ');
   const blank = SLOTS.map((slot) => '@' + slot + ' { content: none; }').join(' ');
   const skip = numbering === 'content' ? 'counter-increment: page 0; ' : '';
+
+  // The cover's, drawn on it: its page has no margins (for its background).
+  const coverSlots = [];
+  if (opts.headersOn === 'all') {
+    for (const row of ['top', 'bottom']) {
+      const div = document.createElement('div');
+      div.className = 'pdf-cover-margin pdf-cover-' + row;
+      for (let i = 0; i < 3; i++) coverSlots.push(div.appendChild(document.createElement('span')));
+      cover.append(div);
+    }
+  }
+  const drawCover = (pages) =>
+    coverSlots.forEach((span, i) => {
+      span.replaceChildren();
+      if (numbering === 'content' && counts(templates[i])) return;
+      for (const piece of templates[i].split(/(\\{(?:page|pages|logo)\\})/)) {
+        if (piece === '{logo}') {
+          if (!opts.marginLogo) continue;
+          const img = document.createElement('img');
+          img.src = opts.marginLogo;
+          span.append(img);
+        } else if (piece) span.append(piece === '{page}' ? '1' : piece === '{pages}' ? (pages == null ? '' : String(pages)) : fill(piece, ''));
+      }
+    });
+
   window.__pdfMargins = (pages) => {
-    let css = '@page { size: ' + opts.paper + '; margin: ${MARGIN.top}mm ${MARGIN.side}mm ${MARGIN.bottom}mm; ' + boxes('', pages) + ' }';
+    let css = '@page { size: ' + opts.paper + '; margin: ${MARGIN.top}mm ${MARGIN.side}mm ${MARGIN.bottom}mm; ' + boxes('', pages, false) + ' }';
     css += ' @page pdf-cover { margin: 0; ' + skip + blank + ' }';
-    css += ' @page pdf-front { ' + skip + (numbering === 'content' ? blank : boxes('', pages)) + ' }';
-    chapters.forEach((s, i) => (css += ' @page pdf-c' + i + ' { ' + boxes(textOf(headingOf(s)), pages) + ' }'));
+    const front = numbering === 'content' ? (opts.headersOn === 'numbered' ? blank : boxes('', pages, true)) : boxes('', pages, false);
+    css += ' @page pdf-front { ' + skip + front + ' }';
+    chapters.forEach((s, i) => (css += ' @page pdf-c' + i + ' { ' + boxes(textOf(headingOf(s)), pages, false) + ' }'));
     style.textContent = css;
+    drawCover(pages);
   };
   window.__pdfMargins(null);
 
@@ -271,6 +303,13 @@ dl dt { font-weight: 600; }
 
 .pdf-title { break-after: page; display: flex; flex-direction: column; position: relative; box-sizing: border-box; overflow: hidden; background: center / cover no-repeat; }
 .pdf-cover-image { position: absolute; }
+.pdf-cover-margin { position: absolute; left: 0; right: 0; display: grid; grid-template-columns: 1fr 1fr 1fr; align-items: center; padding: 0 ${PDF_MARGIN_MM.side}mm; font-family: var(--pdf-font); font-size: 8.5pt; color: #57606a; }
+.pdf-cover-top { top: 0; height: ${PDF_MARGIN_MM.top}mm; }
+.pdf-cover-bottom { bottom: 0; height: ${PDF_MARGIN_MM.bottom}mm; }
+.pdf-cover-margin span:nth-child(2) { text-align: center; }
+.pdf-cover-margin span:nth-child(3) { text-align: right; }
+.pdf-cover-margin img { height: 8mm; vertical-align: middle; }
+.pdf-title-colored .pdf-cover-margin { color: inherit; opacity: 0.85; }
 .pdf-title-colored .pdf-subtitle, .pdf-title-colored .pdf-note { color: inherit; opacity: 0.85; }
 .pdf-cover-logo { align-self: flex-start; max-height: 28mm; max-width: 90mm; }
 .pdf-title-text { margin-top: auto; font-size: 30pt; font-weight: 700; line-height: 1.15; }

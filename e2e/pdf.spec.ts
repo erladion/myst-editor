@@ -100,3 +100,26 @@ fonts = ["_static/fonts/KaTeX_SansSerif-Regular.ttf", "_static/fonts/KaTeX_SansS
   expect(logo(text[1])).toBe(true);
   expect(logo(text[3])).toBe(true);
 });
+
+test('headers and footers on every page, page numbers only where there are any', async () => {
+  const pdf = await exportPdf(`[pdf]
+logo = "_static/harbor-logo.svg"
+header = ["{logo}", "", "{title}"]
+footer = ["{date}", "", "Page {page} of {pages}"]
+headers_on = "all"
+`);
+  const text = await pageTexts(pdf);
+  const count = (t: string, s: string) => t.split(s).length - 1;
+  // The cover: its title, and the header's; the date (the subtitle's and the footer's);
+  // no page number. The contents and the introduction: the same, no page number.
+  expect(count(text[0], 'Harbor documentation')).toBe(2);
+  expect(text[0]).not.toContain('Page');
+  for (const i of [1, 2]) {
+    expect(text[i]).toContain('Harbor documentation');
+    expect(text[i]).not.toContain('Page');
+  }
+  expect(text[1]).toContain('Install Harbor 1');
+  // From the first chapter, numbered: 5 pages of chapters.
+  expect(text[3]).toContain('Page 1 of 5');
+  expect(text[7]).toContain('Page 5 of 5');
+});

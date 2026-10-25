@@ -152,6 +152,7 @@ export function registerPdfIpc() {
         fonts,
         header: settings.header,
         footer: settings.footer,
+        headersOn: settings.headersOn,
         numbering: settings.numbering,
         tocDepth: settings.tocDepth,
         date: new Date().toLocaleDateString(app.getLocale(), { year: 'numeric', month: 'long', day: 'numeric' }),

@@ -48,6 +48,8 @@
 //   fonts = ["_static/fonts/SourceSerif4-Regular.ttf"]   # font files, the same everywhere
 //   header = ["{logo}", "", "{chapter}"] # left, centre, right
 //   footer = ["", "{page}", ""]          # {page} {pages} {chapter} {title} {date} {version} {logo}
+//   headers_on = "numbered"              # numbered pages | not-cover | all (the cover too);
+//                                        # slots with {page} or {pages} stay empty where there's no number
 //   numbering = "content"                # content: from the first page after the contents | cover
 //   toc_depth = 2                        # levels in the contents
 import { parse as parseToml } from 'smol-toml';
@@ -134,6 +136,9 @@ export interface PdfDef {
   fonts: { file: string; path: string | null }[]; // font files: as written, and relative to the opened folder
   header: [string, string, string];
   footer: [string, string, string];
+  // Where headers and footers are: the numbered pages (but the cover), every page but
+  // the cover, or every page.
+  headersOn: 'numbered' | 'not-cover' | 'all';
   numbering: 'content' | 'cover';
   tocDepth: number;
 }
@@ -155,6 +160,7 @@ export const DEFAULT_PDF: PdfDef = {
   fonts: [],
   header: ['', '', '{chapter}'],
   footer: ['', '{page}', ''],
+  headersOn: 'numbered',
   numbering: 'content',
   tocDepth: 2,
 };
@@ -406,6 +412,10 @@ function readPdf(t: Raw, prev: PdfDef, file: string, problem: (m: string) => voi
     if (isStrings(v) && v.length === 3) pdf[key] = [v[0], v[1], v[2]];
     else problem(`[pdf] ${key} must be three texts (left, centre, right), like ["", "{page}", ""]`);
   }
+  if (t.headers_on !== undefined) {
+    if (t.headers_on === 'numbered' || t.headers_on === 'not-cover' || t.headers_on === 'all') pdf.headersOn = t.headers_on;
+    else problem('[pdf] headers_on must be "numbered", "not-cover" or "all"');
+  }
   if (t.numbering !== undefined) {
     if (t.numbering === 'content' || t.numbering === 'cover') pdf.numbering = t.numbering;
     else problem('[pdf] numbering must be "content" or "cover"');
@@ -415,7 +425,7 @@ function readPdf(t: Raw, prev: PdfDef, file: string, problem: (m: string) => voi
     else problem('[pdf] toc_depth must be 1, 2, 3 or 4');
   }
   for (const key of Object.keys(t)) {
-    if (!['paper', 'logo', 'title', 'subtitle', 'note', 'cover_background', 'cover_color', 'cover_images', 'font', 'heading_font', 'code_font', 'fonts', 'header', 'footer', 'numbering', 'toc_depth'].includes(key)) problem(`[pdf] unknown setting "${key}"`);
+    if (!['paper', 'logo', 'title', 'subtitle', 'note', 'cover_background', 'cover_color', 'cover_images', 'font', 'heading_font', 'code_font', 'fonts', 'headers_on', 'header', 'footer', 'numbering', 'toc_depth'].includes(key)) problem(`[pdf] unknown setting "${key}"`);
   }
   return pdf;
 }

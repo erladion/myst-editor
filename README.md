@@ -178,6 +178,8 @@ code_font = "JetBrains Mono"
 fonts = ["_static/fonts/SourceSerif4-Regular.ttf", "_static/fonts/SourceSerif4-Bold.ttf"]
 header = ["{logo}", "", "{chapter}"] # left, centre, right
 footer = ["", "{page}", ""]
+headers_on = "numbered"              # numbered | not-cover | all: on which pages (slots
+                                     # with {page} or {pages} stay empty on unnumbered ones)
 numbering = "content"                # from the first chapter (the pages before it
                                      # are unnumbered) | cover
 toc_depth = 2                        # levels in the contents

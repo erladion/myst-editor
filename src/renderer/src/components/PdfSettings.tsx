@@ -16,6 +16,7 @@ export interface PdfForm extends CoverForm {
   fonts: string[]; // font files, relative to the settings file
   header: [string, string, string];
   footer: [string, string, string];
+  headersOn: 'numbered' | 'not-cover' | 'all';
   numbering: 'content' | 'cover';
   tocDepth: number;
 }
@@ -41,6 +42,7 @@ export const pdfForm = (pdf: PdfDef): PdfForm => ({
   fonts: pdf.fonts.map((f) => f.file),
   header: [...pdf.header],
   footer: [...pdf.footer],
+  headersOn: pdf.headersOn,
   numbering: pdf.numbering,
   tocDepth: pdf.tocDepth,
 });
@@ -90,6 +92,7 @@ export function pdfPatch(was: PdfDef, form: PdfForm): PdfPatch {
     out.fonts = fonts.length ? fonts : null;
   if (!same(form.header, was.header)) out.header = form.header;
   if (!same(form.footer, was.footer)) out.footer = form.footer;
+  if (form.headersOn !== was.headersOn) out.headersOn = form.headersOn;
   if (form.numbering !== was.numbering) out.numbering = form.numbering;
   if (form.tocDepth !== was.tocDepth) out.tocDepth = form.tocDepth;
   return out;
@@ -295,7 +298,16 @@ export function PdfSettings({ pane, projectId, form, settingsFile, onChange, cho
 
       <section className="settings-section" hidden={pane !== 'pdf-margins'} aria-label="PDF headers and footers">
         <h3>Headers and footers</h3>
-        <p className="muted">On every page but the cover, in the text font.</p>
+        <p className="muted">In the text font.</p>
+        <div className="field">
+          <label htmlFor="pdf-headers-on">Show them on</label>
+          <select id="pdf-headers-on" value={form.headersOn} onChange={(e) => set('headersOn', e.target.value as PdfForm['headersOn'])}>
+            <option value="numbered">The numbered pages{form.numbering === 'content' ? ' (from the first chapter)' : ' (after the cover)'}</option>
+            <option value="not-cover">Every page but the cover</option>
+            <option value="all">Every page, the cover too</option>
+          </select>
+          {form.headersOn !== 'numbered' && form.numbering === 'content' && <small>The cover and the contents have no page numbers: slots with {'{page}'} or {'{pages}'} are left empty there.</small>}
+        </div>
         <div className="page-sketch">
           {slots('header')}
           <div className="page-sketch-body" aria-hidden="true">

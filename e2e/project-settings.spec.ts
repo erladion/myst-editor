@@ -194,6 +194,8 @@ test('sets up the PDF: paper, cover, headers and footers', async () => {
   await dialog.getByLabel('Header left').fill('{logo}');
   await dialog.getByLabel('Footer centre').fill('');
   await dialog.getByLabel('Footer right').fill('Page {page} of {pages}');
+  await dialog.getByLabel('Show them on').selectOption('not-cover');
+  await expect(dialog.getByText('slots with {page} or {pages} are left empty there')).toBeVisible();
   await show('Pages');
   await dialog.getByLabel('Page numbers').selectOption('cover');
   await dialog.getByLabel('Levels in the contents').selectOption('1');
@@ -205,7 +207,7 @@ test('sets up the PDF: paper, cover, headers and footers', async () => {
     '[pdf]\npaper = "Letter"\nlogo = "_static/harbor-logo.svg"\ntitle = "Harbor manual"\nnote = "© Harbor Labs"\ncover_background = "_static/cover.svg"\ncover_color = "#ffffff"\n' +
       'cover_images = [\n  { file = "_static/badge.svg", x = 119, y = 172, width = 35 },\n]\n' +
       'font = "KaTeX_SansSerif"\nfonts = ["_static/fonts/KaTeX_SansSerif-Regular.ttf"]\n' +
-      'header = ["{logo}", "", "{chapter}"]\nfooter = ["", "", "Page {page} of {pages}"]\nnumbering = "cover"\ntoc_depth = 1\n',
+      'header = ["{logo}", "", "{chapter}"]\nfooter = ["", "", "Page {page} of {pages}"]\nheaders_on = "not-cover"\nnumbering = "cover"\ntoc_depth = 1\n',
   );
 
   // Read back as saved; taking the graphic out takes the setting out.

@@ -59,6 +59,7 @@ export interface PdfPatch {
   fonts?: string[] | null;
   header?: [string, string, string] | null;
   footer?: [string, string, string] | null;
+  headersOn?: string | null;
   numbering?: string | null;
   tocDepth?: number | null;
 }
@@ -68,7 +69,7 @@ export function editPdf(text: string, patch: PdfPatch): string {
     ['paper', 'paper'], ['logo', 'logo'], ['title', 'title'], ['subtitle', 'subtitle'], ['note', 'note'],
     ['coverBackground', 'cover_background'], ['coverColor', 'cover_color'], ['coverImages', 'cover_images'],
     ['font', 'font'], ['headingFont', 'heading_font'], ['codeFont', 'code_font'], ['fonts', 'fonts'],
-    ['header', 'header'], ['footer', 'footer'], ['numbering', 'numbering'], ['tocDepth', 'toc_depth'],
+    ['header', 'header'], ['footer', 'footer'], ['headersOn', 'headers_on'], ['numbering', 'numbering'], ['tocDepth', 'toc_depth'],
   ];
   const writes: [string[], TomlValue | undefined][] = [];
   for (const [field, key] of keys) {
