@@ -334,13 +334,8 @@ const GRID = { rows: 8, columns: 10 };
 function TablePicker({ onPick, onBack }: { onPick: (rows: number, columns: number) => void; onBack: () => void }) {
   const [size, setSize] = useState({ rows: 3, columns: 3 });
   const grid = useRef<HTMLDivElement>(null);
-  // Focused, and again a moment later: with the cursor in a table, the editor takes
-  // the focus back after the key that opened the grid.
-  useEffect(() => {
-    grid.current?.focus();
-    const again = setTimeout(() => grid.current?.focus(), 50);
-    return () => clearTimeout(again);
-  }, []);
+  // Focused before it's drawn, so the keys typed next reach it.
+  useLayoutEffect(() => grid.current?.focus(), []);
   const onKey = (e: React.KeyboardEvent) => {
     const by: Record<string, [number, number]> = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
     if (by[e.key]) {
@@ -405,9 +400,20 @@ function InsertMenu({ disabled, ctx, view, run }: { disabled: boolean; ctx: Edit
   useEffect(() => {
     if (!open) return;
     const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    // Escape closes it, wherever the focus is, and the writer is back in the page.
+    const escape = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      setOpen(false);
+      view?.focus();
+    };
     window.addEventListener('mousedown', close);
-    return () => window.removeEventListener('mousedown', close);
-  }, [open]);
+    window.addEventListener('keydown', escape);
+    return () => {
+      window.removeEventListener('mousedown', close);
+      window.removeEventListener('keydown', escape);
+    };
+  }, [open, view]);
   // It's wide: moved left as far as needed to stay in the window.
   const items = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
