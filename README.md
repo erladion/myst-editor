@@ -93,7 +93,7 @@ the project's Sphinx with a plain print layout instead of its HTML theme, and Ch
 (in the app) to print, so nothing else needs installing. A manual of 400 pages takes
 about a minute. File → Project Settings sets it up (`[pdf]` below): the paper; the
 cover, on a preview where graphics are dragged into place (a background to the page's
-edges, the logo, title, subtitle, a note, and any graphics); the fonts (font files in
+edges, the logo, title, subtitle, a note, and any graphics, all of which can be moved); the fonts (font files in
 the project are put in the PDF, so it looks the same everywhere); the headers and
 footers; and the page numbering.
 
@@ -205,6 +205,15 @@ headers_on = "numbered"              # numbered | not-cover | all: on which page
 numbering = "content"                # from the first chapter (the pages before it
                                      # are unnumbered) | cover
 toc_depth = 2                        # levels in the contents
+
+# The cover's logo, title (with the subtitle under it), subtitle and note, moved from
+# their usual places (dragged there in Project Settings): mm from the page's top-left
+# corner; width in mm; for the texts, size in points and align (left, center, right).
+[pdf.cover.title]
+x = 20
+y = 150
+size = 36
+align = "center"
 
 # Environment variables for Sphinx builds (writers can add their own in the app).
 [sphinx.env]

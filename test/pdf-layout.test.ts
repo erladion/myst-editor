@@ -5,7 +5,7 @@ describe('layoutScript', () => {
   it('is a script that parses, with the options in it', () => {
     const script = layoutScript({
       rootDoc: 'index', paper: 'A4', title: 'A "quoted" title', subtitle: '{date}', note: 'Line one\nline two',
-      coverLogo: null, coverBackground: null, coverColor: null, coverImages: [], marginLogo: null,
+      coverLogo: null, coverBackground: null, coverColor: null, coverImages: [], coverPlaces: { title: { x: 20, y: 100, width: null, size: 40, align: 'center' } }, marginLogo: null,
       header: ['', '', '{chapter}'], footer: ['', '{page}', ''], fonts: { text: TEXT_FONTS, heading: TEXT_FONTS, code: CODE_FONTS, faces: '' },
       headersOn: 'all', numbering: 'content', tocDepth: 2, date: 'today', project: 'P',
     });

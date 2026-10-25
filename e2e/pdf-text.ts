@@ -28,3 +28,17 @@ export async function fontNames(pdf: Uint8Array): Promise<string[]> {
   }
   return [...names].sort();
 }
+
+// The text on a page with where it is: mm from the page's top-left corner (to the
+// text's baseline), and its size in points.
+export async function textPlaces(pdf: Uint8Array, page: number): Promise<{ str: string; x: number; y: number; size: number }[]> {
+  const doc = await getDocument({ data: new Uint8Array(pdf), isEvalSupported: false, useSystemFonts: true }).promise;
+  const p = await doc.getPage(page + 1);
+  const height = p.view[3];
+  const mm = (pt: number) => (pt * 25.4) / 72;
+  const items = (await p.getTextContent()).items.flatMap((item) =>
+    'str' in item && item.str.trim() ? [{ str: item.str, x: mm(item.transform[4]), y: mm(height - item.transform[5]), size: Math.hypot(item.transform[2], item.transform[3]) }] : [],
+  );
+  await doc.destroy();
+  return items;
+}

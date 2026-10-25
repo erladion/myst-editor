@@ -3232,8 +3232,11 @@ button.secondary {
   flex-direction: column;
 }
 
-.cover-preview-title {
+.cover-preview-title-block {
   margin-top: auto;
+}
+
+.cover-preview-title {
   font-weight: 700;
   line-height: 1.15;
   overflow-wrap: anywhere;
@@ -3386,4 +3389,46 @@ kbd {
 .insert-menu button {
   display: flex;
   align-items: baseline;
+}
+
+/* The cover's parts: dragged like graphics; where each is, below the preview. */
+.cover-preview-part {
+  cursor: grab;
+  touch-action: none;
+}
+
+.cover-preview-part:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.cover-places {
+  grid-column: 1 / -1;
+  margin-top: 8px;
+}
+
+.cover-places-list {
+  display: grid;
+  grid-template-columns: 1fr repeat(4, 64px) 80px 28px;
+  gap: 4px 6px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.cover-place-row {
+  display: contents;
+}
+
+.cover-place-name {
+  color: var(--fg);
+}
+
+.cover-place-usual {
+  grid-column: span 6;
+}
+
+.cover-places-list input,
+.cover-places-list select {
+  min-width: 0;
 }

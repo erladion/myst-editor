@@ -2,7 +2,7 @@
 // Chromium prints it: a cover, one table of contents, each chapter on a new page,
 // headers and footers ([pdf] in .mysteditor.toml), and links that work in a single
 // document. Runs in the page, as a script.
-import { PAPER_MM, PDF_MARGIN_MM, type PaperSize } from '../../core/editor-config.js';
+import { PAPER_MM, PDF_MARGIN_MM, type CoverPart, type CoverPlace, type PaperSize } from '../../core/editor-config.js';
 
 export interface LayoutOptions {
   rootDoc: string;
@@ -14,6 +14,7 @@ export interface LayoutOptions {
   coverBackground: string | null; // a data: URL, filling the cover page
   coverColor: string | null;
   coverImages: { src: string; x: number; y: number; width: number; height: number | null }[]; // mm from the top left
+  coverPlaces: Partial<Record<CoverPart, CoverPlace>>; // parts moved from their usual places
   marginLogo: string | null; // a data: URL of an SVG sized for the margins
   header: [string, string, string];
   footer: [string, string, string];
@@ -102,19 +103,48 @@ export const layoutScript = (opts: LayoutOptions) => `
   const cover = document.createElement('div');
   cover.className = 'pdf-title';
   cover.style.page = 'pdf-cover';
+  const paper = opts.paperSize;
+  // A part moved from its usual place: where it was put, in mm from the page's corner.
+  // (The title's box holds the subtitle too, unless that's been moved by itself; its
+  // size is the title's own.)
+  const place = (el, part, sized = el) => {
+    const at = opts.coverPlaces[part];
+    if (!at) return;
+    Object.assign(el.style, { position: 'absolute', margin: '0', left: at.x + 'mm', top: at.y + 'mm' });
+    if (part === 'logo') {
+      if (at.width != null) Object.assign(el.style, { width: at.width + 'mm', maxWidth: 'none', maxHeight: 'none', height: 'auto' });
+    } else {
+      el.style.width = (at.width ?? paper.width - at.x - ${MARGIN.side}) + 'mm';
+      if (at.size != null) sized.style.fontSize = at.size + 'pt';
+      if (at.align) el.style.textAlign = at.align;
+    }
+  };
   if (opts.coverLogo) {
     const img = document.createElement('img');
     img.className = 'pdf-cover-logo';
     img.src = opts.coverLogo;
+    place(img, 'logo');
     cover.append(img);
   }
-  for (const [cls, text] of [['pdf-title-text', manual], ['pdf-subtitle', fill(opts.subtitle)], ['pdf-note', fill(opts.note)]]) {
+  const text = (cls, content) => {
     const div = document.createElement('div');
     div.className = cls;
-    div.textContent = text;
-    cover.append(div);
-  }
-  const paper = opts.paperSize;
+    div.textContent = content;
+    return div;
+  };
+  const block = document.createElement('div');
+  block.className = 'pdf-title-block';
+  const title = text('pdf-title-text', manual);
+  const subtitle = text('pdf-subtitle', fill(opts.subtitle));
+  block.append(title);
+  if (opts.coverPlaces.subtitle) {
+    place(subtitle, 'subtitle');
+    subtitle.style.marginTop = '0';
+  } else block.append(subtitle);
+  place(block, 'title', title);
+  const note = text('pdf-note', fill(opts.note));
+  place(note, 'note');
+  cover.append(block, ...(opts.coverPlaces.subtitle ? [subtitle] : []), note);
   Object.assign(cover.style, { width: paper.width + 'mm', height: paper.height + 'mm', padding: '${MARGIN.top}mm ${MARGIN.side}mm ${MARGIN.bottom}mm' });
   if (opts.coverBackground) cover.style.backgroundImage = 'url("' + opts.coverBackground + '")';
   if (opts.coverColor) {
@@ -312,7 +342,8 @@ dl dt { font-weight: 600; }
 .pdf-title-colored .pdf-cover-margin { color: inherit; opacity: 0.85; }
 .pdf-title-colored .pdf-subtitle, .pdf-title-colored .pdf-note { color: inherit; opacity: 0.85; }
 .pdf-cover-logo { align-self: flex-start; max-height: 28mm; max-width: 90mm; }
-.pdf-title-text { margin-top: auto; font-size: 30pt; font-weight: 700; line-height: 1.15; }
+.pdf-title-block { margin-top: auto; }
+.pdf-title-text { font-size: 30pt; font-weight: 700; line-height: 1.15; }
 .pdf-subtitle { color: #57606a; margin-top: 6mm; font-size: 12pt; }
 .pdf-note { margin-top: auto; color: #57606a; font-size: 9pt; white-space: pre-line; }
 .pdf-subtitle:empty, .pdf-note:empty { display: none; }

@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { PDFDocument } from 'pdf-lib';
 import { headingPages, outlineOf } from '../src/main/pdf/outline';
 import { launch, type App } from './helpers';
-import { fontNames, pageTexts } from './pdf-text';
+import { fontNames, pageTexts, textPlaces } from './pdf-text';
 
 let ctx: App;
 
@@ -122,4 +122,33 @@ headers_on = "all"
   // From the first chapter, numbered: 5 pages of chapters.
   expect(text[3]).toContain('Page 1 of 5');
   expect(text[7]).toContain('Page 5 of 5');
+});
+
+test('the cover’s title and logo where they were put', async () => {
+  const pdf = await exportPdf(`[pdf]
+logo = "_static/harbor-logo.svg"
+title = "Harbor manual"
+
+[pdf.cover.title]
+x = 20
+y = 200
+size = 40
+align = "center"
+
+[pdf.cover.logo]
+x = 140
+y = 30
+width = 50
+`);
+  const title = (await textPlaces(pdf, 0)).find((t) => t.str === 'Harbor manual')!;
+  // 40 pt, centred between x = 20 mm and the right margin (A4: 210 − 20 = 190 mm),
+  // its first line's baseline a little under 200 mm from the top.
+  expect(title.size).toBeCloseTo(40, 0);
+  expect(title.y).toBeGreaterThan(205);
+  expect(title.y).toBeLessThan(220);
+  expect(title.x).toBeGreaterThan(40); // centred, not at 20
+  // The logo's own text ("Harbor"), right of 140 mm and near the top.
+  const logo = (await textPlaces(pdf, 0)).find((t) => t.str === 'Harbor')!;
+  expect(logo.x).toBeGreaterThan(140);
+  expect(logo.y).toBeLessThan(60);
 });

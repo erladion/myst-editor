@@ -2,7 +2,7 @@
 // CoverDesigner), the headers and footers (on a sketch of a page), numbering and the
 // contents' depth.
 import { useEffect, useMemo, useState } from 'react';
-import { PAPER_SIZES, type PdfDef } from '../../../core/editor-config';
+import { COVER_PARTS, PAPER_SIZES, type PdfDef } from '../../../core/editor-config';
 import type { PdfPatch } from '../../../core/project-settings';
 import { ASSET_SCHEME, type PdfFonts } from '../../../shared/api';
 import { CoverDesigner, fromSettings, type CoverForm } from './CoverDesigner';
@@ -36,6 +36,7 @@ export const pdfForm = (pdf: PdfDef): PdfForm => ({
     width,
     height,
   })),
+  cover: { ...pdf.cover },
   font: pdf.font ?? '',
   headingFont: pdf.headingFont ?? '',
   codeFont: pdf.codeFont ?? '',
@@ -82,6 +83,9 @@ export function pdfPatch(was: PdfDef, form: PdfForm): PdfPatch {
     ...(height == null ? {} : { height }),
   }));
   if (!same(graphics, before)) out.coverImages = graphics.length ? graphics.filter((g) => g.file) : null;
+  const moved: NonNullable<PdfPatch['cover']> = {};
+  for (const part of COVER_PARTS) if (!same(form.cover[part] ?? null, was.cover[part] ?? null)) moved[part] = form.cover[part] ?? null;
+  if (Object.keys(moved).length) out.cover = moved;
   const fonts = form.fonts.map((f) => f.trim()).filter(Boolean);
   if (
     !same(

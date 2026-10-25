@@ -171,6 +171,23 @@ test('sets up the PDF: paper, cover, headers and footers', async () => {
   await expect(dialog.getByLabel('Graphic 1 x')).toHaveValue('119');
   await dialog.getByLabel('Graphic 1 width').fill('35');
 
+  // The title, dragged down 30 mm from its usual place; then made larger and centred.
+  await expect(dialog.getByText('The usual place: drag it on the cover to move it')).toHaveCount(4);
+  const title = (await dialog.getByLabel('The title', { exact: true }).boundingBox())!;
+  await page().mouse.move(title.x + 10, title.y + 5);
+  await page().mouse.down();
+  await page().mouse.move(title.x + 10, title.y + 5 + 30 * mm, { steps: 6 });
+  await page().mouse.up();
+  await expect(dialog.getByLabel('Title x')).toHaveValue('20');
+  const y = Number(await dialog.getByLabel('Title y').inputValue());
+  await dialog.getByLabel('Title size').fill('36');
+  await dialog.getByLabel('Title alignment').selectOption('center');
+  // The logo moved by keys, then back where it was.
+  await dialog.getByLabel('The logo', { exact: true }).press('ArrowRight');
+  await expect(dialog.getByLabel('Logo x')).toHaveValue('21');
+  await dialog.getByRole('button', { name: 'Put the logo back in its usual place' }).click();
+  await expect(dialog.getByText('The usual place: drag it on the cover to move it')).toHaveCount(3);
+
   // Fonts: a file from the project, then its family for the text (and so the headings).
   await show('Fonts');
   await pick('fonts/KaTeX_SansSerif-Regular.ttf');
@@ -207,7 +224,8 @@ test('sets up the PDF: paper, cover, headers and footers', async () => {
     '[pdf]\npaper = "Letter"\nlogo = "_static/harbor-logo.svg"\ntitle = "Harbor manual"\nnote = "© Harbor Labs"\ncover_background = "_static/cover.svg"\ncover_color = "#ffffff"\n' +
       'cover_images = [\n  { file = "_static/badge.svg", x = 119, y = 172, width = 35 },\n]\n' +
       'font = "KaTeX_SansSerif"\nfonts = ["_static/fonts/KaTeX_SansSerif-Regular.ttf"]\n' +
-      'header = ["{logo}", "", "{chapter}"]\nfooter = ["", "", "Page {page} of {pages}"]\nheaders_on = "not-cover"\nnumbering = "cover"\ntoc_depth = 1\n',
+      'header = ["{logo}", "", "{chapter}"]\nfooter = ["", "", "Page {page} of {pages}"]\nheaders_on = "not-cover"\nnumbering = "cover"\ntoc_depth = 1\n' +
+      `\n[pdf.cover.title]\nx = 20\ny = ${y}\nsize = 36\nalign = "center"\n`,
   );
 
   // Read back as saved; taking the graphic out takes the setting out.

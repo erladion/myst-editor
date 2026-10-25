@@ -201,6 +201,19 @@ export function setTomlKey(text: string, table: string[], key: string, value: To
   return `${head}${keyPath.map(tomlKey).join('.')} = ${tomlValue(value)}\n${text.slice(at)}`;
 }
 
+// The text without `table`'s header, if nothing is left under it (and the blank line
+// before it).
+export function removeTomlTableIfEmpty(text: string, table: string[]): string {
+  const items = scan(text);
+  const i = items.findIndex((x) => x.kind === 'header' && same(x.path, table));
+  if (i < 0) return text;
+  const next = items[i + 1];
+  if (next && next.kind === 'pair' && same(next.table, table)) return text;
+  const header = items[i];
+  const start = text.slice(0, header.start).endsWith('\n\n') ? header.start - 1 : header.start;
+  return text.slice(0, start) + text.slice(header.end);
+}
+
 // The text with `table` in it (empty if it's new).
 export function ensureTomlTable(text: string, table: string[]): string {
   const items = scan(text);

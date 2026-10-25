@@ -148,6 +148,7 @@ export function registerPdfIpc() {
         coverBackground: background,
         coverColor: settings.coverColor,
         coverImages: graphics,
+        coverPlaces: settings.cover,
         marginLogo: logo?.margin ?? null,
         fonts,
         header: settings.header,

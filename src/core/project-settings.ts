@@ -1,6 +1,7 @@
 // Project Settings' changes to a .mysteditor.toml: written into its text (see
 // toml-edit.ts), so the rest of the file stays as the project wrote it.
-import { ensureTomlTable, setTomlKey, tomlAt, type TomlValue } from './toml-edit.js';
+import { ensureTomlTable, removeTomlTableIfEmpty, setTomlKey, tomlAt, type TomlValue } from './toml-edit.js';
+import type { CoverPart, CoverPlace } from './editor-config.js';
 
 // What changed in the conditional-content settings. A missing field is unchanged;
 // null takes the setting out (back to its default).
@@ -53,6 +54,8 @@ export interface PdfPatch {
   coverBackground?: string | null;
   coverColor?: string | null;
   coverImages?: { file: string; x: number; y: number; width: number; height?: number }[] | null;
+  // Parts of the cover moved (null: back to their usual places).
+  cover?: Partial<Record<CoverPart, CoverPlace | null>>;
   font?: string | null;
   headingFont?: string | null;
   codeFont?: string | null;
@@ -77,5 +80,14 @@ export function editPdf(text: string, patch: PdfPatch): string {
     // An empty list (of graphics, of fonts): the setting goes.
     if (v !== undefined) writes.push([[key], v === null || (Array.isArray(v) && !v.length) ? undefined : (v as TomlValue)]);
   }
-  return write(text, 'pdf', writes);
+  for (const [part, place] of Object.entries(patch.cover ?? {})) {
+    for (const key of ['x', 'y', 'width', 'size', 'align'] as const) {
+      const v = place ? place[key] : null;
+      writes.push([['cover', part, key], v === null || v === undefined ? undefined : v]);
+    }
+  }
+  let next = write(text, 'pdf', writes);
+  // A part back in its usual place: its table goes.
+  for (const [part, place] of Object.entries(patch.cover ?? {})) if (!place) next = removeTomlTableIfEmpty(next, ['pdf', 'cover', part]);
+  return next;
 }

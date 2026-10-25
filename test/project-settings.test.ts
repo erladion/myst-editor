@@ -151,3 +151,27 @@ describe('the cover and fonts in [pdf]', () => {
     ]);
   });
 });
+
+describe('moving the cover’s parts', () => {
+  const read = (text: string) => loadEditorConfig([{ file: 'docs/.mysteditor.toml', text, readCapabilities: () => '[]' }]);
+
+  it('writes each moved part as its own table, and takes it out when it goes back', () => {
+    const base = '[pdf]\ntitle = "Manual"\n';
+    const moved = editPdf(base, { cover: { title: { x: 20, y: 120, width: null, size: 36, align: 'center' }, logo: { x: 150, y: 20, width: 40, size: null, align: null } } });
+    expect(moved).toBe('[pdf]\ntitle = "Manual"\n\n[pdf.cover.title]\nx = 20\ny = 120\nsize = 36\nalign = "center"\n\n[pdf.cover.logo]\nx = 150\ny = 20\nwidth = 40\n');
+    expect(read(moved).pdf.cover).toEqual({ title: { x: 20, y: 120, width: null, size: 36, align: 'center' }, logo: { x: 150, y: 20, width: 40, size: null, align: null } });
+    expect(read(moved).problems).toEqual([]);
+    const back = editPdf(moved, { cover: { title: null } });
+    expect(back).toBe('[pdf]\ntitle = "Manual"\n\n[pdf.cover.logo]\nx = 150\ny = 20\nwidth = 40\n');
+    expect(editPdf(back, { cover: { logo: null } })).toBe(base);
+  });
+
+  it('says what’s wrong with a part’s place', () => {
+    const { problems } = read('[pdf.cover.title]\nx = "20mm"\ny = 1\n[pdf.cover.badge]\nx = 1\ny = 1\n[pdf.cover.note]\nx = 1\ny = 2\nalign = "justify"\n');
+    expect(problems.map((p) => p.message)).toEqual([
+      '[pdf.cover.title]: x and y are numbers of mm',
+      '[pdf.cover.badge]: the cover’s parts are logo, title, subtitle, note',
+      '[pdf.cover.note]: align is left, center or right',
+    ]);
+  });
+});

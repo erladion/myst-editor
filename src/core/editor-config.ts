@@ -39,6 +39,9 @@
 //   note = "© Example AB"                # at the foot of the cover
 //   cover_background = "_static/cover.png"   # fills the whole cover page
 //   cover_color = "#ffffff"              # the cover's text, on a dark background
+//   [pdf.cover.title]                    # where the title goes (logo, title, subtitle, note):
+//   x = 20                               # mm from the page's top left; width in mm
+//   y = 120                              # size (pt) and align (left, center, right): texts
 //   cover_images = [                     # graphics on the cover; mm from its top left
 //     { file = "_static/badge.svg", x = 150, y = 240, width = 40 },   # height optional
 //   ]
@@ -118,6 +121,18 @@ export interface CoverImage {
   height: number | null; // null: as the image's shape makes it
 }
 
+// What on the cover can be moved, and where it is when it has been: mm from the page's
+// top-left corner; for the texts, their size (pt) and alignment.
+export const COVER_PARTS = ['logo', 'title', 'subtitle', 'note'] as const;
+export type CoverPart = (typeof COVER_PARTS)[number];
+export interface CoverPlace {
+  x: number;
+  y: number;
+  width: number | null; // null: to the right margin (a text), or as large as usual (the logo)
+  size: number | null; // pt; null: as usual
+  align: 'left' | 'center' | 'right' | null;
+}
+
 // How File → Export PDF lays out the project.
 export interface PdfDef {
   paper: PaperSize;
@@ -130,6 +145,7 @@ export interface PdfDef {
   coverBackgroundPath: string | null; // relative to the opened folder
   coverColor: string | null; // null: the usual dark text
   coverImages: CoverImage[];
+  cover: Partial<Record<CoverPart, CoverPlace>>; // the parts moved from their usual places
   font: string | null; // family names; null: the usual
   headingFont: string | null; // null: as font
   codeFont: string | null;
@@ -154,6 +170,7 @@ export const DEFAULT_PDF: PdfDef = {
   coverBackgroundPath: null,
   coverColor: null,
   coverImages: [],
+  cover: {},
   font: null,
   headingFont: null,
   codeFont: null,
@@ -389,6 +406,40 @@ function readPdf(t: Raw, prev: PdfDef, file: string, problem: (m: string) => voi
     if (isStrings(t.fonts) && t.fonts.every((f) => /\.(ttf|otf|woff2?)$/i.test(f))) pdf.fonts = t.fonts.map((f) => ({ file: f, path: near(f) }));
     else problem('[pdf] fonts must be a list of font files (.ttf, .otf, .woff or .woff2)');
   }
+  if (t.cover !== undefined) {
+    const mm = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= -1000 && v <= 1000;
+    if (!isTable(t.cover)) problem('[pdf.cover] must be tables: [pdf.cover.title] and so on');
+    else {
+      pdf.cover = { ...pdf.cover };
+      for (const [part, place] of Object.entries(t.cover)) {
+        const where = `[pdf.cover.${part}]`;
+        if (!(COVER_PARTS as readonly string[]).includes(part)) {
+          problem(`${where}: the cover’s parts are ${COVER_PARTS.join(', ')}`);
+          continue;
+        }
+        if (isTable(place) && !Object.keys(place).length) continue; // an empty table: not moved
+        if (!isTable(place) || !mm(place.x) || !mm(place.y)) {
+          problem(`${where}: x and y are numbers of mm`);
+          continue;
+        }
+        if ((place.width !== undefined && !mm(place.width)) || (place.size !== undefined && !(typeof place.size === 'number' && place.size > 0 && place.size <= 200))) {
+          problem(`${where}: width is mm, and size is points`);
+          continue;
+        }
+        if (place.align !== undefined && !['left', 'center', 'right'].includes(place.align as string)) {
+          problem(`${where}: align is left, center or right`);
+          continue;
+        }
+        pdf.cover[part as CoverPart] = {
+          x: place.x as number,
+          y: place.y as number,
+          width: (place.width as number | undefined) ?? null,
+          size: (place.size as number | undefined) ?? null,
+          align: (place.align as CoverPlace['align'] | undefined) ?? null,
+        };
+      }
+    }
+  }
   if (t.cover_images !== undefined) {
     const list = t.cover_images;
     const mm = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= -1000 && v <= 1000;
@@ -425,7 +476,7 @@ function readPdf(t: Raw, prev: PdfDef, file: string, problem: (m: string) => voi
     else problem('[pdf] toc_depth must be 1, 2, 3 or 4');
   }
   for (const key of Object.keys(t)) {
-    if (!['paper', 'logo', 'title', 'subtitle', 'note', 'cover_background', 'cover_color', 'cover_images', 'font', 'heading_font', 'code_font', 'fonts', 'headers_on', 'header', 'footer', 'numbering', 'toc_depth'].includes(key)) problem(`[pdf] unknown setting "${key}"`);
+    if (!['paper', 'logo', 'title', 'subtitle', 'note', 'cover_background', 'cover_color', 'cover_images', 'cover', 'font', 'heading_font', 'code_font', 'fonts', 'headers_on', 'header', 'footer', 'numbering', 'toc_depth'].includes(key)) problem(`[pdf] unknown setting "${key}"`);
   }
   return pdf;
 }
