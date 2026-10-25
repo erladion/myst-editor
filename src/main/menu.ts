@@ -134,6 +134,8 @@ export function buildMenu(theme: Theme = nativeTheme.themeSource) {
       submenu: [
         // The page handles Ctrl+/ itself (so it also works over the source editor);
         // the menu only shows the shortcut.
+        { id: 'command-palette', label: withKeys('Command Palette…', 'M-x'), accelerator: emacsKeys ? undefined : 'CmdOrCtrl+Shift+P', registerAccelerator: false, click: () => send('command-palette') },
+        { type: 'separator' },
         { label: withKeys('Markdown View', 'C-c m'), accelerator: emacsKeys ? undefined : 'CmdOrCtrl+/', registerAccelerator: false, click: () => send('toggle-source') },
         { id: 'outline', label: 'Outline', accelerator: 'CmdOrCtrl+Shift+O', click: () => send('toggle-outline') },
         {
@@ -178,6 +180,9 @@ export function registerMenuIpc() {
     buildMenu();
   });
   ipcMain.handle('app-menu', () => (titleBar.custom ? { menu: menuModel(), title: current.win?.getTitle() ?? 'MyST Editor' } : null));
+  // The menus for the command palette, whoever draws the title bar (items are clicked
+  // with app-menu-click, as the title bar's are).
+  ipcMain.handle('menu-commands', () => menuModel());
   // A click in the title bar's menus: the item at that path in the application menu.
   ipcMain.on('app-menu-click', (_e, path: number[]) => {
     const { win } = current;

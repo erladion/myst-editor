@@ -10,6 +10,7 @@ import {
 } from '../editor/commands';
 import type { EditorContext } from '../editor/context';
 import { keysFor } from '../shortcuts';
+import { changesOf } from '../editor/changes';
 import { ADMONITIONS, CALLOUT_CHOICES } from '../editor/directives';
 import { canConditionRows, conditionColor, conditionKind, makeConditional, removeRowCondition, rowCondition, setRowCondition } from '../editor/conditions';
 import type { ConditionsDef } from '../../../core/editor-config';
@@ -99,9 +100,11 @@ interface Props {
   onHistory: () => void; // the page's earlier versions
   viewAs: string[] | null;
   onViewAs: (capabilities: string[] | null) => void;
+  // Changes since the last commit, shown in the page (note: why all of it is new).
+  changes: { on: boolean; note: string | null; onToggle: () => void };
 }
 
-export function Toolbar({ view, ctx, onMarkdown, previewAvailable, previewOpen, onTogglePreview, onHistory, viewAs, onViewAs }: Props) {
+export function Toolbar({ view, ctx, onMarkdown, previewAvailable, previewOpen, onTogglePreview, onHistory, viewAs, onViewAs, changes }: Props) {
   const conditions = ctx.config.editor.conditions;
   const state = view?.state;
   const run = (cmd: Command) => {
@@ -143,7 +146,7 @@ export function Toolbar({ view, ctx, onMarkdown, previewAvailable, previewOpen, 
       <select
         className="tb-select"
         aria-label="Text style"
-        title="Text style (Ctrl+Alt+1 to 4; normal text Ctrl+Shift+N)"
+        title="Text style: Ctrl+Alt+1 to 4 for headings, Ctrl+Shift+N for normal text"
         disabled={disabled}
         value={['paragraph', 'heading-1', 'heading-2', 'heading-3', 'heading-4'].includes(kind) ? kind : ''}
         onChange={(e) => {
@@ -160,8 +163,8 @@ export function Toolbar({ view, ctx, onMarkdown, previewAvailable, previewOpen, 
             ['heading-4', 'Small heading'],
           ] as const
         ).map(([value, label]) => (
-          <option key={value} value={value}>
-            {label} ({keysFor(label)})
+          <option key={value} value={value} title={keysFor(label)}>
+            {label}
           </option>
         ))}
         <option value="" disabled hidden>
@@ -223,6 +226,17 @@ export function Toolbar({ view, ctx, onMarkdown, previewAvailable, previewOpen, 
         Markdown
       </button>
       <span className="tb-sep" />
+      <button
+        type="button"
+        className={`tb wide${changes.on ? ' active' : ''}`}
+        aria-pressed={changes.on}
+        title={changes.note ?? (changes.on ? 'Showing what changed since the last commit: added in green, removed struck through' : 'Show what changed since the last commit')}
+        disabled={!view}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={changes.onToggle}
+      >
+        {changes.on && state ? `Changes (${changesOf(state).length})` : 'Changes'}
+      </button>
       <button type="button" className="tb wide" title="Earlier versions of this page, and what changed" disabled={!view} onClick={onHistory}>
         History
       </button>
@@ -335,7 +349,9 @@ function TablePicker({ onPick, onBack }: { onPick: (rows: number, columns: numbe
   const [size, setSize] = useState({ rows: 3, columns: 3 });
   const grid = useRef<HTMLDivElement>(null);
   // Focused before it's drawn, so the keys typed next reach it.
-  useLayoutEffect(() => grid.current?.focus(), []);
+  useLayoutEffect(() => {
+    grid.current?.focus();
+  }, []);
   const onKey = (e: React.KeyboardEvent) => {
     const by: Record<string, [number, number]> = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
     if (by[e.key]) {

@@ -103,7 +103,7 @@ export type NewProjectResult = { ok: true; path: string; note: string | null } |
 
 export type PdfResult = { ok: true; path: string; pages: number } | { ok: false; message: string };
 
-export type MenuCommand = 'open-folder' | 'save' | 'toggle-source' | 'clone' | 'new-page' | 'delete-page' | 'go-to-page' | 'toggle-outline' | 'page-history' | 'switch-branch' | 'rename-page' | 'find' | 'toggle-emacs' | 'search-pages' | 'about' | 'project-settings' | 'export-pdf' | 'shortcuts' | 'new-project';
+export type MenuCommand = 'open-folder' | 'save' | 'toggle-source' | 'clone' | 'new-page' | 'delete-page' | 'go-to-page' | 'toggle-outline' | 'page-history' | 'switch-branch' | 'rename-page' | 'find' | 'toggle-emacs' | 'search-pages' | 'about' | 'project-settings' | 'export-pdf' | 'shortcuts' | 'new-project' | 'command-palette';
 
 export interface MystApi {
   // The project from the command line or the last session, if any.
@@ -164,6 +164,7 @@ export interface MystApi {
   valeAccept(rel: string, word: string): Promise<{ ok: true; file: string; addedVocab: boolean } | { ok: false; message: string }>;
   // The menus and title for the app's own title bar; null when the system draws it.
   appMenu(): Promise<{ menu: AppMenuItem[]; title: string } | null>;
+  menuCommands(): Promise<AppMenuItem[]>;
   onAppMenu(cb: (menu: AppMenuItem[]) => void): () => void;
   onWindowTitle(cb: (title: string) => void): () => void;
   // Run the menu item at this path (indices into the menus and their submenus).
@@ -218,6 +219,8 @@ export interface MystApi {
   gitClone(url: string, parent: string): Promise<string>;
   onGitProgress(cb: (line: string) => void): () => void;
   chooseFolder(title: string): Promise<string | null>;
+  // A page as the last commit has it (text null: not committed yet, or no repository).
+  pageAtHead(rel: string): Promise<{ repo: boolean; text: string | null }>;
   // A new Sphinx project in a new folder (see new-project.ts).
   createProject(project: NewProject): Promise<NewProjectResult>;
   defaultCloneFolder(): Promise<string>;

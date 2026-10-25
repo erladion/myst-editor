@@ -2,6 +2,7 @@
 // bar and the dialogs, put together from the hooks in app/ that do the work.
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { EditorView } from 'prosemirror-view';
+import type { Node as PMNode } from 'prosemirror-model';
 import type { EditorState } from 'prosemirror-state';
 import type { OpenProgress } from '../../shared/api';
 import type { EnvironmentChoice, SphinxState } from '../../shared/sphinx';
@@ -23,6 +24,12 @@ import { ProjectSettingsDialog } from './components/ProjectSettings';
 import { ExportPdfDialog } from './components/ExportPdf';
 import { ShortcutsDialog } from './components/Shortcuts';
 import { NewProjectDialog } from './components/NewProject';
+import { CommandPalette } from './components/CommandPalette';
+import { ChecksChip, ChecksPanel, type PageFindings } from './components/Checks';
+import { checksOf, fixFinding, showFinding } from './editor/checks';
+import { checkDoc } from '../../core/checks';
+import { loadDocument } from '../../core/document';
+import { editorCommands, type PaletteCommand } from './app/palette';
 import { ValeChip } from './components/ValeChip';
 import { OpeningCard, Welcome } from './components/Welcome';
 import { AskPassHost, BranchDialog, CloneDialog, ConflictsDialog, GitChip, GitPanel } from './components/GitUi';
@@ -59,6 +66,12 @@ export function App() {
   const [sourceLine, setSourceLine] = useState<number | null>(null); // where the writer is in the source
   const [gotoLine, setGotoLine] = useState<number | null>(null);
   const [showProblems, setShowProblems] = useState(false);
+  const [showChecks, setShowChecks] = useState(false);
+  // Changes since the last commit, shown in the page: the page as committed.
+  const [changesShown, setChangesShown] = useStoredState<'on' | 'off'>('mysteditor.changes', 'off');
+  const changesOn = changesShown === 'on';
+  const [changesBase, setChangesBase] = useState<PMNode | null>(null);
+  const [changesNote, setChangesNote] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [about, setAbout] = useState(false);
   const closeAbout = useCallback(() => setAbout(false), []);
@@ -68,6 +81,9 @@ export function App() {
   const closeExportPdf = useCallback(() => setExportingPdf(false), []);
   const [shortcuts, setShortcuts] = useState(false);
   const closeShortcuts = useCallback(() => setShortcuts(false), []);
+  // The command palette's own commands, as they were when it opened.
+  const [palette, setPalette] = useState<PaletteCommand[] | null>(null);
+  const closePalette = useCallback(() => setPalette(null), []);
   const [reveal, setReveal] = useState<number | null>(null);
   const [sphinxDialog, setSphinxDialog] = useState<'details' | 'environment' | null>(null);
   const [viewAs, setViewAs] = useState<string[] | null>(null);
@@ -143,6 +159,26 @@ export function App() {
     void api.useEnvironment(choice);
   }, []);
 
+  // The page as committed, while changes are shown: again after git's news (a commit).
+  const changesPath = changesOn && mode === 'rich' ? (session?.path ?? null) : null;
+  useEffect(() => {
+    if (!changesPath) {
+      setChangesBase(null);
+      setChangesNote(null);
+      return;
+    }
+    let live = true;
+    void api.pageAtHead(changesPath).then(({ repo, text }) => {
+      if (!live) return;
+      // Not committed yet: all of it is new.
+      setChangesBase(loadDocument(text ?? '', ctx.config).doc);
+      setChangesNote(!repo ? 'This folder isn’t a git repository: everything is new.' : text === null ? 'This page isn’t committed yet: all of it is new.' : null);
+    });
+    return () => {
+      live = false;
+    };
+  }, [changesPath, gitInfo, ctx.config]);
+
   const openProblem = useCallback(
     async (path: string, line: number | null) => {
       await openPage(path);
@@ -151,6 +187,29 @@ export function App() {
     },
     [openPage, mode],
   );
+  // Every page's checks: open pages as they are now, the rest as saved.
+  const checkAll = useCallback(async (): Promise<PageFindings[]> => {
+    if (!ws) return [];
+    const out: PageFindings[] = [];
+    for (const path of ws.project.files) {
+      const text = ws.get(path) ? ws.sourceOf(path) : await api.readFile(path).catch(() => null);
+      if (text === null) continue;
+      const findings = checkDoc(loadDocument(text, configFor(ws.project, path)).doc);
+      if (findings.length) out.push({ path, title: ws.project.titles[path] ?? path, findings });
+    }
+    return out;
+  }, [ws]);
+  const openFinding = useCallback(
+    async (path: string, index: number) => {
+      if (!(await openPage(path))) return;
+      const v = viewRef.current;
+      const f = v && checksOf(v.state)[index];
+      if (v && f) showFinding(v, f);
+    },
+    [openPage],
+  );
+  // Its commands for the page, when one is open as formatted text.
+  const openPalette = useCallback(() => setPalette(editorCommands(ctx, mode === 'rich' ? viewRef.current : null)), [ctx, mode]);
 
   const closers = useMemo(() => ({ history: () => setHistory(null), renaming: () => setRenaming(null), newPage: () => setNewPage(null) }), []);
   const { deletePage, restoreVersion, renamePage, moveInContentsOf, createPage } = usePageActions(ws, dialogs, openPage, buildStates, closers);
@@ -180,11 +239,12 @@ export function App() {
       else if (cmd === 'project-settings' && ws) setProjectSettings(true);
       else if (cmd === 'export-pdf' && ws) setExportingPdf(true);
       else if (cmd === 'shortcuts') setShortcuts(true);
+      else if (cmd === 'command-palette') openPalette();
       else if (cmd === 'toggle-outline') setOutline((o) => (o === 'shown' ? 'hidden' : 'shown'));
     },
   });
 
-  useShortcuts({ emacs, openFind, toggleMode, pageOpen: !!ws?.current, ctx, viewRef });
+  useShortcuts({ emacs, openFind, toggleMode, openPalette, pageOpen: !!ws?.current, ctx, viewRef });
   useEmacs(
     emacs,
     {
@@ -270,6 +330,7 @@ export function App() {
           />
         )}
         {about && <AboutDialog sphinx={null} onClose={closeAbout} />}
+        {palette && <CommandPalette commands={palette} onClose={closePalette} />}
         {shortcuts && <ShortcutsDialog emacs={emacs} onClose={closeShortcuts} />}
         {newProject && (
           <NewProjectDialog
@@ -337,6 +398,7 @@ export function App() {
             onHistory={() => ws.current && setHistory(ws.current)}
             viewAs={viewAs}
             onViewAs={setViewAs}
+            changes={{ on: changesOn, note: changesNote, onToggle: () => setChangesShown(changesOn ? 'off' : 'on') }}
           />
         )}
         <TrustBanner state={trustState} onUse={useEnvironment} onChooseOther={() => setSphinxDialog('environment')} onDecline={() => void api.declineSphinx()} />
@@ -402,6 +464,7 @@ export function App() {
                   viewAs={viewAs}
                   build={previewBuild}
                   vale={vale.alerts}
+                  changesBase={changesBase}
                   onAcceptWord={vale.alerts ? vale.acceptWord : undefined}
                 />
               )}
@@ -410,6 +473,16 @@ export function App() {
             {showPreview && info && <Preview url={previewUrl} building={sphinx.status.kind === 'building'} line={preview.line} />}
             {outline === 'shown' && session && <Outline headings={headings} current={currentHeading} onPick={pickHeading} onClose={() => setOutline('hidden')} />}
           </div>
+        )}
+        {showChecks && view && mode === 'rich' && (
+          <ChecksPanel
+            findings={checksOf(view.state)}
+            onShow={(f) => showFinding(view, f)}
+            onFix={(f) => void fixFinding(view, ctx, f)}
+            checkAll={checkAll}
+            onOpen={(path, i) => void openFinding(path, i)}
+            onClose={() => setShowChecks(false)}
+          />
         )}
         {showProblems && anyBuilt && (
           <ProblemsPanel warnings={allWarnings} titles={ws.project.titles} current={ws.current} onOpen={(path, line) => void openProblem(path, line)} onClose={() => setShowProblems(false)} />
@@ -434,6 +507,7 @@ export function App() {
               {echo}
             </span>
           )}
+          {view && mode === 'rich' && session && <ChecksChip count={checksOf(view.state).length} onClick={() => setShowChecks(!showChecks)} />}
           {vale.result && <ValeChip result={vale.result} onNext={() => (textMode ? nextValeRemark() : view && nextAlert(view))} onShowError={(text) => void dialogs.current?.showText({ title: 'Vale', text })} />}
           <GitChip info={gitInfo} onOpen={() => (gitInfo?.operation ? setConflicts(true) : setGitPanel(true))} onBranches={() => setBranchesOpen(true)} />
           <SphinxChip
@@ -498,6 +572,7 @@ export function App() {
         />
       )}
       {about && <AboutDialog sphinx={info?.sphinxVersion ?? null} onClose={closeAbout} />}
+      {palette && <CommandPalette commands={palette} onClose={closePalette} />}
       {shortcuts && <ShortcutsDialog emacs={emacs} onClose={closeShortcuts} />}
       {newProject && (
         <NewProjectDialog

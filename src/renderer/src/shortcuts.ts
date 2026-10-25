@@ -39,6 +39,7 @@ export const SHORTCUTS: { group: string; keys: [string, string][] }[] = [
   {
     group: 'Pages',
     keys: [
+      ['Command palette: any command by name', 'Ctrl+Shift+P'],
       ['Go to a page', 'Ctrl+P'],
       ['New page', 'Ctrl+N'],
       ['Save', 'Ctrl+S'],

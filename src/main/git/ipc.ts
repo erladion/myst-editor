@@ -12,6 +12,13 @@ import { answerQuestion, checkServer, git, gitAction, gitInfo, plain, refreshGit
 
 export function registerGitIpc() {
   ipcMain.handle('git-info', () => gitInfo());
+  // A page as its last commit has it: null if it's new since (or not in a repository).
+  ipcMain.handle('page-at-head', async (_e, rel: string) => {
+    const p = requireProject();
+    const repo = await git.repoRoot(p.root);
+    if (!repo) return { repo: false, text: null };
+    return { repo: true, text: await git.fileAt(repo, 'HEAD', relative(repo, join(p.root, String(rel))).split(sep).join('/')) };
+  });
   ipcMain.handle('choose-folder', async (_e, title: string) => {
     const r = await dialog.showOpenDialog(current.win!, { title, properties: ['openDirectory', 'createDirectory'] });
     return r.canceled ? null : r.filePaths[0];

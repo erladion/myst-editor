@@ -874,7 +874,8 @@ class ImageView extends InlineView {
   protected render() {
     const img = el('img', { src: this.ctx.assetUrl(this.node.attrs.src), alt: this.node.attrs.alt, draggable: 'false' });
     img.title = this.node.attrs.title ?? (this.node.attrs.alt ? `${this.node.attrs.alt} (double-click to change)` : 'Double-click to describe this image or change it');
-    this.dom.className = 'inline-image';
+    // Added, not set: a check's mark (a decoration's class) stays.
+    this.dom.classList.add('inline-image');
     this.dom.replaceChildren(img);
   }
 

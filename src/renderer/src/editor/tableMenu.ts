@@ -7,7 +7,7 @@ import type { EditorView } from 'prosemirror-view';
 import type { TableMenuItem } from '../../../shared/api';
 import type { EditorContext } from './context';
 
-const COMMANDS: Record<string, [string, Command]> = {
+export const TABLE_COMMANDS: Record<string, [string, Command]> = {
   'row-above': ['Insert Row Above', addRowBefore],
   'row-below': ['Insert Row Below', addRowAfter],
   'column-left': ['Insert Column Left', addColumnBefore],
@@ -37,13 +37,13 @@ export function tableMenuItems(view: EditorView, ctx: EditorContext, e: MouseEve
   for (const group of GROUPS) {
     if (group.includes('merge-cells') && !spans) continue;
     if (items.length) items.push({ id: '-', label: '', enabled: false });
-    for (const id of group) items.push({ id, label: COMMANDS[id][0], enabled: COMMANDS[id][1](state) });
+    for (const id of group) items.push({ id, label: TABLE_COMMANDS[id][0], enabled: TABLE_COMMANDS[id][1](state) });
   }
   return items;
 }
 
 export function tableMenuCommand(view: EditorView, id: string) {
-  const command = COMMANDS[id]?.[1];
+  const command = TABLE_COMMANDS[id]?.[1];
   if (!command) return;
   command(view.state, view.dispatch, view);
   view.focus();

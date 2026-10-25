@@ -48,6 +48,16 @@ previews. Right-click a page in the sidebar to see its history, rename or move i
 tables of contents pointing to it follow), delete it, or move it in the contents (or
 drag it).
 
+**Changes** in the toolbar marks what changed in the page since its last commit:
+added text in green, removed text struck through where it was, new blocks with a green
+bar, and blocks whose formatting changed with an amber one.
+
+**Checks** in the status bar lists what readers and screen readers trip over: images
+without a description, headings that skip a level or a second title, links that only
+say "here", tables with an empty header row, sections with nothing in them. Each is
+marked in the page (a dotted underline), and fixed from the list where it can be;
+**Check all pages** does the whole folder.
+
 **Git:** the status bar shows the branch and your changes, and checks the server
 every few minutes ("↓2 new"). Click the changes to commit, push, see or discard them,
 and **Get latest**: your commits go on top of what's new (a rebase) and uncommitted
@@ -56,10 +66,13 @@ by place, what to keep. Click the branch (or Ctrl+Shift+B) to switch branch, or 
 one from the latest `main`; uncommitted changes can stay with the branch you leave
 and come back when you return. Pull requests stay in your git server.
 
-Help → Keyboard Shortcuts lists them all; the main ones:
+Help → Keyboard Shortcuts lists them all, and **Ctrl+Shift+P** (or M-x with Emacs keys)
+opens the command palette: any command, from the menus or for the page, by typing a
+few letters of its name. The main ones:
 
 | Shortcut | |
 |---|---|
+| Ctrl+Shift+P | Command palette |
 | Ctrl+B, Ctrl+I, Ctrl+E | Bold, italic, code |
 | Ctrl+K | Link |
 | Ctrl+Alt+1 to 4 | Title, heading, subheading, small heading |

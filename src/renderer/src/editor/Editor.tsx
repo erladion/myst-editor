@@ -11,6 +11,8 @@ import { setConditionView } from './conditions';
 import { tableMenuCommand, tableMenuItems } from './tableMenu';
 import { locatePreviews, setPreviews, type PreviewBuild } from './previews';
 import { setAccept, setVale } from './vale';
+import { setChangesBase } from './changes';
+import type { Node as PMNode } from 'prosemirror-model';
 import { locateAlerts } from '../../../core/vale';
 import type { ValeAlert } from '../../../shared/vale';
 
@@ -32,12 +34,13 @@ interface Props {
   build: PreviewBuild | null;
   // Vale's alerts for the page, and the saved text they're about.
   vale: { text: string; alerts: ValeAlert[] } | null;
+  changesBase: PMNode | null; // the page as committed, to mark what changed since; null: not shown
   // Accept a word Vale flags: into its vocabulary.
   onAcceptWord?: (word: string) => void;
 }
 
 // Remount (via `key`) when switching pages, so node views never carry state across files.
-export function Editor({ state, ctx, onChange, viewRef, onView, problems, savedText, reveal, onRevealed, viewAs, build, vale, onAcceptWord }: Props) {
+export function Editor({ state, ctx, onChange, viewRef, onView, problems, savedText, reveal, onRevealed, viewAs, build, vale, changesBase, onAcceptWord }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
@@ -121,6 +124,11 @@ export function Editor({ state, ctx, onChange, viewRef, onView, problems, savedT
     if (view) view.dispatch(setVale(view.state.tr, vale ? locateAlerts(view.state.doc, vale.text, ctx.config, vale.alerts) : []));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vale, ctx, viewRef, replaced]);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (view) view.dispatch(setChangesBase(view.state.tr, changesBase));
+  }, [changesBase, viewRef, replaced]);
 
   useEffect(() => {
     const view = viewRef.current;

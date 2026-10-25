@@ -10,6 +10,8 @@ import { splitListItem, liftListItem, sinkListItem } from 'prosemirror-schema-li
 import { dropCursor } from 'prosemirror-dropcursor';
 import { gapCursor } from 'prosemirror-gapcursor';
 import { gapsPlugin } from './gaps';
+import { checksPlugin } from './checks';
+import { changesPlugin } from './changes';
 import { schema } from '../../../core/schema';
 import { heading, insertCodeBlock, paragraph, toggleCode, toggleEm, toggleList, toggleStrike, toggleStrong } from './commands';
 import { problemsPlugin } from './problems';
@@ -157,6 +159,8 @@ export function createEditorState(doc: PMNode): EditorState {
       previewsPlugin,
       inlineHtmlPlugin(),
       findPlugin,
+      checksPlugin,
+      changesPlugin,
     ],
   });
 }

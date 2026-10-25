@@ -17,8 +17,26 @@ function useKey(onKey: (e: KeyboardEvent) => void, deps: unknown[]) {
   }, deps);
 }
 
-export function useShortcuts(opts: { emacs: boolean; openFind: () => boolean; toggleMode: () => void; pageOpen: boolean; ctx: EditorContext; viewRef: MutableRefObject<EditorView | null> }) {
-  const { emacs, openFind, toggleMode, pageOpen, ctx, viewRef } = opts;
+export function useShortcuts(opts: {
+  emacs: boolean;
+  openFind: () => boolean;
+  toggleMode: () => void;
+  openPalette: () => void;
+  pageOpen: boolean;
+  ctx: EditorContext;
+  viewRef: MutableRefObject<EditorView | null>;
+}) {
+  const { emacs, openFind, toggleMode, openPalette, pageOpen, ctx, viewRef } = opts;
+  // The command palette: Ctrl+Shift+P, or M-x with Emacs keys.
+  useKey(
+    (e) => {
+      const palette = emacs ? e.altKey && !e.ctrlKey && e.key.toLowerCase() === 'x' : (e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === 'p';
+      if (!palette) return;
+      e.preventDefault();
+      openPalette();
+    },
+    [emacs, openPalette],
+  );
   // Ctrl+F: find in the page.
   useKey(
     (e) => {
