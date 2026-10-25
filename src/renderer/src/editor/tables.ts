@@ -142,21 +142,26 @@ export function columnAlign(state: EditorState): string | null {
   return rect.table.nodeAt(rect.map.map[rect.left])?.attrs.align ?? null;
 }
 
-// A new table: a header row and two rows, three columns.
-export const insertTable: Command = (state, dispatch) => {
-  const cell = (type: typeof nodes.table_cell, text = '') => type.create(null, nodes.paragraph.create(null, text ? schema.text(text) : undefined));
-  const row = (type: typeof nodes.table_cell, texts: string[]) => nodes.table_row.create(null, texts.map((t) => cell(type, t)));
-  const table = nodes.table.create({ pretty: true, ruleSpaces: true }, [
-    row(nodes.table_header, ['Column 1', 'Column 2', 'Column 3']),
-    row(nodes.table_cell, ['', '', '']),
-    row(nodes.table_cell, ['', '', '']),
-  ]);
-  const { $from } = state.selection;
-  const at = $from.depth > 0 ? $from.after(1) : state.selection.to;
-  if (!dispatch) return true;
-  const tr = state.tr.insert(at, table);
-  // Select the first heading's placeholder, so typing replaces it.
-  const start = at + 4; // table, row, header cell, paragraph
-  dispatch(tr.setSelection(TextSelection.create(tr.doc, start, start + 'Column 1'.length)).scrollIntoView());
-  return true;
-};
+// A new table of `rows` rows (the first one its headings) and `columns` columns.
+export function tableOf(rows: number, columns: number): Command {
+  return (state, dispatch) => {
+    const cell = (type: typeof nodes.table_cell, text = '') => type.create(null, nodes.paragraph.create(null, text ? schema.text(text) : undefined));
+    const headings = nodes.table_row.create(
+      null,
+      Array.from({ length: columns }, (_, c) => cell(nodes.table_header, `Column ${c + 1}`)),
+    );
+    const body = Array.from({ length: Math.max(0, rows - 1) }, () => nodes.table_row.create(null, Array.from({ length: columns }, () => cell(nodes.table_cell))));
+    const table = nodes.table.create({ pretty: true, ruleSpaces: true }, [headings, ...body]);
+    const { $from } = state.selection;
+    const at = $from.depth > 0 ? $from.after(1) : state.selection.to;
+    if (!dispatch) return true;
+    const tr = state.tr.insert(at, table);
+    // Select the first heading's placeholder, so typing replaces it.
+    const start = at + 4; // table, row, header cell, paragraph
+    dispatch(tr.setSelection(TextSelection.create(tr.doc, start, start + 'Column 1'.length)).scrollIntoView());
+    return true;
+  };
+}
+
+// The usual new table: a header row and two rows, three columns.
+export const insertTable: Command = tableOf(3, 3);

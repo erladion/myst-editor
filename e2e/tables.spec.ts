@@ -140,14 +140,39 @@ test.describe('with span roles configured', () => {
     });
   });
 
-  test('inserts a new table', async () => {
+  test('inserts a new table of the size chosen on the grid', async () => {
     const { page } = ctx;
     await page.locator('.prose').getByText('Closing words.').click();
     await page.getByRole('button', { name: 'Insert ▾' }).click();
-    await page.getByRole('menuitem', { name: 'Table', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Table…' }).click();
+    // Pointing shows the size; a click inserts it.
+    await page.locator('.table-grid-cell[data-size="2x4"]').hover();
+    await expect(page.locator('.table-picker-size')).toHaveText('2 rows × 4 columns');
+    await expect(page.locator('.table-grid-cell.on')).toHaveCount(8);
+    await page.locator('.table-grid-cell[data-size="2x4"]').click();
     await page.keyboard.type('Name');
     await saved(page);
-    expect(file()).toContain('Closing words.\n\n| Name | Column 2 | Column 3 |\n| ---- | -------- | -------- |\n|      |          |          |\n|      |          |          |\n');
+    expect(file()).toContain('Closing words.\n\n| Name | Column 2 | Column 3 | Column 4 |\n| ---- | -------- | -------- | -------- |\n|      |          |          |          |\n');
+  });
+
+  test('Ctrl+Shift+T opens the grid; the arrow keys choose, Enter inserts', async () => {
+    const { page } = ctx;
+    await page.locator('.prose').getByText('Closing words.').click();
+    await page.keyboard.press('Control+Shift+T');
+    const grid = page.getByRole('group', { name: /^Table size/ });
+    await expect(grid).toBeFocused();
+    await expect(grid).toHaveAccessibleName('Table size: 3 rows × 3 columns');
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('ArrowUp');
+    await expect(grid).toHaveAccessibleName('Table size: 2 rows × 2 columns');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('Key');
+    await saved(page);
+    expect(file()).toContain('Closing words.\n\n| Key | Column 2 |\n| --- | -------- |\n|     |          |\n');
+    // Escape leaves without a table.
+    await page.keyboard.press('Control+Shift+T');
+    await page.keyboard.press('Escape');
+    await expect(grid).toHaveCount(0);
   });
 });
 

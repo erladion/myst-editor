@@ -56,6 +56,8 @@ export function useShortcuts(opts: { emacs: boolean; openFind: () => boolean; to
           : {
               k: () => void insertReference(ctx, run, view.state),
               g: () => void insertFigure(ctx, run),
+              // The Insert menu's grid, for the table's size.
+              t: () => window.dispatchEvent(new CustomEvent('mysteditor-table-picker')),
             }[key];
       if (!action) return;
       e.preventDefault();

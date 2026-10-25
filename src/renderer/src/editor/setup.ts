@@ -16,7 +16,7 @@ import { problemsPlugin } from './problems';
 import { valePlugin } from './vale';
 import { conditionsPlugin } from './conditions';
 import { previewsPlugin } from './previews';
-import { insertTable, tablePlugins } from './tables';
+import { tablePlugins } from './tables';
 
 const { nodes, marks } = schema;
 
@@ -76,7 +76,6 @@ const keys = keymap({
   'Mod-Shift-8': toggleList(nodes.bullet_list),
   'Mod-Shift-l': toggleList(nodes.bullet_list), // as in Word
   'Mod-Shift-7': toggleList(nodes.ordered_list),
-  'Mod-Shift-t': insertTable,
   'Mod-Shift-e': insertCodeBlock(),
 });
 

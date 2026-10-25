@@ -3432,3 +3432,47 @@ kbd {
 .cover-places-list select {
   min-width: 0;
 }
+
+/* Insert → Table: the grid for its size. */
+.table-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 10px 10px;
+}
+
+.table-grid {
+  display: grid;
+  grid-template-columns: repeat(10, 18px);
+  gap: 3px;
+  padding: 2px;
+  border-radius: 4px;
+  outline: none;
+}
+
+.table-grid:focus-visible {
+  outline: 2px solid var(--accent);
+}
+
+.table-grid-cell {
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--bg);
+  cursor: pointer;
+}
+
+.table-grid-cell.heading {
+  border-bottom-width: 2px;
+}
+
+.table-grid-cell.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.table-picker-size {
+  font-size: 13px;
+  font-weight: 600;
+}

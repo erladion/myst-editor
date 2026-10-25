@@ -15,7 +15,7 @@ import { canConditionRows, conditionColor, conditionKind, makeConditional, remov
 import type { ConditionsDef } from '../../../core/editor-config';
 import {
   addColumnAfter, addColumnBefore, addRowAfter, addRowBefore, alignColumn, columnAlign, deleteColumn, deleteRow, deleteTable,
-  insertTable, isInTable, mergeCells, splitCell,
+  insertTable, isInTable, mergeCells, splitCell, tableOf,
 } from '../editor/tables';
 
 // The selected table rows' condition: edit the one they're in, or put them in one.
@@ -328,8 +328,78 @@ const VERSION_NOTES = [
 const FILE_HELP = 'Relative to this page.';
 const LIST_TABLE = '* - Name\n  - Value\n* - first\n  - 1';
 
+// Choosing a new table's size, as in Word: point at the grid (or use the arrow keys),
+// click or Enter. The first row is the table's headings.
+const GRID = { rows: 8, columns: 10 };
+function TablePicker({ onPick, onBack }: { onPick: (rows: number, columns: number) => void; onBack: () => void }) {
+  const [size, setSize] = useState({ rows: 3, columns: 3 });
+  const grid = useRef<HTMLDivElement>(null);
+  // Focused, and again a moment later: with the cursor in a table, the editor takes
+  // the focus back after the key that opened the grid.
+  useEffect(() => {
+    grid.current?.focus();
+    const again = setTimeout(() => grid.current?.focus(), 50);
+    return () => clearTimeout(again);
+  }, []);
+  const onKey = (e: React.KeyboardEvent) => {
+    const by: Record<string, [number, number]> = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
+    if (by[e.key]) {
+      e.preventDefault();
+      const [dr, dc] = by[e.key];
+      setSize((s) => ({ rows: Math.min(GRID.rows, Math.max(1, s.rows + dr)), columns: Math.min(GRID.columns, Math.max(1, s.columns + dc)) }));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      onPick(size.rows, size.columns);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      onBack();
+    }
+  };
+  const label = `${size.rows} ${size.rows === 1 ? 'row' : 'rows'} × ${size.columns} ${size.columns === 1 ? 'column' : 'columns'}`;
+  return (
+    <div className="table-picker">
+      <div className="menu-heading">Insert a table</div>
+      <div ref={grid} className="table-grid" role="group" aria-label={`Table size: ${label}`} aria-describedby="table-picker-help" tabIndex={0} onKeyDown={onKey}>
+        {Array.from({ length: GRID.rows }, (_, r) =>
+          Array.from({ length: GRID.columns }, (_, c) => (
+            <span
+              key={`${r}-${c}`}
+              className={`table-grid-cell${r < size.rows && c < size.columns ? ' on' : ''}${r === 0 ? ' heading' : ''}`}
+              data-size={`${r + 1}x${c + 1}`}
+              onMouseEnter={() => setSize({ rows: r + 1, columns: c + 1 })}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => onPick(r + 1, c + 1)}
+            />
+          )),
+        )}
+      </div>
+      <div className="table-picker-size" aria-live="polite">
+        {label}
+      </div>
+      <small id="table-picker-help" className="muted">
+        The first row is the headings. Arrow keys and Enter work too.
+      </small>
+    </div>
+  );
+}
+
 function InsertMenu({ disabled, ctx, view, run }: { disabled: boolean; ctx: EditorContext; view: EditorView | null; run: (cmd: Command) => void }) {
   const [open, setOpen] = useState(false);
+  // The grid for a table's size, instead of the menu (Ctrl+Shift+T opens it there).
+  const [picking, setPicking] = useState(false);
+  useEffect(() => {
+    const onPicker = () => {
+      if (disabled) return;
+      setPicking(true);
+      setOpen(true);
+    };
+    window.addEventListener('mysteditor-table-picker', onPicker);
+    return () => window.removeEventListener('mysteditor-table-picker', onPicker);
+  }, [disabled]);
+  useEffect(() => {
+    if (!open) setPicking(false);
+  }, [open]);
   const projectDirectives = Object.entries(ctx.config.editor.directives).filter(([, d]) => d.insert);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -369,6 +439,19 @@ function InsertMenu({ disabled, ctx, view, run }: { disabled: boolean; ctx: Edit
       </button>
       {open && (
         <div className="menu-items insert-menu" role="menu" ref={items}>
+          {picking ? (
+            <TablePicker
+              onPick={(rows, columns) => {
+                setOpen(false);
+                run(tableOf(rows, columns));
+              }}
+              onBack={() => {
+                setOpen(false);
+                view?.focus();
+              }}
+            />
+          ) : (
+          <>
           <div className="menu-column">
             <div className="menu-heading">Callouts</div>
             {CALLOUT_CHOICES.map((n) =>
@@ -381,7 +464,16 @@ function InsertMenu({ disabled, ctx, view, run }: { disabled: boolean; ctx: Edit
             <div className="menu-heading">Blocks</div>
             {item('Image…', () => insertImage(ctx, run))}
             {item('Figure…', () => insertFigure(ctx, run), keysFor('Figure'))}
-            {item('Table', () => run(insertTable), keysFor('Table'))}
+            <button
+              type="button"
+              role="menuitem"
+              aria-label="Table…"
+              aria-keyshortcuts={keysFor('Table')}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => setPicking(true)}
+            >
+              Table…<span className="menu-key">{keysFor('Table')}</span>
+            </button>
             {item('Table with caption', () => run(insertCaptionedTable(ctx)))}
             {item('Code block', () => run(insertCodeBlock()), keysFor('Code block'))}
             {item('Equation', () => run(insertMath(ctx)))}
@@ -412,6 +504,8 @@ function InsertMenu({ disabled, ctx, view, run }: { disabled: boolean; ctx: Edit
             {item('Cross-reference…', () => insertReference(ctx, run, view?.state), keysFor('Cross-reference'))}
             {view && item('Link target…', () => insertTarget(ctx, view.state, run))}
           </div>
+          </>
+          )}
         </div>
       )}
     </div>

@@ -78,7 +78,8 @@ Help → Keyboard Shortcuts lists them all; the main ones:
 | Ctrl+Shift+F | Search all pages |
 | Ctrl+Shift+B | Switch branch |
 
-Right-click in a table to add or delete rows and columns (or merge and split cells).
+Insert → Table (Ctrl+Shift+T) shows a grid to choose its size, as in Word. Right-click in
+a table to add or delete rows and columns (or merge and split cells).
 A figure gets a name when it's inserted (from its caption, or the one you give), shown
 on its card as `#name`: Insert → Cross-reference refers to it by that name (the link
 shows its caption; with `numfig = True` in `conf.py`, "as Figure 2" numbers it). An
