@@ -41,19 +41,22 @@ export function useShortcuts(opts: { emacs: boolean; openFind: () => boolean; to
   useKey(
     (e) => {
       const view = viewRef.current;
-      if (!view || !view.hasFocus() || !(e.ctrlKey || e.metaKey) || e.altKey) return;
+      if (!view || !view.hasFocus() || !(e.ctrlKey || e.metaKey)) return;
       const run = (cmd: Command) => {
         cmd(view.state, view.dispatch, view);
         view.focus();
       };
       const key = e.key.toLowerCase();
-      const action = !e.shiftKey
-        ? { k: () => void editLink(ctx, view.state, run) }[key]
-        : {
-            n: () => run(insertDirective(ctx, 'note')),
-            k: () => void insertReference(ctx, run),
-            g: () => void insertFigure(ctx, run),
-          }[key];
+      const action = e.altKey
+        ? !e.shiftKey && key === 'n'
+          ? () => run(insertDirective(ctx, 'note'))
+          : undefined
+        : !e.shiftKey
+          ? { k: () => void editLink(ctx, view.state, run) }[key]
+          : {
+              k: () => void insertReference(ctx, run, view.state),
+              g: () => void insertFigure(ctx, run),
+            }[key];
       if (!action) return;
       e.preventDefault();
       action();

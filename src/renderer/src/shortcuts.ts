@@ -15,12 +15,12 @@ export const SHORTCUTS: { group: string; keys: [string, string][] }[] = [
   {
     group: 'Paragraphs',
     keys: [
-      ['Normal text', 'Ctrl+Alt+0'],
+      ['Normal text', 'Ctrl+Shift+N, Ctrl+Alt+0'],
       ['Title', 'Ctrl+Alt+1'],
       ['Heading', 'Ctrl+Alt+2'],
       ['Subheading', 'Ctrl+Alt+3'],
       ['Small heading', 'Ctrl+Alt+4'],
-      ['Bulleted list', 'Ctrl+Shift+8'],
+      ['Bulleted list', 'Ctrl+Shift+L, Ctrl+Shift+8'],
       ['Numbered list', 'Ctrl+Shift+7'],
       ['Indent, outdent a list item', 'Tab, Shift+Tab'],
       ['Line break', 'Shift+Enter'],
@@ -29,7 +29,7 @@ export const SHORTCUTS: { group: string; keys: [string, string][] }[] = [
   {
     group: 'Insert',
     keys: [
-      ['Callout (note)', 'Ctrl+Shift+N'],
+      ['Callout (note)', 'Ctrl+Alt+N'],
       ['Cross-reference', 'Ctrl+Shift+K'],
       ['Figure', 'Ctrl+Shift+G'],
       ['Table', 'Ctrl+Shift+T'],
@@ -53,5 +53,6 @@ export const SHORTCUTS: { group: string; keys: [string, string][] }[] = [
 ];
 
 const ALL = new Map(SHORTCUTS.flatMap((g) => g.keys));
-// The keys for a name in the list above ("Bold" → "Ctrl+B").
-export const keysFor = (name: string) => ALL.get(name) ?? '';
+// The keys for a name in the list above ("Bold" → "Ctrl+B"): the first, where there
+// are two.
+export const keysFor = (name: string) => (ALL.get(name) ?? '').split(', ')[0];

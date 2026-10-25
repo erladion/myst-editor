@@ -146,14 +146,23 @@ test('shortcuts for headings, lists and inserting, all listed in Help', async ()
   await page.keyboard.type('Before you start');
   await page.keyboard.press('Control+Alt+2');
   await page.keyboard.press('Enter');
-  await page.keyboard.press('Control+Shift+8');
+  // A heading made normal text again, as in Word.
+  await page.keyboard.type('Just text');
+  await page.keyboard.press('Control+Alt+3');
+  await page.keyboard.press('Control+Shift+N');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Control+Shift+L');
   await page.keyboard.type('First');
   await page.keyboard.press('Enter');
-  await page.keyboard.press('Enter'); // out of the list
-  await page.keyboard.press('Control+Shift+N');
+  await page.keyboard.press('Enter'); // out of the list, and a new one (another marker, so it stays apart)
+  await page.keyboard.press('Control+Shift+8');
+  await page.keyboard.type('Second');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Control+Alt+N');
   await page.keyboard.type('Noted.');
   await waitForSave(page);
-  expect(file('guide/install.md')).toBe(original('guide/install.md') + '\n## Before you start\n\n- First\n\n:::{note}\nNoted.\n:::\n');
+  expect(file('guide/install.md')).toBe(original('guide/install.md') + '\n## Before you start\n\nJust text\n\n- First\n\n* Second\n\n:::{note}\nNoted.\n:::\n');
   // Those with a dialog open it.
   await page.keyboard.press('Control+Shift+K');
   await expect(page.getByRole('dialog', { name: 'Insert cross-reference' })).toBeVisible();
@@ -164,8 +173,46 @@ test('shortcuts for headings, lists and inserting, all listed in Help', async ()
   await page.keyboard.press('Escape');
   await app.evaluate(({ Menu }) => Menu.getApplicationMenu()!.getMenuItemById('shortcuts')!.click());
   const help = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
-  await expect(help.getByRole('row', { name: 'Callout (note) Ctrl+Shift+N' })).toBeVisible();
+  await expect(help.getByRole('row', { name: 'Callout (note) Ctrl+Alt+N' })).toBeVisible();
+  await expect(help.getByRole('row', { name: 'Normal text Ctrl+Shift+N, Ctrl+Alt+0' })).toBeVisible();
   await expect(help.getByRole('row', { name: 'Heading Ctrl+Alt+2' })).toBeVisible();
+});
+
+test('referring to an image adds a link target before it, once', async () => {
+  const { page } = ctx;
+  await openPage(page, 'Installing Widget');
+  await clickEndOf(page, 'Settings live in');
+  await page.keyboard.press('Enter');
+  await page.getByRole('button', { name: 'Insert ▾' }).click();
+  await page.getByRole('menuitem', { name: 'Image…' }).click();
+  const image = page.getByRole('dialog', { name: 'Insert image' });
+  await image.getByLabel('Image file').fill('images/settings.png');
+  await image.getByLabel('Description').fill('The settings dialog');
+  await image.getByRole('button', { name: 'Insert' }).click();
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('See ');
+  const refer = async () => {
+    await page.keyboard.press('Control+Shift+K');
+    const dialog = page.getByRole('dialog', { name: 'Insert cross-reference' });
+    await dialog.getByLabel('Refers to').selectOption('image');
+    return dialog;
+  };
+  let dialog = await refer();
+  const suggestion = (label: string) => dialog.locator('datalist option[value="img-the-settings-dialog"]', { hasText: label });
+  await expect(suggestion('The settings dialog (adds a link target)')).toHaveCount(1);
+  await dialog.getByLabel('Target').fill('img-the-settings-dialog');
+  await dialog.getByRole('button', { name: 'Insert' }).click();
+  await page.keyboard.type(' and ');
+  dialog = await refer();
+  await expect(dialog.locator('datalist option[value="img-the-settings-dialog"]')).toHaveText('The settings dialog'); // it has a target now
+  await dialog.getByLabel('Target').fill('img-the-settings-dialog');
+  await dialog.getByLabel('Link text').fill('the dialog');
+  await dialog.getByRole('button', { name: 'Insert' }).click();
+  await waitForSave(page);
+  expect(file('guide/install.md')).toBe(
+    original('guide/install.md') +
+      '\n(img-the-settings-dialog)=\n![The settings dialog](images/settings.png)\n\nSee {ref}`The settings dialog <img-the-settings-dialog>` and {ref}`the dialog <img-the-settings-dialog>`\n',
+  );
 });
 
 test('inserting an image, and a link target for a heading', async () => {

@@ -241,7 +241,44 @@ export async function insertTarget(ctx: EditorContext, state: EditorState, run: 
   });
 }
 
-export async function insertReference(ctx: EditorContext, run: (cmd: Command) => void) {
+// The images on a page, for referring to: the link target before each (its
+// paragraph's), or the one that would be added.
+interface PageImage {
+  block: number; // where its paragraph starts: a new target goes there
+  label: string | null; // the target already before it
+  proposed: string; // the label a new target would have
+  description: string;
+}
+
+function pageImages(ctx: EditorContext, state: EditorState): PageImage[] {
+  const taken = new Set(ctx.suggest('ref').map((s) => s.value));
+  state.doc.descendants((node) => {
+    if (node.type === nodes.target) taken.add(node.attrs.label);
+  });
+  const images: PageImage[] = [];
+  state.doc.descendants((node, pos) => {
+    if (node.type !== nodes.image) return;
+    const $pos = state.doc.resolve(pos);
+    const depth = $pos.depth; // the paragraph's
+    const index = $pos.index(depth - 1);
+    const before = index > 0 ? $pos.node(depth - 1).child(index - 1) : null;
+    const label = before?.type === nodes.target ? (before.attrs.label as string) : null;
+    const file = String(node.attrs.src).split('/').pop()!.replace(/\.\w+$/, '');
+    const description = String(node.attrs.alt || file);
+    let proposed = '';
+    if (!label) {
+      const base = `img-${targetLabel(description).slice(0, 40).replace(/-+$/, '') || 'image'}`;
+      proposed = base;
+      for (let n = 2; taken.has(proposed); n++) proposed = `${base}-${n}`;
+      taken.add(proposed);
+    }
+    images.push({ block: $pos.before(depth), label, proposed, description });
+  });
+  return images;
+}
+
+export async function insertReference(ctx: EditorContext, run: (cmd: Command) => void, state?: EditorState) {
+  const images = state ? pageImages(ctx, state) : [];
   const values = await ctx.ui.editFields({
     title: 'Insert cross-reference',
     submit: 'Insert',
@@ -252,6 +289,7 @@ export async function insertReference(ctx: EditorContext, run: (cmd: Command) =>
         value: 'ref',
         choices: [
           { value: 'ref', label: 'A section, figure or table (by its name)' },
+          ...(images.length ? [{ value: 'image', label: 'An image on this page' }] : []),
           { value: 'doc', label: 'A page' },
           { value: 'term', label: 'A glossary term' },
           { value: 'numref', label: ctx.config.numfig ? 'A figure or table, as “Figure 2”' : 'A figure or table, as “Figure 2” (needs numfig = True in conf.py)' },
@@ -262,16 +300,26 @@ export async function insertReference(ctx: EditorContext, run: (cmd: Command) =>
         label: 'Target',
         value: '',
         placeholder: 'label-name or path/to/page',
-        help: 'A figure or table has a name when it’s given one (the Name of a figure, or # on its card).',
-        suggestions: (values) => ctx.suggest(values.name),
+        help: 'A figure or table has a name when it’s given one (the Name of a figure, or # on its card). An image gets a link target before it, if it has none.',
+        suggestions: (values) =>
+          values.name === 'image'
+            ? images.map((img) => ({ value: img.label ?? img.proposed, label: img.label ? img.description : `${img.description} (adds a link target)` }))
+            : ctx.suggest(values.name),
       },
-      { key: 'title', label: 'Link text', value: '', help: 'Optional; Sphinx uses the target’s title otherwise' },
+      { key: 'title', label: 'Link text', value: '', help: 'Optional, but for an image: Sphinx uses the target’s title or caption otherwise, and an image has none.' },
     ],
   });
   if (!values?.target) return;
-  const value = values.title ? `${values.title} <${values.target}>` : values.target;
-  run((state, dispatch) => {
-    dispatch?.(state.tr.replaceSelectionWith(nodes.role.create({ name: values.name, value }), false).scrollIntoView());
+  const image = values.name === 'image' ? images.find((img) => (img.label ?? img.proposed) === values.target.trim()) : undefined;
+  // An image has no caption for Sphinx to show: the link text is needed.
+  const title = values.title.trim() || (values.name === 'image' ? (image?.description ?? 'this image') : '');
+  const target = values.target.trim();
+  const role = values.name === 'image' ? 'ref' : values.name;
+  run((s, dispatch) => {
+    const tr = s.tr;
+    if (image && !image.label) tr.insert(image.block, nodes.target.create({ label: target }));
+    tr.replaceSelectionWith(nodes.role.create({ name: role, value: title ? `${title} <${target}>` : target }), false);
+    dispatch?.(tr.scrollIntoView());
     return true;
   });
 }

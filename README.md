@@ -62,9 +62,10 @@ Help → Keyboard Shortcuts lists them all; the main ones:
 |---|---|
 | Ctrl+B, Ctrl+I, Ctrl+E | Bold, italic, code |
 | Ctrl+K | Link |
-| Ctrl+Alt+0 to 4 | Normal text, title, heading, subheading, small heading |
-| Ctrl+Shift+8, Ctrl+Shift+7 | Bulleted, numbered list |
-| Ctrl+Shift+N | Callout (a note) |
+| Ctrl+Alt+1 to 4 | Title, heading, subheading, small heading |
+| Ctrl+Shift+N (or Ctrl+Alt+0) | Normal text |
+| Ctrl+Shift+L (or Ctrl+Shift+8), Ctrl+Shift+7 | Bulleted, numbered list |
+| Ctrl+Alt+N | Callout (a note) |
 | Ctrl+Shift+K | Cross-reference |
 | Ctrl+Shift+G | Figure |
 | Ctrl+Shift+T | Table |
@@ -79,7 +80,11 @@ Help → Keyboard Shortcuts lists them all; the main ones:
 
 Right-click in a table to add or delete rows and columns (or merge and split cells).
 A figure gets a name when it's inserted (from its caption, or the one you give), shown
-on its card as `#name`: Insert → Cross-reference refers to it by that name.
+on its card as `#name`: Insert → Cross-reference refers to it by that name (the link
+shows its caption; with `numfig = True` in `conf.py`, "as Figure 2" numbers it). An
+image can be referred to too: choose "An image on this page", and a link target is put
+before the image if it has none (an image has no caption, so the link has its own
+text).
 
 **PDF:** File → Export PDF… builds the whole project as one PDF: a cover, one table
 of contents with page numbers, then the pages in the order of the contents (each

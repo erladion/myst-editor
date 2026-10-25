@@ -44,12 +44,17 @@ class Writer {
   container(node: PMNode, entry: ContainerEntry | undefined, tight = false): string {
     let out = '';
     let prev: PMNode | null = null;
+    let prevText = '';
     node.forEach((child) => {
-      const text = this.block(child);
+      let text = this.block(child);
       if (text === '' && child.type.name === 'paragraph') return; // empty paragraphs vanish anyway
+      // Two lists of a kind, one after the other, with the same marker would be read
+      // back as one: the second gets the other marker (- and *, 1. and 1)).
+      if (prev && prev.type === child.type && child.type.name.endsWith('_list') && listMarker(prevText) === listMarker(text)) text = this.list(child, true);
       if (prev) out += this.gap(prev, child, tight);
       out += text;
       prev = child;
+      prevText = text;
     });
     if (!entry) return out;
     return entry.lead + out + (node.childCount ? entry.trail : '');
@@ -199,25 +204,30 @@ class Writer {
     return out.join('\n');
   }
 
-  private list(node: PMNode): string {
+  // `swap`: with the other marker than the list's own (see container).
+  private list(node: PMNode, swap = false): string {
     const ordered = node.type.name === 'ordered_list';
     const tight: boolean = node.attrs.tight;
+    const own = (node.firstChild?.attrs.marker as string | null) ?? (ordered ? `1${node.attrs.delim}` : node.attrs.bullet);
+    const bullet = swap && !ordered ? (own.trim() === '-' ? '*' : '-') : null;
+    const delim = swap && ordered ? (own.trim().endsWith(')') ? '.' : ')') : node.attrs.delim;
     let out = '';
     let number = ordered ? node.attrs.start - 1 : 0;
     node.forEach((item, _off, i) => {
       if (i > 0) out += this.originalGap(node.child(i - 1), item) ?? (tight ? '\n' : '\n\n');
-      let marker: string = item.attrs.marker ?? (ordered ? '' : node.attrs.bullet);
+      let marker: string = bullet ?? item.attrs.marker ?? (ordered ? '' : node.attrs.bullet);
       if (ordered && node.attrs.repeat) {
         // "1. 1. 1." style: every item uses the same number.
-        marker = item.attrs.marker ?? `${node.attrs.start}${node.attrs.delim}`;
+        marker = swap ? `${node.attrs.start}${delim}` : (item.attrs.marker ?? `${node.attrs.start}${delim}`);
       } else if (ordered) {
         const n = parseInt(marker, 10);
         number = Number.isNaN(n) || n <= number ? number + 1 : n;
-        if (Number.isNaN(n) || n !== number) marker = `${number}${node.attrs.delim}`;
+        if (Number.isNaN(n) || n !== number || swap) marker = `${number}${delim}`;
       }
       const original = this.unchanged(item);
       if (original !== undefined) {
-        out += original;
+        // As written, but for its marker when that's swapped (the same length).
+        out += swap ? original.replace(/^(\s*)([-*+]|\d+[.)])/, `$1${marker}`) : original;
         return;
       }
       const body = this.container(item, this.containerEntry(item), tight);
@@ -228,6 +238,12 @@ class Writer {
     });
     return out;
   }
+}
+
+// A list's marker as written: its first item's bullet, or its numbers' delimiter.
+function listMarker(text: string): string {
+  const m = /^\s*(?:([-*+])|\d+([.)]))/.exec(text);
+  return m ? (m[1] ?? m[2]) : '';
 }
 
 function prefixLines(text: string, prefix: string, emptyPrefix: string): string {

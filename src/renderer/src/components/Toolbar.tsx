@@ -143,7 +143,7 @@ export function Toolbar({ view, ctx, onMarkdown, previewAvailable, previewOpen, 
       <select
         className="tb-select"
         aria-label="Text style"
-        title="Text style (Ctrl+Alt+0 to 4)"
+        title="Text style (Ctrl+Alt+1 to 4; normal text Ctrl+Shift+N)"
         disabled={disabled}
         value={['paragraph', 'heading-1', 'heading-2', 'heading-3', 'heading-4'].includes(kind) ? kind : ''}
         onChange={(e) => {
@@ -187,8 +187,8 @@ export function Toolbar({ view, ctx, onMarkdown, previewAvailable, previewOpen, 
         </svg>
       </button>
       <span className="tb-sep" />
-      <Btn label="•" title="Bulleted list (Ctrl+Shift+8)" cmd={toggleList(schema.nodes.bullet_list)} active={list === 'bullet_list'} />
-      <Btn label="1." title="Numbered list (Ctrl+Shift+7)" cmd={toggleList(schema.nodes.ordered_list)} active={list === 'ordered_list'} />
+      <Btn label="•" title={`Bulleted list (${keysFor('Bulleted list')})`} cmd={toggleList(schema.nodes.bullet_list)} active={list === 'bullet_list'} />
+      <Btn label="1." title={`Numbered list (${keysFor('Numbered list')})`} cmd={toggleList(schema.nodes.ordered_list)} active={list === 'ordered_list'} />
       <Btn label="❝" title="Quote" cmd={toggleQuote} />
       <span className="tb-sep" />
       <InsertMenu disabled={disabled} ctx={ctx} view={view} run={run} />
@@ -409,7 +409,7 @@ function InsertMenu({ disabled, ctx, view, run }: { disabled: boolean; ctx: Edit
             {projectDirectives.length > 0 && <div className="menu-heading">This project</div>}
             {projectDirectives.map(([name, def]) => item(def.label ?? name, () => run(insertProjectDirective(ctx, name, def))))}
             <div className="menu-heading">Inline</div>
-            {item('Cross-reference…', () => insertReference(ctx, run), keysFor('Cross-reference'))}
+            {item('Cross-reference…', () => insertReference(ctx, run, view?.state), keysFor('Cross-reference'))}
             {view && item('Link target…', () => insertTarget(ctx, view.state, run))}
           </div>
         </div>

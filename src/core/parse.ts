@@ -216,6 +216,11 @@ class Context {
       case 'paragraph':
         return this.withSid('paragraph', {}, inline(md.children), src);
 
+      // An image on a line of its own (MyST makes it a block): a paragraph with the
+      // image in it, as Insert → Image makes one.
+      case 'image':
+        return this.withSid('paragraph', {}, inline([md]), src);
+
       case 'heading': {
         const setext = !/^\s{0,3}#/.test(src);
         return this.withSid('heading', { level: md.depth, setext }, inline(md.children), src);

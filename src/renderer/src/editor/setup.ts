@@ -72,7 +72,9 @@ const keys = keymap({
   'Mod-Alt-2': heading(2),
   'Mod-Alt-3': heading(3),
   'Mod-Alt-4': heading(4),
+  'Mod-Shift-n': paragraph, // as in Word
   'Mod-Shift-8': toggleList(nodes.bullet_list),
+  'Mod-Shift-l': toggleList(nodes.bullet_list), // as in Word
   'Mod-Shift-7': toggleList(nodes.ordered_list),
   'Mod-Shift-t': insertTable,
   'Mod-Shift-e': insertCodeBlock(),
