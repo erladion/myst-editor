@@ -11,6 +11,7 @@ import icon from '../../build/icon.png?asset';
 import { checkOnFocus } from './git/service.js';
 import { current, toWindow } from './state.js';
 import type { Settings } from './settings.js';
+import type { TableMenuItem } from '../shared/api.js';
 
 // The window's colour before the page has drawn, matching the theme (no white flash).
 const windowBackground = () => (nativeTheme.shouldUseDarkColors ? '#17191d' : '#ffffff');
@@ -49,8 +50,18 @@ export function followTheme() {
 // The right-click menu for a place in the page: on a misspelled word, the spellchecker's
 // suggestions; editing commands where text can be typed, Copy where text is selected.
 // Null where there's nothing to offer.
+// The table's part of the next context menu, from the page (see tableMenu.ts).
+let tableItems: { items: TableMenuItem[]; at: number } | null = null;
+ipcMain.on('table-context', (e, items: TableMenuItem[]) => {
+  tableItems = { items: Array.isArray(items) ? items.slice(0, 20) : [], at: Date.now() };
+  e.returnValue = true;
+});
+
 export function contextMenu(params: Electron.ContextMenuParams, page: Electron.WebContents): Menu | null {
   const { isEditable, editFlags, selectionText, misspelledWord, dictionarySuggestions } = params;
+  // A right-click in a table: its rows and columns first (the page told them just now).
+  const table = tableItems && Date.now() - tableItems.at < 2000 ? tableItems.items : [];
+  tableItems = null;
   // Each acts on the app's page itself (a role would act on whichever window has focus).
   const item = (id: string, label: string, accelerator: string, enabled: boolean, act: () => void): MenuItemConstructorOptions => ({
     id,
@@ -60,7 +71,10 @@ export function contextMenu(params: Electron.ContextMenuParams, page: Electron.W
     enabled,
     click: act,
   });
-  const items: MenuItemConstructorOptions[] = [];
+  const items: MenuItemConstructorOptions[] = table.map((t) =>
+    t.id === '-' ? { type: 'separator' } : { id: `table-${t.id}`, label: t.label, enabled: t.enabled, click: () => page.send('table-menu', t.id) },
+  );
+  if (items.length) items.push({ type: 'separator' });
   if (isEditable && misspelledWord) {
     for (const [i, word] of dictionarySuggestions.slice(0, 6).entries()) {
       items.push({ id: `spelling-${i}`, label: word, click: () => page.replaceMisspelling(word) });

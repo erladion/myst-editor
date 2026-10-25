@@ -9,13 +9,14 @@ import { InputRule, inputRules, textblockTypeInputRule, wrappingInputRule, undoI
 import { splitListItem, liftListItem, sinkListItem } from 'prosemirror-schema-list';
 import { dropCursor } from 'prosemirror-dropcursor';
 import { gapCursor } from 'prosemirror-gapcursor';
+import { gapsPlugin } from './gaps';
 import { schema } from '../../../core/schema';
-import { heading, paragraph, toggleCode, toggleEm, toggleStrike, toggleStrong } from './commands';
+import { heading, insertCodeBlock, paragraph, toggleCode, toggleEm, toggleList, toggleStrike, toggleStrong } from './commands';
 import { problemsPlugin } from './problems';
 import { valePlugin } from './vale';
 import { conditionsPlugin } from './conditions';
 import { previewsPlugin } from './previews';
-import { tablePlugins } from './tables';
+import { insertTable, tablePlugins } from './tables';
 
 const { nodes, marks } = schema;
 
@@ -71,6 +72,10 @@ const keys = keymap({
   'Mod-Alt-2': heading(2),
   'Mod-Alt-3': heading(3),
   'Mod-Alt-4': heading(4),
+  'Mod-Shift-8': toggleList(nodes.bullet_list),
+  'Mod-Shift-7': toggleList(nodes.ordered_list),
+  'Mod-Shift-t': insertTable,
+  'Mod-Shift-e': insertCodeBlock(),
 });
 
 // Marks the math block containing the cursor, so its source is shown for editing.
@@ -140,6 +145,7 @@ export function createEditorState(doc: PMNode): EditorState {
       keymap(baseKeymap),
       history(),
       dropCursor(),
+      gapsPlugin,
       gapCursor(),
       mathEditing,
       placeholder,

@@ -3327,3 +3327,63 @@ button.secondary {
   flex: 1;
   overflow-wrap: anywhere;
 }
+
+/* A figure's or table's name, on its card: what cross-references use. */
+.nv-button.directive-name {
+  font: 11.5px/1.4 var(--font-mono);
+  color: var(--fg-muted);
+}
+
+/* Help → Keyboard Shortcuts */
+.modal.shortcuts {
+  width: min(760px, 94vw);
+}
+
+.shortcut-groups {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px 28px;
+}
+
+.shortcut-groups h3 {
+  margin: 8px 0 4px;
+  font-size: 13px;
+  color: var(--fg-muted);
+}
+
+.shortcut-groups table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.shortcut-groups td {
+  padding: 3px 0;
+}
+
+.shortcut-groups td:last-child {
+  text-align: right;
+  white-space: nowrap;
+}
+
+kbd {
+  font: 12px var(--font-mono);
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--bg-soft);
+}
+
+/* A shortcut beside an Insert menu item. */
+.menu-key {
+  margin-left: auto;
+  padding-left: 16px;
+  font-size: 11.5px;
+  color: var(--fg-muted);
+}
+
+.insert-menu button {
+  display: flex;
+  align-items: baseline;
+}

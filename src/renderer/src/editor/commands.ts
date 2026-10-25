@@ -164,10 +164,13 @@ export async function insertFigure(ctx: EditorContext, run: (cmd: Command) => vo
       { key: 'src', label: 'Image file', value: '', placeholder: 'images/diagram.png', help: IMAGE_HELP, browse: () => ctx.chooseImage() },
       { key: 'alt', label: 'Description', value: '', help: 'Read aloud by screen readers' },
       { key: 'caption', label: 'Caption', value: '' },
+      { key: 'name', label: 'Name', value: '', placeholder: 'fig-architecture', help: 'To refer to it from other places (Insert → Cross-reference). Left empty: made from the caption.' },
     ],
   });
   if (!values?.src) return;
   const options: [string, string][] = values.alt ? [['alt', values.alt]] : [];
+  const name = values.name.trim() || (values.caption.trim() ? uniqueLabel(ctx, `fig-${targetLabel(values.caption).slice(0, 40).replace(/-+$/, '')}`) : '');
+  if (name) options.push(['name', name]);
   const caption = values.caption ? [nodes.paragraph.create(null, schema.text(values.caption))] : [nodes.paragraph.create()];
   run(insertBlock(nodes.md_directive.create({ name: 'figure', args: values.src, options, fence: newDirectiveFence(ctx.config) }, caption), 2));
 }
@@ -189,6 +192,14 @@ export async function insertImage(ctx: EditorContext, run: (cmd: Command) => voi
     dispatch?.(state.tr.replaceSelectionWith(image, false).scrollIntoView());
     return true;
   });
+}
+
+// A label no target in the project has yet: `base`, or with a number after it.
+export function uniqueLabel(ctx: EditorContext, base: string): string {
+  const taken = new Set(ctx.suggest('ref').map((s) => s.value));
+  let name = base;
+  for (let n = 2; taken.has(name); n++) name = `${base}-${n}`;
+  return name;
 }
 
 // A label for a link target: lower case, words joined by hyphens.
@@ -240,10 +251,10 @@ export async function insertReference(ctx: EditorContext, run: (cmd: Command) =>
         label: 'Refers to',
         value: 'ref',
         choices: [
-          { value: 'ref', label: 'A section or label' },
+          { value: 'ref', label: 'A section, figure or table (by its name)' },
           { value: 'doc', label: 'A page' },
           { value: 'term', label: 'A glossary term' },
-          { value: 'numref', label: 'A numbered figure or table' },
+          { value: 'numref', label: ctx.config.numfig ? 'A figure or table, as “Figure 2”' : 'A figure or table, as “Figure 2” (needs numfig = True in conf.py)' },
         ],
       },
       {
@@ -251,6 +262,7 @@ export async function insertReference(ctx: EditorContext, run: (cmd: Command) =>
         label: 'Target',
         value: '',
         placeholder: 'label-name or path/to/page',
+        help: 'A figure or table has a name when it’s given one (the Name of a figure, or # on its card).',
         suggestions: (values) => ctx.suggest(values.name),
       },
       { key: 'title', label: 'Link text', value: '', help: 'Optional; Sphinx uses the target’s title otherwise' },

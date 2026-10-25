@@ -21,6 +21,8 @@ import { AdvancedBar } from './components/AdvancedBar';
 import { AboutDialog } from './components/About';
 import { ProjectSettingsDialog } from './components/ProjectSettings';
 import { ExportPdfDialog } from './components/ExportPdf';
+import { ShortcutsDialog } from './components/Shortcuts';
+import { NewProjectDialog } from './components/NewProject';
 import { ValeChip } from './components/ValeChip';
 import { OpeningCard, Welcome } from './components/Welcome';
 import { AskPassHost, BranchDialog, CloneDialog, ConflictsDialog, GitChip, GitPanel } from './components/GitUi';
@@ -64,6 +66,8 @@ export function App() {
   const closeProjectSettings = useCallback(() => setProjectSettings(false), []);
   const [exportingPdf, setExportingPdf] = useState(false);
   const closeExportPdf = useCallback(() => setExportingPdf(false), []);
+  const [shortcuts, setShortcuts] = useState(false);
+  const closeShortcuts = useCallback(() => setShortcuts(false), []);
   const [reveal, setReveal] = useState<number | null>(null);
   const [sphinxDialog, setSphinxDialog] = useState<'details' | 'environment' | null>(null);
   const [viewAs, setViewAs] = useState<string[] | null>(null);
@@ -77,6 +81,7 @@ export function App() {
   // Search all pages in the sidebar.
   const [searchAll, setSearchAll] = useState<{ focusKey: number } | null>(null);
   const [cloning, setCloning] = useState(false);
+  const [newProject, setNewProject] = useState(false);
   const [opening, setOpening] = useState<OpenProgress | null>(null);
   const [goTo, setGoTo] = useState(false);
   const [history, setHistory] = useState<string | null>(null); // the page whose history is shown
@@ -159,6 +164,7 @@ export function App() {
     onMenu: (cmd) => {
       if (cmd === 'open-folder') void chooseFolder();
       else if (cmd === 'clone') setCloning(true);
+      else if (cmd === 'new-project') setNewProject(true);
       else if (cmd === 'toggle-source') toggleMode();
       else if (cmd === 'save' && ws?.current) void ws.save(ws.current);
       else if (cmd === 'new-page' && ws) setNewPage({ folder: null });
@@ -173,6 +179,7 @@ export function App() {
       else if (cmd === 'about') setAbout(true);
       else if (cmd === 'project-settings' && ws) setProjectSettings(true);
       else if (cmd === 'export-pdf' && ws) setExportingPdf(true);
+      else if (cmd === 'shortcuts') setShortcuts(true);
       else if (cmd === 'toggle-outline') setOutline((o) => (o === 'shown' ? 'hidden' : 'shown'));
     },
   });
@@ -252,7 +259,7 @@ export function App() {
 
   if (!ws) {
     return (
-      <Welcome opening={opening} starting={starting} recentFolders={recentFolders} onChoose={chooseFolder} onClone={() => setCloning(true)} onOpenRecent={(f) => void openFolder(f)}>
+      <Welcome opening={opening} starting={starting} recentFolders={recentFolders} onChoose={chooseFolder} onClone={() => setCloning(true)} onNewProject={() => setNewProject(true)} onOpenRecent={(f) => void openFolder(f)}>
         {cloning && (
           <CloneDialog
             onClose={() => setCloning(false)}
@@ -263,6 +270,16 @@ export function App() {
           />
         )}
         {about && <AboutDialog sphinx={null} onClose={closeAbout} />}
+        {shortcuts && <ShortcutsDialog emacs={emacs} onClose={closeShortcuts} />}
+        {newProject && (
+          <NewProjectDialog
+            onClose={() => setNewProject(false)}
+            onCreated={(folder, note) => {
+              setNewProject(false);
+              void openCloned(folder).then(() => note && dialogs.current?.notify(note));
+            }}
+          />
+        )}
         <AskPassHost />
         <DialogHost ref={dialogs} />
       </Welcome>
@@ -481,6 +498,16 @@ export function App() {
         />
       )}
       {about && <AboutDialog sphinx={info?.sphinxVersion ?? null} onClose={closeAbout} />}
+      {shortcuts && <ShortcutsDialog emacs={emacs} onClose={closeShortcuts} />}
+      {newProject && (
+        <NewProjectDialog
+          onClose={() => setNewProject(false)}
+          onCreated={(folder, note) => {
+            setNewProject(false);
+            void openCloned(folder).then(() => note && dialogs.current?.notify(note));
+          }}
+        />
+      )}
       {exportingPdf && <ExportPdfDialog projectId={activeProject?.id ?? null} onClose={closeExportPdf} />}
       {projectSettings && <ProjectSettingsDialog projectId={activeProject?.id ?? null} projectName={projects.length > 1 ? activeProject?.name : undefined} onClose={closeProjectSettings} />}
       <AskPassHost />

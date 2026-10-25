@@ -90,6 +90,7 @@ export function buildMenu(theme: Theme = nativeTheme.themeSource) {
             ? recentFolders.map((folder) => ({ label: folder, click: () => toWindow('open-folder-path', folder) }))
             : [{ label: 'No folders yet', enabled: false }],
         },
+        { id: 'new-project', label: 'New Project…', click: () => send('new-project') },
         { label: 'Clone Repository…', click: () => send('clone') },
         { type: 'separator' },
         { id: 'go-to-page', label: withKeys('Go to Page…', 'C-x b'), ...keys('CmdOrCtrl+P', 'C-x b'), click: () => send('go-to-page') },
@@ -159,7 +160,11 @@ export function buildMenu(theme: Theme = nativeTheme.themeSource) {
     },
     {
       label: 'Help',
-      submenu: [{ id: 'about', label: 'About MyST Editor', click: () => send('about') }],
+      submenu: [
+        { id: 'shortcuts', label: 'Keyboard Shortcuts', click: () => send('shortcuts') },
+        { type: 'separator' },
+        { id: 'about', label: 'About MyST Editor', click: () => send('about') },
+      ],
     },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));

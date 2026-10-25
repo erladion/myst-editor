@@ -111,6 +111,63 @@ test('the standard directives are in the Insert menu', async () => {
   );
 });
 
+test('a figure gets a name to refer to it by, which its card can change', async () => {
+  const { page } = ctx;
+  await openPage(page, 'Installing Widget');
+  await clickEndOf(page, 'Settings live in');
+  await page.keyboard.press('Enter');
+  await page.getByRole('button', { name: 'Insert ▾' }).click();
+  await page.getByRole('menuitem', { name: 'Figure…' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Insert figure' });
+  await dialog.getByLabel('Image file').fill('images/parts.png');
+  await dialog.getByLabel('Caption').fill('How the parts fit together');
+  await dialog.getByRole('button', { name: 'Insert' }).click();
+  await waitForSave(page);
+  // Named from the caption, when no name is given.
+  expect(file('guide/install.md')).toContain(':name: fig-how-the-parts-fit-together\n');
+  await page.getByRole('button', { name: '#fig-how-the-parts-fit-together' }).click();
+  const naming = page.getByRole('dialog', { name: 'Name of the figure' });
+  await naming.getByLabel('Name').fill('fig-parts');
+  await naming.getByRole('button', { name: 'Save' }).click();
+  await waitForSave(page);
+  expect(file('guide/install.md')).toContain(':name: fig-parts\n');
+  expect(file('guide/install.md')).not.toContain('fig-how-the-parts');
+  // The cross-reference dialog says figures can be referred to by it.
+  await page.getByRole('button', { name: 'Insert ▾' }).click();
+  await page.getByRole('menuitem', { name: 'Cross-reference…' }).click();
+  await expect(page.getByRole('dialog', { name: 'Insert cross-reference' })).toContainText('A section, figure or table (by its name)');
+});
+
+test('shortcuts for headings, lists and inserting, all listed in Help', async () => {
+  const { page, app } = ctx;
+  await openPage(page, 'Installing Widget');
+  await clickEndOf(page, 'Settings live in');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('Before you start');
+  await page.keyboard.press('Control+Alt+2');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Control+Shift+8');
+  await page.keyboard.type('First');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Enter'); // out of the list
+  await page.keyboard.press('Control+Shift+N');
+  await page.keyboard.type('Noted.');
+  await waitForSave(page);
+  expect(file('guide/install.md')).toBe(original('guide/install.md') + '\n## Before you start\n\n- First\n\n:::{note}\nNoted.\n:::\n');
+  // Those with a dialog open it.
+  await page.keyboard.press('Control+Shift+K');
+  await expect(page.getByRole('dialog', { name: 'Insert cross-reference' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  // The Insert menu shows them, and Help lists them all.
+  await page.getByRole('button', { name: 'Insert ▾' }).click();
+  await expect(page.getByRole('menuitem', { name: /^Figure…/ })).toContainText('Ctrl+Shift+G');
+  await page.keyboard.press('Escape');
+  await app.evaluate(({ Menu }) => Menu.getApplicationMenu()!.getMenuItemById('shortcuts')!.click());
+  const help = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
+  await expect(help.getByRole('row', { name: 'Callout (note) Ctrl+Shift+N' })).toBeVisible();
+  await expect(help.getByRole('row', { name: 'Heading Ctrl+Alt+2' })).toBeVisible();
+});
+
 test('inserting an image, and a link target for a heading', async () => {
   const { page } = ctx;
   await openPage(page, 'Installing Widget');

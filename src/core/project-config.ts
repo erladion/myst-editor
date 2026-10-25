@@ -12,6 +12,8 @@ export interface MystConfig {
   extensions: string[];
   // Whether conf.py was found and read; false means "assume everything is enabled".
   fromConfPy: boolean;
+  // numfig = True: figures and tables are numbered, and {numref} works.
+  numfig?: boolean;
   // The project's own directives, roles and conditions, from .mysteditor.toml.
   editor: EditorConfig;
 }
@@ -41,7 +43,7 @@ export function readConfPy(source: string): MystConfig {
   for (const m of source.matchAll(/myst_enable_extensions\s*\.\s*extend\(\s*[[({]([^\])}]*)[\])}]\s*\)/g)) {
     strings(m[1]).forEach((e) => extensions.add(e));
   }
-  return { extensions: [...extensions], fromConfPy: true, editor: EMPTY_EDITOR_CONFIG };
+  return { extensions: [...extensions], fromConfPy: true, numfig: /^\s*numfig\s*=\s*True\b/m.test(source), editor: EMPTY_EDITOR_CONFIG };
 }
 
 // Flags for myst-parser matching the project's enabled extensions.

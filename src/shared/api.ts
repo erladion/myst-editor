@@ -86,9 +86,25 @@ export interface PdfFonts {
   installed: string[];
 }
 
+// An item for the table's part of the context menu ('-' is a separator).
+export interface TableMenuItem {
+  id: string;
+  label: string;
+  enabled: boolean;
+}
+
+// File → New Project.
+export interface NewProject {
+  title: string;
+  parent: string; // the folder to make it in
+  folder: string; // its own folder's name
+  git: boolean;
+}
+export type NewProjectResult = { ok: true; path: string; note: string | null } | { ok: false; message: string };
+
 export type PdfResult = { ok: true; path: string; pages: number } | { ok: false; message: string };
 
-export type MenuCommand = 'open-folder' | 'save' | 'toggle-source' | 'clone' | 'new-page' | 'delete-page' | 'go-to-page' | 'toggle-outline' | 'page-history' | 'switch-branch' | 'rename-page' | 'find' | 'toggle-emacs' | 'search-pages' | 'about' | 'project-settings' | 'export-pdf';
+export type MenuCommand = 'open-folder' | 'save' | 'toggle-source' | 'clone' | 'new-page' | 'delete-page' | 'go-to-page' | 'toggle-outline' | 'page-history' | 'switch-branch' | 'rename-page' | 'find' | 'toggle-emacs' | 'search-pages' | 'about' | 'project-settings' | 'export-pdf' | 'shortcuts' | 'new-project';
 
 export interface MystApi {
   // The project from the command line or the last session, if any.
@@ -173,6 +189,10 @@ export interface MystApi {
   onOpenProgress(cb: (p: OpenProgress | null) => void): () => void;
   onProjectChanged(cb: (e: ProjectChanged) => void): () => void;
   onMenu(cb: (cmd: MenuCommand) => void): () => void;
+  // A right-click in a table: its items for the context menu, told before the menu is
+  // made (synchronously); and the one chosen.
+  tableContext(items: TableMenuItem[]): void;
+  onTableMenu(cb: (id: string) => void): () => void;
   onCloseRequested(cb: () => void): () => void;
 
   // Background Sphinx builds, per project id.
@@ -198,6 +218,8 @@ export interface MystApi {
   gitClone(url: string, parent: string): Promise<string>;
   onGitProgress(cb: (line: string) => void): () => void;
   chooseFolder(title: string): Promise<string | null>;
+  // A new Sphinx project in a new folder (see new-project.ts).
+  createProject(project: NewProject): Promise<NewProjectResult>;
   defaultCloneFolder(): Promise<string>;
   gitCommit(paths: string[], message: string, push: boolean): Promise<void>;
   gitPush(): Promise<void>;

@@ -34,7 +34,9 @@ It needs Sphinx 5.3 or later, MyST-Parser, and every extension `conf.py` uses.
 
 ## Using it
 
-Open a documentation folder (or **Get from a repository…** to clone one). The first
+Open a documentation folder, **Get from a repository…** to clone one, or **New
+project…** (File → New Project…) to start one: a Sphinx project with a first page,
+optionally as a git repository. The first
 time, the app asks whether to build it with Sphinx, which runs the project's
 `conf.py`, and where Python should come from:
 
@@ -54,8 +56,19 @@ by place, what to keep. Click the branch (or Ctrl+Shift+B) to switch branch, or 
 one from the latest `main`; uncommitted changes can stay with the branch you leave
 and come back when you return. Pull requests stay in your git server.
 
+Help → Keyboard Shortcuts lists them all; the main ones:
+
 | Shortcut | |
 |---|---|
+| Ctrl+B, Ctrl+I, Ctrl+E | Bold, italic, code |
+| Ctrl+K | Link |
+| Ctrl+Alt+0 to 4 | Normal text, title, heading, subheading, small heading |
+| Ctrl+Shift+8, Ctrl+Shift+7 | Bulleted, numbered list |
+| Ctrl+Shift+N | Callout (a note) |
+| Ctrl+Shift+K | Cross-reference |
+| Ctrl+Shift+G | Figure |
+| Ctrl+Shift+T | Table |
+| Ctrl+Shift+E | Code block |
 | Ctrl+P | Go to page |
 | Ctrl+N | New page |
 | Ctrl+Shift+O | Outline of the page |
@@ -63,6 +76,10 @@ and come back when you return. Pull requests stay in your git server.
 | Ctrl+F | Find and replace in the page |
 | Ctrl+Shift+F | Search all pages |
 | Ctrl+Shift+B | Switch branch |
+
+Right-click in a table to add or delete rows and columns (or merge and split cells).
+A figure gets a name when it's inserted (from its caption, or the one you give), shown
+on its card as `#name`: Insert → Cross-reference refers to it by that name.
 
 **PDF:** File → Export PDF… builds the whole project as one PDF: a cover, one table
 of contents with page numbers, then the pages in the order of the contents (each

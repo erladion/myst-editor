@@ -58,8 +58,8 @@ test('the keyboard: F10 opens the menus, arrows move through them', async () => 
   await page.keyboard.press('ArrowLeft');
   await page.keyboard.press('ArrowLeft');
   await expect(page.locator('.titlebar-menu.open > button')).toHaveText('Help');
-  await page.keyboard.press('Enter');
-  await expect(page.getByRole('dialog', { name: 'About MyST Editor' })).toBeVisible();
+  await page.keyboard.press('Enter'); // Help's first item
+  await expect(page.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeVisible();
 });
 
 test('with the system’s title bar, there is none in the page', async () => {

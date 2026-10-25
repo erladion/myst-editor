@@ -24,11 +24,12 @@ interface Props {
   recentFolders: string[];
   onChoose: () => void;
   onClone: () => void;
+  onNewProject: () => void;
   onOpenRecent: (folder: string) => void;
   children?: ReactNode; // dialogs
 }
 
-export function Welcome({ opening, starting, recentFolders, onChoose, onClone, onOpenRecent, children }: Props) {
+export function Welcome({ opening, starting, recentFolders, onChoose, onClone, onNewProject, onOpenRecent, children }: Props) {
   return (
     <div className="welcome">
       <OpeningCard opening={opening} />
@@ -41,6 +42,9 @@ export function Welcome({ opening, starting, recentFolders, onChoose, onClone, o
           </button>
           <button type="button" className="large secondary" onClick={onClone}>
             Get from a repository…
+          </button>
+          <button type="button" className="large secondary" onClick={onNewProject}>
+            New project…
           </button>
           {recentFolders.length > 0 && (
             <section className="recent-folders" aria-label="Recent folders">

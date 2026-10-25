@@ -8,6 +8,7 @@ import { nodeViews } from './nodeviews';
 import { imageInput } from './images';
 import { locateProblems, setProblems } from './problems';
 import { setConditionView } from './conditions';
+import { tableMenuCommand, tableMenuItems } from './tableMenu';
 import { locatePreviews, setPreviews, type PreviewBuild } from './previews';
 import { setAccept, setVale } from './vale';
 import { locateAlerts } from '../../../core/vale';
@@ -40,6 +41,8 @@ export function Editor({ state, ctx, onChange, viewRef, onView, problems, savedT
   const host = useRef<HTMLDivElement>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const ctxRef = useRef(ctx);
+  ctxRef.current = ctx;
   // States the view made itself (by editing): the page passes them back as `state`,
   // possibly from before the latest edits, and those must not be put back.
   const own = useRef(new WeakSet<EditorState>());
@@ -60,7 +63,16 @@ export function Editor({ state, ctx, onChange, viewRef, onView, problems, savedT
     viewRef.current = view;
     onView(view);
     view.focus();
+    // Right-click in a table: its rows and columns in the context menu.
+    const onContextMenu = (e: MouseEvent) => {
+      const items = tableMenuItems(view, ctxRef.current, e);
+      if (items.length) window.myst.tableContext(items);
+    };
+    view.dom.addEventListener('contextmenu', onContextMenu);
+    const offTableMenu = window.myst.onTableMenu((id) => tableMenuCommand(view, id));
     return () => {
+      view.dom.removeEventListener('contextmenu', onContextMenu);
+      offTableMenu();
       view.destroy();
       if (viewRef.current === view) {
         viewRef.current = null;

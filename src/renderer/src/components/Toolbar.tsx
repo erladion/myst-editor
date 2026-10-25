@@ -9,6 +9,7 @@ import {
   insertDivider, insertFigure, insertImage, insertTarget, insertMath, insertProjectDirective, insertReference, markActive, paragraph, toggleCode, toggleEm, toggleList, toggleQuote, toggleStrike, toggleStrong,
 } from '../editor/commands';
 import type { EditorContext } from '../editor/context';
+import { keysFor } from '../shortcuts';
 import { ADMONITIONS, CALLOUT_CHOICES } from '../editor/directives';
 import { canConditionRows, conditionColor, conditionKind, makeConditional, removeRowCondition, rowCondition, setRowCondition } from '../editor/conditions';
 import type { ConditionsDef } from '../../../core/editor-config';
@@ -142,6 +143,7 @@ export function Toolbar({ view, ctx, onMarkdown, previewAvailable, previewOpen, 
       <select
         className="tb-select"
         aria-label="Text style"
+        title="Text style (Ctrl+Alt+0 to 4)"
         disabled={disabled}
         value={['paragraph', 'heading-1', 'heading-2', 'heading-3', 'heading-4'].includes(kind) ? kind : ''}
         onChange={(e) => {
@@ -149,11 +151,19 @@ export function Toolbar({ view, ctx, onMarkdown, previewAvailable, previewOpen, 
           run(v === 'paragraph' ? paragraph : heading(Number(v.split('-')[1])));
         }}
       >
-        <option value="paragraph">Normal text</option>
-        <option value="heading-1">Title</option>
-        <option value="heading-2">Heading</option>
-        <option value="heading-3">Subheading</option>
-        <option value="heading-4">Small heading</option>
+        {(
+          [
+            ['paragraph', 'Normal text'],
+            ['heading-1', 'Title'],
+            ['heading-2', 'Heading'],
+            ['heading-3', 'Subheading'],
+            ['heading-4', 'Small heading'],
+          ] as const
+        ).map(([value, label]) => (
+          <option key={value} value={value}>
+            {label} ({keysFor(label)})
+          </option>
+        ))}
         <option value="" disabled hidden>
           —
         </option>
@@ -177,8 +187,8 @@ export function Toolbar({ view, ctx, onMarkdown, previewAvailable, previewOpen, 
         </svg>
       </button>
       <span className="tb-sep" />
-      <Btn label="•" title="Bulleted list" cmd={toggleList(schema.nodes.bullet_list)} active={list === 'bullet_list'} />
-      <Btn label="1." title="Numbered list" cmd={toggleList(schema.nodes.ordered_list)} active={list === 'ordered_list'} />
+      <Btn label="•" title="Bulleted list (Ctrl+Shift+8)" cmd={toggleList(schema.nodes.bullet_list)} active={list === 'bullet_list'} />
+      <Btn label="1." title="Numbered list (Ctrl+Shift+7)" cmd={toggleList(schema.nodes.ordered_list)} active={list === 'ordered_list'} />
       <Btn label="❝" title="Quote" cmd={toggleQuote} />
       <span className="tb-sep" />
       <InsertMenu disabled={disabled} ctx={ctx} view={view} run={run} />
@@ -336,10 +346,12 @@ function InsertMenu({ disabled, ctx, view, run }: { disabled: boolean; ctx: Edit
     const over = el.getBoundingClientRect().right - (window.innerWidth - 8);
     if (over > 0) el.style.left = `${-over}px`;
   }, [open]);
-  const item = (label: string, action: () => void) => (
+  const item = (label: string, action: () => void, keys = '') => (
     <button
       type="button"
       role="menuitem"
+      aria-label={label}
+      aria-keyshortcuts={keys || undefined}
       onMouseDown={(e) => e.preventDefault()}
       onClick={() => {
         setOpen(false);
@@ -347,6 +359,7 @@ function InsertMenu({ disabled, ctx, view, run }: { disabled: boolean; ctx: Edit
       }}
     >
       {label}
+      {keys && <span className="menu-key">{keys}</span>}
     </button>
   );
   return (
@@ -359,7 +372,7 @@ function InsertMenu({ disabled, ctx, view, run }: { disabled: boolean; ctx: Edit
           <div className="menu-column">
             <div className="menu-heading">Callouts</div>
             {CALLOUT_CHOICES.map((n) =>
-              item(n === 'admonition' ? 'Callout with title' : ADMONITIONS[n].label, () => run(insertDirective(ctx, n, n === 'admonition' ? 'Title' : ''))),
+              item(n === 'admonition' ? 'Callout with title' : ADMONITIONS[n].label, () => run(insertDirective(ctx, n, n === 'admonition' ? 'Title' : '')), n === 'note' ? keysFor('Callout (note)') : ''),
             )}
             <div className="menu-heading">Version notes</div>
             {VERSION_NOTES.map(([name, label]) => item(`${label}…`, () => void insertAsking(ctx, run, { title: label, label: 'Version', placeholder: '2.1', insert: (v) => insertDirective(ctx, name, v) })))}
@@ -367,10 +380,10 @@ function InsertMenu({ disabled, ctx, view, run }: { disabled: boolean; ctx: Edit
           <div className="menu-column">
             <div className="menu-heading">Blocks</div>
             {item('Image…', () => insertImage(ctx, run))}
-            {item('Figure…', () => insertFigure(ctx, run))}
-            {item('Table', () => run(insertTable))}
+            {item('Figure…', () => insertFigure(ctx, run), keysFor('Figure'))}
+            {item('Table', () => run(insertTable), keysFor('Table'))}
             {item('Table with caption', () => run(insertCaptionedTable(ctx)))}
-            {item('Code block', () => run(insertCodeBlock()))}
+            {item('Code block', () => run(insertCodeBlock()), keysFor('Code block'))}
             {item('Equation', () => run(insertMath(ctx)))}
             {item('Dropdown', () => run(insertDirective(ctx, 'dropdown', 'Click to expand')))}
             {item('Divider', () => run(insertDivider))}
@@ -396,7 +409,7 @@ function InsertMenu({ disabled, ctx, view, run }: { disabled: boolean; ctx: Edit
             {projectDirectives.length > 0 && <div className="menu-heading">This project</div>}
             {projectDirectives.map(([name, def]) => item(def.label ?? name, () => run(insertProjectDirective(ctx, name, def))))}
             <div className="menu-heading">Inline</div>
-            {item('Cross-reference…', () => insertReference(ctx, run))}
+            {item('Cross-reference…', () => insertReference(ctx, run), keysFor('Cross-reference'))}
             {view && item('Link target…', () => insertTarget(ctx, view.state, run))}
           </div>
         </div>

@@ -164,6 +164,8 @@ class DirectiveView implements NodeView {
 
     // The argument field stretches; without one, push the buttons right.
     if (!this.argInput) parts.push(el('span', { class: 'spacer' }));
+    // Figures and tables: the name cross-references use.
+    if (name === 'figure' || name === 'table') parts.push(this.nameButton(name));
     parts.push(
       button(optionCount(options), 'Edit the options of this block', async () => {
         const next = await this.ctx.ui.editOptions({ title: `${info.label} options`, options: this.node.attrs.options, schema });
@@ -172,6 +174,24 @@ class DirectiveView implements NodeView {
     );
     parts.push(button('✕', 'Remove this block', () => deleteNode(this.view, this.getPos, this.node), 'danger'));
     this.header.replaceChildren(...parts);
+  }
+
+  private nameButton(kind: string): HTMLButtonElement {
+    const current = (this.node.attrs.options as [string, string][]).find(([k]) => k === 'name')?.[1] ?? '';
+    const what = kind === 'figure' ? 'figure' : 'table';
+    const b = button(current ? `#${current}` : '# Name', current ? `Other places refer to this ${what} as ${current}` : `Give this ${what} a name, to refer to it from other places`, async () => {
+      const values = await this.ctx.ui.editFields({
+        title: `Name of the ${what}`,
+        submit: 'Save',
+        fields: [{ key: 'name', label: 'Name', value: current, placeholder: kind === 'figure' ? 'fig-architecture' : 'table-regions', help: 'Insert → Cross-reference finds it by this. Empty: no name.' }],
+      });
+      if (!values) return;
+      const value = values.name.trim();
+      const rest = (this.node.attrs.options as [string, string][]).filter(([k]) => k !== 'name');
+      setAttrs(this.view, this.getPos, this.node, { options: value ? [...rest, ['name', value]] : rest });
+    });
+    b.classList.add('directive-name');
+    return b;
   }
 
   private renderPreview() {

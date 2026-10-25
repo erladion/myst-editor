@@ -127,6 +127,14 @@ export class Git {
   }
 
   // Commit exactly these files (relative to the repository root).
+  // A new repository on main, with everything in the folder as its first commit.
+  async initWithEverything(dir: string, message: string): Promise<void> {
+    await this.checked(['init', '-q'], dir);
+    await this.checked(['symbolic-ref', 'HEAD', 'refs/heads/main'], dir);
+    await this.checked(['add', '--all'], dir);
+    await this.checked(['commit', '-q', '-m', message], dir);
+  }
+
   async commit(root: string, paths: string[], message: string): Promise<void> {
     if (!paths.length) throw new GitError('Choose at least one changed file.', '');
     if (!message.trim()) throw new GitError('Write a short message saying what changed.', '');

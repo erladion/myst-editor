@@ -17,6 +17,7 @@ import { registerWorkspaceIpc, stopWatching } from './workspace.js';
 import { registerFileIpc } from './files.js';
 import { registerProjectSettingsIpc } from './project-settings.js';
 import { registerPdfIpc } from './pdf/export.js';
+import { registerNewProjectIpc } from './new-project.js';
 import { registerGitIpc } from './git/ipc.js';
 import { startAskPass, stopAskPass } from './git/service.js';
 import { registerSphinxIpc, stopSphinx } from './sphinx/service.js';
@@ -32,6 +33,7 @@ app.whenReady().then(async () => {
   registerFileIpc();
   registerProjectSettingsIpc();
   registerPdfIpc();
+  registerNewProjectIpc();
   registerGitIpc();
   registerSphinxIpc();
   registerWindowIpc();

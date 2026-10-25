@@ -1,9 +1,10 @@
-// Keys the window handles itself, wherever the focus is: Ctrl+F, Ctrl+/ and Ctrl+K,
-// and the Emacs keys when they're on (see emacs.ts).
+// Keys the window handles itself, wherever the focus is: Ctrl+F, Ctrl+/, Ctrl+K and
+// the Insert shortcuts with dialogs, and the Emacs keys when they're on (see emacs.ts).
 import { useEffect, useRef, type MutableRefObject } from 'react';
 import type { EditorView } from 'prosemirror-view';
 import type { EditorContext } from '../editor/context';
-import { editLink } from '../editor/commands';
+import type { Command } from 'prosemirror-state';
+import { editLink, insertDirective, insertFigure, insertReference } from '../editor/commands';
 import { startEmacs, type EmacsApp } from '../emacs';
 
 const api = window.myst;
@@ -35,17 +36,27 @@ export function useShortcuts(opts: { emacs: boolean; openFind: () => boolean; to
     },
     [pageOpen, toggleMode, emacs],
   );
-  // Ctrl+K for links (needs the dialog, so it lives here rather than in the keymap).
+  // Ctrl+K for links, and the Insert shortcuts that open a dialog or need the
+  // project's settings (so they live here rather than in the keymap).
   useKey(
     (e) => {
       const view = viewRef.current;
-      if (view && view.hasFocus() && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        void editLink(ctx, view.state, (cmd) => {
-          cmd(view.state, view.dispatch, view);
-          view.focus();
-        });
-      }
+      if (!view || !view.hasFocus() || !(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const run = (cmd: Command) => {
+        cmd(view.state, view.dispatch, view);
+        view.focus();
+      };
+      const key = e.key.toLowerCase();
+      const action = !e.shiftKey
+        ? { k: () => void editLink(ctx, view.state, run) }[key]
+        : {
+            n: () => run(insertDirective(ctx, 'note')),
+            k: () => void insertReference(ctx, run),
+            g: () => void insertFigure(ctx, run),
+          }[key];
+      if (!action) return;
+      e.preventDefault();
+      action();
     },
     [ctx],
   );

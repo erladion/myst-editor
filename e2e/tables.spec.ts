@@ -92,6 +92,30 @@ test.describe('with span roles configured', () => {
     expect(file()).not.toContain('{colspan}');
   });
 
+  test('right-click in a cell offers rows, columns, merging and deleting', async () => {
+    const { page, app } = ctx;
+    const items = () =>
+      app.evaluate(() => {
+        const m = (globalThis as { lastContextMenu?: Electron.Menu }).lastContextMenu;
+        return m ? m.items.map((i) => (i.type === 'separator' ? '—' : `${i.label}${i.enabled ? '' : ' (off)'}`)) : [];
+      });
+    await cell(page, 'Free').click({ button: 'right' });
+    await expect.poll(items).toEqual([
+      'Insert Row Above', 'Insert Row Below', 'Insert Column Left', 'Insert Column Right', '—',
+      'Merge Cells (off)', 'Split Cell (off)', '—',
+      'Delete Row', 'Delete Column', 'Delete Table', '—',
+      'Cut (off)', 'Copy (off)', 'Paste', '—', 'Select All',
+    ]);
+    // The clicked cell is where it acts. (Chosen from code: the menu is left open, as
+    // closing a native menu from code can bring the app down.)
+    await app.evaluate(() => (globalThis as { lastContextMenu?: Electron.Menu }).lastContextMenu!.getMenuItemById('table-row-below')!.click());
+    await saved(page);
+    expect(changes(original)).toEqual({ removed: [], added: ['|       |       |'] });
+    // Outside a table, the menu is as before.
+    await page.locator('.prose').getByText('Closing words.').click({ button: 'right' });
+    await expect.poll(async () => (await items())[0]).toBe('Cut (off)');
+  });
+
   test('aligns a column', async () => {
     const { page } = ctx;
     await cell(page, 'Free').click();
