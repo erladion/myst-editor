@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { PAPER_SIZES, type PdfDef } from '../../../core/editor-config';
 import type { PdfPatch } from '../../../core/project-settings';
-import { ASSET_SCHEME, type PdfFonts } from '../../../shared/api';
+import { ASSET_SCHEME, type PdfBuilderAdded, type PdfFonts } from '../../../shared/api';
 import { CoverDesigner, fromSettings, type CoverForm } from './CoverDesigner';
 
 const api = window.myst;
@@ -132,6 +132,7 @@ export function PdfSettings({ pane, projectId, form, settingsFile, onChange, cho
   const set = <K extends keyof PdfForm>(key: K, value: PdfForm[K]) => onChange({ ...form, [key]: value });
   // What the font files are, and the fonts on this computer.
   const [fonts, setFonts] = useState<PdfFonts | null>(null);
+  const [added, setAdded] = useState<PdfBuilderAdded | null>(null);
   const files = form.fonts.join('\n');
   useEffect(() => {
     let live = true;
@@ -232,6 +233,34 @@ export function PdfSettings({ pane, projectId, form, settingsFile, onChange, cho
             <option value="cover">From the cover</option>
           </select>
           <small>A chapter is each page in the root page’s table of contents. Each starts on a new page.</small>
+        </div>
+        <div className="field">
+          <span className="field-label">Without the app</span>
+          <small>
+            Sphinx makes the PDF (with WeasyPrint), so a build server can make the same one: add the builder to the project, and run sphinx-build. It reads these settings from
+            .mysteditor.toml.
+          </small>
+          <div>
+            <button type="button" onClick={() => void api.addPdfBuilder(projectId).then(setAdded)}>
+              Add the PDF builder to the project
+            </button>
+          </div>
+          {added && !added.ok && <small className="field-error">{added.message}</small>}
+          {added?.ok && (
+            <div className="pdf-builder-added" role="status">
+              <p>
+                {added.updated ? 'Copied to' : 'Already in'} <code>{added.file}</code>.
+              </p>
+              {added.confPy && (
+                <>
+                  <p>Add to conf.py:</p>
+                  <pre>{added.confPy}</pre>
+                </>
+              )}
+              <p>Then, with WeasyPrint installed (pip install weasyprint beautifulsoup4, and tomli before Python 3.11):</p>
+              <pre>{added.command}</pre>
+            </div>
+          )}
         </div>
       </section>
 

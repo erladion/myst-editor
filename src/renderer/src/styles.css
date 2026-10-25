@@ -3327,3 +3327,25 @@ button.secondary {
   flex: 1;
   overflow-wrap: anywhere;
 }
+
+.pdf-builder-added {
+  margin-top: 6px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--bg-soft);
+  font-size: 12.5px;
+}
+
+.pdf-builder-added p {
+  margin: 4px 0;
+}
+
+.pdf-builder-added pre {
+  margin: 4px 0 8px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  background: var(--bg);
+  font: 12px/1.5 var(--font-mono);
+  white-space: pre-wrap;
+  user-select: text;
+}

@@ -86,6 +86,9 @@ export interface PdfFonts {
   installed: string[];
 }
 
+// The PDF builder copied into a project (see File → Project Settings → PDF → Pages).
+export type PdfBuilderAdded = { ok: true; file: string; updated: boolean; confPy: string | null; command: string } | { ok: false; message: string };
+
 export type PdfResult = { ok: true; path: string; pages: number } | { ok: false; message: string };
 
 export type MenuCommand = 'open-folder' | 'save' | 'toggle-source' | 'clone' | 'new-page' | 'delete-page' | 'go-to-page' | 'toggle-outline' | 'page-history' | 'switch-branch' | 'rename-page' | 'find' | 'toggle-emacs' | 'search-pages' | 'about' | 'project-settings' | 'export-pdf';
@@ -141,6 +144,8 @@ export interface MystApi {
   exportPdf(projectId: string | null): Promise<PdfResult | null>;
   cancelPdf(): Promise<void>;
   openPdf(inFolder: boolean): Promise<void>;
+  // The PDF builder into the project, for making the PDF without the app.
+  addPdfBuilder(projectId: string | null): Promise<PdfBuilderAdded>;
   onPdfProgress(cb: (step: string) => void): () => void;
   // Vale's alerts for a saved page, when Vale is installed and configured for it.
   valeLint(rel: string): Promise<ValeResult>;

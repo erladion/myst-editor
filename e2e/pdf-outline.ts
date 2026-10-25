@@ -1,5 +1,4 @@
-// Which page each heading of a printed PDF is on, from its outline (Chromium makes an
-// entry per heading), for the contents' page numbers.
+// Which page each heading of a PDF is on, from its outline (bookmarks), for the tests.
 import { PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFRef, PDFString } from 'pdf-lib';
 
 // The outline's entries in order (Chromium makes one per heading), with their pages.

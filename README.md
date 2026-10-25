@@ -66,14 +66,37 @@ and come back when you return. Pull requests stay in your git server.
 
 **PDF:** File → Export PDF… builds the whole project as one PDF: a cover, one table
 of contents with page numbers, then the pages in the order of the contents (each
-top-level entry starting a new page), with PDF bookmarks for every heading. It uses
-the project's Sphinx with a plain print layout instead of its HTML theme, and Chromium
-(in the app) to print, so nothing else needs installing. A manual of 400 pages takes
-about a minute. File → Project Settings sets it up (`[pdf]` below): the paper; the
-cover, on a preview where graphics are dragged into place (a background to the page's
-edges, the logo, title, subtitle, a note, and any graphics); the fonts (font files in
-the project are put in the PDF, so it looks the same everywhere); the headers and
-footers; and the page numbering.
+top-level entry starting a new page), with PDF bookmarks for every heading. Sphinx
+makes it, with a builder that comes with the app (`mysteditor_pdf.py`) and
+[WeasyPrint](https://weasyprint.org); the app installs WeasyPrint in its own Python
+environment the first time (in your own environment, install `weasyprint` and
+`beautifulsoup4`). WeasyPrint needs the Pango library: Linux has it; on Windows it
+has to be installed (MSYS2, see WeasyPrint's documentation). A manual of 400 pages
+takes two to three minutes. File → Project Settings sets it up (`[pdf]` below): the
+paper; the cover, on a preview where graphics are dragged into place (a background to
+the page's edges, the logo, title, subtitle, a note, and any graphics); the fonts
+(font files in the project are put in the PDF, so it looks the same everywhere); the
+headers and footers; and the page numbering. Math isn't drawn (WeasyPrint runs no
+JavaScript, so MathJax can't).
+
+**The same PDF without the app** (a build server, say): in Project Settings → PDF →
+Pages, **Add the PDF builder to the project** copies `mysteditor_pdf.py` into the
+project's `_ext/`. Then add to `conf.py`:
+
+```python
+import os, sys
+sys.path.insert(0, os.path.abspath("_ext"))
+extensions += ["mysteditor_pdf"]
+```
+
+and, with `pip install weasyprint beautifulsoup4` (and `tomli` before Python 3.11):
+
+```sh
+sphinx-build -b mysteditor-pdf docs _build/pdf
+```
+
+It reads the same `[pdf]` settings from `.mysteditor.toml`. `-D mysteditor_pdf_file=…`
+names the PDF, and `-D mysteditor_pdf_date=…` sets what `{date}` says.
 
 View → Appearance switches between light and dark. The menus are in the title bar;
 View → Use System Title Bar puts them back in a menu bar of their own.

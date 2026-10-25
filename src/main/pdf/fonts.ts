@@ -1,6 +1,6 @@
-// Fonts for the PDF: what font files in the project are (family, weight, style, from
-// their own tables), as @font-face rules for the print, and the fonts installed on
-// this computer (for Project Settings to offer).
+// Fonts for the PDF, for Project Settings to show: what font files in the project are
+// (family, weight, style, from their own tables, as mysteditor_pdf.py reads them), and
+// the fonts installed on this computer.
 import { execFile } from 'node:child_process';
 import { basename, extname } from 'node:path';
 import { inflateSync } from 'node:zlib';
@@ -10,13 +10,6 @@ export interface FontInfo {
   weight: string; // "700", or "100 900" for a variable font
   style: 'normal' | 'italic';
 }
-
-export const FONT_FORMATS: Record<string, { type: string; format: string }> = {
-  '.ttf': { type: 'font/ttf', format: 'truetype' },
-  '.otf': { type: 'font/otf', format: 'opentype' },
-  '.woff': { type: 'font/woff', format: 'woff' },
-  '.woff2': { type: 'font/woff2', format: 'woff2' },
-};
 
 // The font's tables by tag: TrueType and OpenType files (the first font of a
 // collection) and WOFF; null for what can't be read this way (WOFF2).
@@ -106,14 +99,6 @@ export function fontInfo(buf: Buffer, file: string): FontInfo {
   }
   const italic = os2 && os2.length >= 64 ? (os2.readUInt16BE(62) & 1) === 1 : guess.style === 'italic';
   return { family: (name && nameOf(name, [16, 1])) || guess.family, weight, style: italic ? 'italic' : 'normal' };
-}
-
-// A CSS string, quoted.
-export const cssString = (s: string) => `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
-
-export function fontFace(info: FontInfo, bytes: Buffer, file: string): string {
-  const { type, format } = FONT_FORMATS[extname(file).toLowerCase()];
-  return `@font-face { font-family: ${cssString(info.family)}; font-weight: ${info.weight}; font-style: ${info.style}; src: url(data:${type};base64,${bytes.toString('base64')}) format("${format}"); }`;
 }
 
 // The font families installed here (fontconfig on Linux, Windows' own list), sorted.

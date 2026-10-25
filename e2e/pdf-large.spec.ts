@@ -5,10 +5,13 @@ import { expect, test } from '@playwright/test';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PDFDocument, PDFRawStream, PDFArray, PDFName, decodePDFRawStream } from 'pdf-lib';
-import { outlineOf } from '../src/main/pdf/outline';
+import { outlineOf } from './pdf-outline';
 import { launch, type App } from './helpers';
 
 let ctx: App;
+
+// WeasyPrint needs the Pango library, which Windows only has if it's installed (MSYS2).
+test.skip(process.platform === 'win32', 'WeasyPrint needs Pango');
 
 test.skip(!process.env.PDF_LARGE, 'a large manual; set PDF_LARGE=1');
 test.setTimeout(900_000);

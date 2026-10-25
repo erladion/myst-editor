@@ -3,10 +3,10 @@
 Run with the project's environment's Python:
 
     python mysteditor_build.py --srcdir DIR --outdir DIR --doctreedir DIR \
-        --result FILE [--builder html] [--fresh] [--pdf]
+        --result FILE [--builder html] [--fresh] [--pdf FILE [--pdf-date TEXT]]
 
---pdf builds the whole project as one page (singlehtml) with Sphinx's plain theme,
-for the editor to lay out and print as a PDF.
+--pdf makes the project's PDF with mysteditor_pdf.py's builder (next to this file,
+unless the project has its own copy): the one Export PDF uses, and sphinx-build can.
 
 The result file holds the toctree, page titles, every cross-reference target and
 the warnings, each tagged with the build phase it came from:
@@ -179,12 +179,11 @@ def main():
     parser.add_argument("--result", required=True)
     parser.add_argument("--builder", default="html")
     parser.add_argument("--fresh", action="store_true")
-    parser.add_argument("--pdf", action="store_true")
+    parser.add_argument("--pdf")
+    parser.add_argument("--pdf-date", default="")
     args = parser.parse_args()
     if args.pdf:
-        args.builder = "singlehtml"
-    # The plain theme: the HTML theme's screen layout doesn't print well.
-    overrides = {"html_theme": "basic", "html_theme_options": {}, "html_sidebars": {}} if args.pdf else {}
+        args.builder = "mysteditor-pdf"
 
     started = time.time()
     warnings = WarningCollector()
@@ -195,6 +194,18 @@ def main():
         from sphinx.application import Sphinx
 
         result["sphinx_version"] = sphinx_version
+        overrides = {}
+        if args.pdf:
+            # The builder, for this build: the project's own copy if conf.py puts one
+            # on the path, else the one next to this file.
+            sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+            from sphinx.config import Config
+            from sphinx.util.tags import Tags
+
+            extensions = list(Config.read(os.path.abspath(args.srcdir), overrides={}, tags=Tags()).extensions)
+            if "mysteditor_pdf" not in extensions:
+                extensions.append("mysteditor_pdf")
+            overrides = {"extensions": extensions, "mysteditor_pdf_file": os.path.abspath(args.pdf), "mysteditor_pdf_date": args.pdf_date}
         app = Sphinx(
             srcdir=args.srcdir,
             confdir=args.srcdir,
@@ -287,6 +298,7 @@ def main():
             read_docs=sorted(read_docs),
             written_docs=sorted(written_docs),
             consistency_checked=consistency["checked"],
+            pdf=getattr(app.builder, "pdf_result", None),
         )
     except BaseException as e:  # conf.py and extensions can raise anything
         result["error"] = "".join(traceback.format_exception(type(e), e, e.__traceback__))

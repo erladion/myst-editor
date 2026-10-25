@@ -40,6 +40,7 @@ export interface BuildResult {
   read_docs?: string[];
   written_docs?: string[];
   consistency_checked?: boolean;
+  pdf?: { file: string; pages: number } | null; // made with --pdf
   duration: number;
 }
 

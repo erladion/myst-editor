@@ -5,3 +5,4 @@ release/
 test-results/
 playwright-report/
 resources/uv/
+__pycache__/

@@ -1,14 +1,19 @@
 // File → Export PDF: the project as one PDF, with a title page, one table of
 // contents and each chapter on a new page. Needs a Sphinx build (see sphinx.spec.ts).
 import { expect, test } from '@playwright/test';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { appendFileSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PDFDocument } from 'pdf-lib';
-import { headingPages, outlineOf } from '../src/main/pdf/outline';
+import { headingPages, outlineOf } from './pdf-outline';
 import { launch, type App } from './helpers';
 import { fontNames, pageTexts } from './pdf-text';
 
 let ctx: App;
+
+// WeasyPrint needs the Pango library, which Windows only has if it's installed (MSYS2).
+test.skip(process.platform === 'win32', 'WeasyPrint needs Pango');
 
 test.afterEach(async () => {
   await ctx.app.evaluate(({ app }) => app.exit(0)).catch(() => {});
@@ -45,9 +50,10 @@ test('exports the project as one PDF, with a contents and its page numbers', asy
   expect(text[1]).toContain('Install Harbor 1 Deploy your first service 2 Describe the service 2');
   expect(text[1]).toContain('Roll back a deploy 4 Secrets 5');
   expect(text[2]).toBe('Harbor deploys services from a folder with a harbor.toml in it.');
-  // Chapters: the chapter's title at the top right, the page number at the foot.
-  expect(text[3]).toMatch(/^Install Harbor 1 Install Harbor Download/);
-  expect(text[7]).toMatch(/^Secrets 5 Secrets/);
+  // Chapters: the chapter's title at the top right, the page number at the foot
+  // (after the page's text, as the PDF has them).
+  expect(text[3]).toMatch(/^Install Harbor Download.* Install Harbor 1$/);
+  expect(text[7]).toMatch(/^Secrets Keep.* Secrets 5$/);
   // The outline: chapters (not the manual's title), in order, on later and later pages.
   const chapters = ['Install Harbor', 'Deploy your first service', 'Configuration', 'Roll back a deploy', 'Secrets'];
   const pages = headingPages(chapters, entries);
@@ -89,12 +95,12 @@ fonts = ["_static/fonts/KaTeX_SansSerif-Regular.ttf", "_static/fonts/KaTeX_SansS
   expect(text[1]).toContain('Page 2 of 8');
   expect(text[1]).toContain('Harbor manual');
   expect(text[3]).toContain('Page 4 of 8');
-  expect(text[3]).toMatch(/Install Harbor.*Install Harbor Download/);
+  expect(text[3]).toMatch(/^Install Harbor Download.*Install Harbor/);
   // The text in the project's font (embedded from its files), the code in another.
   const fonts = await fontNames(pdf);
-  expect(fonts).toContain('KaTeX_SansSerif-Regular');
+  expect(fonts.some((f) => /^KaTeX_SansSerif(-Regular)?$/.test(f))).toBe(true);
   expect(fonts).toContain('KaTeX_SansSerif-Bold'); // the headings
-  expect(fonts.some((f) => /^(DejaVuSansMono|Consolas)/.test(f))).toBe(true); // as installed (Linux, Windows)
+  expect(fonts.some((f) => /^(DejaVu-?Sans-?Mono|Consolas)/.test(f))).toBe(true); // as installed (Linux, Windows)
   // The logo (an SVG, drawn as shapes and its text "Harbor") in the headers.
   const logo = (t: string) => t.replace(/Harbor manual|Install Harbor/g, '').includes('Harbor');
   expect(logo(text[1])).toBe(true);
@@ -122,4 +128,27 @@ headers_on = "all"
   // From the first chapter, numbered: 5 pages of chapters.
   expect(text[3]).toContain('Page 1 of 5');
   expect(text[7]).toContain('Page 5 of 5');
+});
+
+test('with the builder in the project, sphinx-build makes the same PDF', async () => {
+  const fromApp = await exportPdf();
+  const { app, page } = ctx;
+  await app.evaluate(({ Menu }) => Menu.getApplicationMenu()!.getMenuItemById('project-settings')!.click());
+  const settings = page.getByRole('dialog', { name: 'Project settings' });
+  await settings.getByRole('tab', { name: 'Pages' }).click();
+  await settings.getByRole('button', { name: 'Add the PDF builder to the project' }).click();
+  const added = settings.getByRole('status');
+  await expect(added).toContainText('Copied to docs/_ext/mysteditor_pdf.py');
+  await expect(added).toContainText('extensions += ["mysteditor_pdf"]');
+  await expect(added).toContainText('sphinx-build -b mysteditor-pdf docs _build/pdf');
+  const docs = join(ctx.project, 'docs');
+  expect(readFileSync(join(docs, '_ext', 'mysteditor_pdf.py'), 'utf8')).toBe(readFileSync(join(import.meta.dirname, '..', 'resources', 'sphinx', 'mysteditor_pdf.py'), 'utf8'));
+  appendFileSync(join(docs, 'conf.py'), '\nimport os, sys\nsys.path.insert(0, os.path.abspath("_ext"))\nextensions += ["mysteditor_pdf"]\n');
+  // Without the app: the Python the app set up for the project (it has WeasyPrint now).
+  const envs = join(process.env.MYSTEDITOR_SPHINX_DATA ?? join(tmpdir(), 'mysteditor-e2e-sphinx'), 'envs');
+  const env = readdirSync(envs).map((d) => join(envs, d)).sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)[0];
+  const python = join(env, process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
+  execFileSync(python, ['-m', 'sphinx', '-q', '-b', 'mysteditor-pdf', 'docs', '_build/pdf', '-D', `mysteditor_pdf_date=${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`], { cwd: ctx.project });
+  const headless = readFileSync(join(ctx.project, '_build', 'pdf', 'Harbor.pdf'));
+  expect(await pageTexts(headless)).toEqual(await pageTexts(fromApp));
 });

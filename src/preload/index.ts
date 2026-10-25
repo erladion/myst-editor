@@ -32,6 +32,7 @@ const api: MystApi = {
   exportPdf: (projectId) => ipcRenderer.invoke('export-pdf', projectId),
   cancelPdf: () => ipcRenderer.invoke('cancel-pdf'),
   openPdf: (inFolder) => ipcRenderer.invoke('open-pdf', inFolder),
+  addPdfBuilder: (projectId) => ipcRenderer.invoke('add-pdf-builder', projectId),
   onPdfProgress: (cb) => on('pdf-progress', cb),
   valeAccept: (rel, word) => ipcRenderer.invoke('vale-accept', rel, word),
   pageHistory: (rel) => ipcRenderer.invoke('page-history', rel),

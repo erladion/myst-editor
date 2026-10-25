@@ -19,7 +19,7 @@ import { ensureEnvironment, environmentIsCurrent, findUv, hasManagedPython, uvEn
 import { planEnvironment } from './discover.js';
 import { existingEnv, findPythons, probePython } from './pythons.js';
 import { canDownload } from './network.js';
-import { run, CommandError } from './run.js';
+import { run, runChecked, CommandError } from './run.js';
 
 export interface ManagerOptions {
   root: string; // the opened folder
@@ -303,22 +303,47 @@ export class SphinxManager {
     };
   }
 
-  // The whole project as one page, with Sphinx's plain theme, for a PDF: the page's
-  // file. Built apart from the preview's builds (its own folders), so neither makes
-  // the other read every page again.
-  async buildOnePage(signal: AbortSignal): Promise<string> {
+  // The project's PDF, made by mysteditor_pdf.py's builder (WeasyPrint) into `file`:
+  // how many pages it has. Built apart from the preview's builds (its own folders), so
+  // neither makes the other read every page again.
+  async buildPdf(file: string, date: string, signal: AbortSignal, step: (s: string) => void): Promise<{ pages: number }> {
     if (!this.python) throw new Error('Sphinx isn’t set up for this project yet. Allow it to build first (the banner at the top).');
+    await this.ensurePdfPackages(signal, step);
+    step('Making the PDF with Sphinx and WeasyPrint…');
     const dir = join(this.opts.dataDir, 'builds', this.key, 'pdf');
     const resultFile = join(dir, 'result.json');
     await fs.mkdir(dir, { recursive: true });
     await fs.rm(resultFile, { force: true });
-    const args = [this.driverPath(), '--srcdir', this.project.sourceDir, '--outdir', join(dir, 'html'), '--doctreedir', join(dir, 'doctrees'), '--result', resultFile, '--pdf'];
+    const args = [this.driverPath(), '--srcdir', this.project.sourceDir, '--outdir', join(dir, 'html'), '--doctreedir', join(dir, 'doctrees'), '--result', resultFile, '--pdf', file, '--pdf-date', date];
     const { output } = await run(this.python, args, { cwd: this.project.sourceDir, env: this.buildEnv(), log: (t) => this.write(t), signal, timeoutMs: BUILD_TIMEOUT_MS });
     if (signal.aborted) throw new Error('Cancelled');
     if (!existsSync(resultFile)) throw new CommandError(`Sphinx stopped unexpectedly:\n${output.trim().split('\n').slice(-12).join('\n')}`, output);
     const result: BuildResult = JSON.parse(await fs.readFile(resultFile, 'utf8'));
-    if (!result.ok) throw new Error(`The Sphinx build failed:\n${(result.error ?? 'Unknown error').trim().split('\n').slice(-3).join('\n')}`);
-    return join(dir, 'html', `${result.root_doc ?? 'index'}.html`);
+    if (!result.ok || !result.pdf) throw new Error(`The PDF couldn’t be made:\n${(result.error ?? 'No PDF came out.').trim().split('\n').slice(-3).join('\n')}`);
+    return { pages: result.pdf.pages };
+  }
+
+  // WeasyPrint and Beautiful Soup (and tomli, before Python 3.11), for the PDF: put
+  // in the app's own environment the first time; asked for in the writer's own.
+  private async ensurePdfPackages(signal: AbortSignal, step: (s: string) => void) {
+    const check = () => run(this.python!, ['-c', 'import sys, weasyprint, bs4; sys.version_info >= (3, 11) or __import__("tomli")'], { env: this.buildEnv(), signal });
+    let checked = await check();
+    if (checked.code === 0) return;
+    const packages = 'pip install weasyprint beautifulsoup4 tomli';
+    if (this.state.environment?.kind === 'existing') {
+      throw new Error(`Making the PDF needs WeasyPrint in this project’s Python environment. Install it there with “${packages}”.`);
+    }
+    const uv = findUv(this.opts.resourcesPath, this.opts.appRoot);
+    if (!uv) throw new Error('The uv tool needed to install WeasyPrint was not found.');
+    step('Installing WeasyPrint for the PDF (once)…');
+    await runChecked(uv, ['pip', 'install', '--python', this.python!, 'weasyprint', 'beautifulsoup4', "tomli; python_version < '3.11'"], {
+      env: { ...uvEnv(this.paths), ...this.opts.extraEnv() },
+      log: (t) => this.write(t),
+      signal,
+    });
+    checked = await check();
+    // Installed, but not working: WeasyPrint needs the Pango library from the system.
+    if (checked.code !== 0) throw new Error(`WeasyPrint is installed but doesn’t start; it needs the Pango library (on Windows, from MSYS2; see weasyprint.org):\n${checked.output.trim().split('\n').slice(-2).join('\n')}`);
   }
 
   private apply(raw: BuildResult, fresh: boolean) {

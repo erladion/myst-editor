@@ -1,4 +1,5 @@
-// The text on each page of a PDF, for tests (pdf.js, as Firefox reads PDFs).
+// The text on each page of a PDF, for tests (pdf.js, as Firefox reads PDFs); the
+// contents' dot leaders left out.
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 export async function pageTexts(pdf: Uint8Array): Promise<string[]> {
@@ -6,7 +7,7 @@ export async function pageTexts(pdf: Uint8Array): Promise<string[]> {
   const texts: string[] = [];
   for (let i = 1; i <= doc.numPages; i++) {
     const content = await (await doc.getPage(i)).getTextContent();
-    texts.push(content.items.map((item) => ('str' in item ? item.str + (item.hasEOL ? ' ' : '') : '')).join('').replace(/\s+/g, ' ').trim());
+    texts.push(content.items.map((item) => ('str' in item ? item.str + (item.hasEOL ? ' ' : '') : '')).join('').replace(/\s*\.{3,}\s*/g, ' ').replace(/\s+/g, ' ').trim());
   }
   await doc.destroy();
   return texts;
