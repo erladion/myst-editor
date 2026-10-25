@@ -83,7 +83,6 @@ export interface ProjectSettingsInfo {
 
 export interface PdfFonts {
   files: ({ file: string; family: string; weight: string; style: 'normal' | 'italic' } | { file: string; error: string })[];
-  installed: string[];
 }
 
 // An item for the table's part of the context menu ('-' is a separator).
@@ -150,8 +149,9 @@ export interface MystApi {
   // or an image (a logo, the cover's); relative to the settings file, null if cancelled.
   chooseSettingsFile(projectId: string | null, kind: 'capabilities' | 'new-capabilities' | 'image' | 'font'): Promise<{ path: string } | { error: string } | null>;
   readCapabilities(projectId: string | null, file: string, key: string | null): Promise<{ names: string[] } | { error: string }>;
-  // What font files are (relative to the settings file), and the fonts installed here.
+  // What font files are (relative to the settings file); the fonts installed here.
   pdfFonts(projectId: string | null, files: string[]): Promise<PdfFonts>;
+  installedFonts(): Promise<string[]>;
   // A PDF of a Sphinx project, saved where the writer chooses (null if cancelled);
   // onPdfProgress says what it's doing. openPdf opens the last one, or its folder.
   exportPdf(projectId: string | null): Promise<PdfResult | null>;

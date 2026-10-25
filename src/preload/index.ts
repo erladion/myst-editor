@@ -29,6 +29,7 @@ const api: MystApi = {
   chooseSettingsFile: (projectId, kind) => ipcRenderer.invoke('choose-settings-file', projectId, kind),
   readCapabilities: (projectId, file, key) => ipcRenderer.invoke('read-capabilities', projectId, file, key),
   pdfFonts: (projectId, files) => ipcRenderer.invoke('pdf-fonts', projectId, files),
+  installedFonts: () => ipcRenderer.invoke('installed-fonts'),
   exportPdf: (projectId) => ipcRenderer.invoke('export-pdf', projectId),
   cancelPdf: () => ipcRenderer.invoke('cancel-pdf'),
   openPdf: (inFolder) => ipcRenderer.invoke('open-pdf', inFolder),

@@ -136,6 +136,14 @@ export function PdfSettings({ pane, projectId, form, settingsFile, onChange, cho
   const set = <K extends keyof PdfForm>(key: K, value: PdfForm[K]) => onChange({ ...form, [key]: value });
   // What the font files are, and the fonts on this computer.
   const [fonts, setFonts] = useState<PdfFonts | null>(null);
+  const [installed, setInstalled] = useState<string[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    void api.installedFonts().then((list) => live && setInstalled(list));
+    return () => {
+      live = false;
+    };
+  }, []);
   const files = form.fonts.join('\n');
   useEffect(() => {
     let live = true;
@@ -164,7 +172,7 @@ export function PdfSettings({ pane, projectId, form, settingsFile, onChange, cho
     const name = form[key].trim();
     // Shown in what the PDF uses: headings without their own font are in the text's.
     const shown = name || (key === 'headingFont' ? form.font.trim() : '');
-    const where = !name ? null : projectFamilies.includes(name) ? 'project' : fonts?.installed.includes(name) ? 'here' : fonts ? 'missing' : null;
+    const where = !name ? null : projectFamilies.includes(name) ? 'project' : installed?.includes(name) ? 'here' : fonts && installed ? 'missing' : null;
     return (
       <div className="field">
         <label htmlFor={`pdf-${key}`}>{label}</label>
@@ -255,7 +263,7 @@ export function PdfSettings({ pane, projectId, form, settingsFile, onChange, cho
         <h3>Fonts</h3>
         <style>{faces}</style>
         <datalist id="pdf-font-families">
-          {[...projectFamilies, ...(fonts?.installed ?? []).filter((f) => !projectFamilies.includes(f))].map((f) => (
+          {[...projectFamilies, ...(installed ?? []).filter((f) => !projectFamilies.includes(f))].map((f) => (
             <option key={f} value={f} />
           ))}
         </datalist>

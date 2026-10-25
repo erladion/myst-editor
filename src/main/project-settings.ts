@@ -88,8 +88,7 @@ export function registerProjectSettingsIpc() {
     return { path: slashes(relative(realpathSync.native(dirname(path)), real(file))) };
   });
 
-  // Font files (relative to the settings file): what each is; and the fonts on this
-  // computer.
+  // Font files (relative to the settings file): what each is.
   ipcMain.handle('pdf-fonts', async (_e, projectId: string | null, files: string[]): Promise<PdfFonts> => {
     const p = requireProject();
     const { path } = settingsFor(p, projectId);
@@ -103,8 +102,11 @@ export function registerProjectSettingsIpc() {
         }
       }),
     );
-    return { files: described, installed: await installedFonts() };
+    return { files: described };
   });
+  // The fonts on this computer: apart, as finding them can take a while (PowerShell, on
+  // Windows), and the font files' descriptions shouldn't wait for it.
+  ipcMain.handle('installed-fonts', () => installedFonts());
 
   // The capabilities a file lists (`file` relative to the settings file), for the
   // window to show before it's saved.
