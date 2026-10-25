@@ -3,6 +3,8 @@ import type { MystConfig } from '../../../core/project-config';
 import type { ConditionsDef, OptionDef } from '../../../core/editor-config';
 import type { SourceMap } from '../../../core/sourcemap';
 import type { Resolution, Suggestion } from '../sphinx';
+import type { Node as PMNode } from 'prosemirror-model';
+import type { EditorState, Transaction } from 'prosemirror-state';
 
 export interface Field {
   key: string;
@@ -47,6 +49,11 @@ export interface EditorContext {
   resolveRole(role: string, target: string): Resolution;
   resolveLink(href: string): Resolution;
   suggest(role: string): Suggestion[];
+  // The open page's project's other pages as they are now (open ones with their
+  // edits), for referring to what's on them.
+  otherPages(): Promise<{ path: string; title: string; doc: PMNode }[]>;
+  // Change another page and save it; false if it's open as Markdown or couldn't be saved.
+  editPage(path: string, change: (state: EditorState) => Transaction | null): Promise<boolean>;
   // Called whenever build results change, so node views can refresh.
   subscribe(listener: () => void): () => void;
 }

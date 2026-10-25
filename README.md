@@ -95,10 +95,11 @@ Insert → Table (Ctrl+Shift+T) shows a grid to choose its size, as in Word. Rig
 a table to add or delete rows and columns (or merge and split cells).
 A figure gets a name when it's inserted (from its caption, or the one you give), shown
 on its card as `#name`: Insert → Cross-reference refers to it by that name (the link
-shows its caption; with `numfig = True` in `conf.py`, "as Figure 2" numbers it). An
-image can be referred to too: choose "An image on this page", and a link target is put
-before the image if it has none (an image has no caption, so the link has its own
-text).
+shows its caption; with `numfig = True` in `conf.py`, "as Figure 2" numbers it). Or choose
+"A figure, table or image": it lists those on every page of the project, and one
+without a name gets one when chosen, on its own page (a figure's or table's `:name:`,
+from its caption; a link target before an image, whose link then has its own text, as
+an image has no caption).
 
 **PDF:** File → Export PDF… builds the whole project as one PDF: a cover, one table
 of contents with page numbers, then the pages in the order of the contents (each

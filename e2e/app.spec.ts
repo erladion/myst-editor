@@ -1,6 +1,6 @@
 // End-to-end tests: drive the built app like a writer and check the files on disk.
 import { expect, test, type Page } from '@playwright/test';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { launch, type App } from './helpers';
 
@@ -194,17 +194,17 @@ test('referring to an image adds a link target before it, once', async () => {
   const refer = async () => {
     await page.keyboard.press('Control+Shift+K');
     const dialog = page.getByRole('dialog', { name: 'Insert cross-reference' });
-    await dialog.getByLabel('Refers to').selectOption('image');
+    await dialog.getByLabel('Refers to').selectOption('page');
     return dialog;
   };
   let dialog = await refer();
   const suggestion = (label: string) => dialog.locator('datalist option[value="img-the-settings-dialog"]', { hasText: label });
-  await expect(suggestion('The settings dialog (adds a link target)')).toHaveCount(1);
+  await expect(suggestion('Image: The settings dialog (gets a name)')).toHaveCount(1);
   await dialog.getByLabel('Target').fill('img-the-settings-dialog');
   await dialog.getByRole('button', { name: 'Insert' }).click();
   await page.keyboard.type(' and ');
   dialog = await refer();
-  await expect(dialog.locator('datalist option[value="img-the-settings-dialog"]')).toHaveText('The settings dialog'); // it has a target now
+  await expect(dialog.locator('datalist option[value="img-the-settings-dialog"]')).toHaveText('Image: The settings dialog'); // it has a target now
   await dialog.getByLabel('Target').fill('img-the-settings-dialog');
   await dialog.getByLabel('Link text').fill('the dialog');
   await dialog.getByRole('button', { name: 'Insert' }).click();
@@ -213,6 +213,58 @@ test('referring to an image adds a link target before it, once', async () => {
     original('guide/install.md') +
       '\n(img-the-settings-dialog)=\n![The settings dialog](images/settings.png)\n\nSee {ref}`The settings dialog <img-the-settings-dialog>` and {ref}`the dialog <img-the-settings-dialog>`\n',
   );
+});
+
+test('referring to a figure without a name gives it one', async () => {
+  const { page } = ctx;
+  await openPage(page, 'Installing Widget');
+  await clickEndOf(page, 'Settings live in');
+  await page.keyboard.press('Enter');
+  await page.getByRole('button', { name: 'Insert ▾' }).click();
+  await page.getByRole('menuitem', { name: 'Figure…' }).click();
+  const figure = page.getByRole('dialog', { name: 'Insert figure' });
+  await figure.getByLabel('Image file').fill('images/flow.png');
+  await figure.getByLabel('Caption').fill('How it flows');
+  await figure.getByLabel('Name').fill('');
+  await figure.getByRole('button', { name: 'Insert' }).click();
+  // Its name taken out, as if it never had one.
+  await page.getByRole('button', { name: '#fig-how-it-flows' }).click();
+  const naming = page.getByRole('dialog', { name: 'Name of the figure' });
+  await naming.getByLabel('Name').fill('');
+  await naming.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('button', { name: '# Name' })).toBeVisible();
+
+  await clickEndOf(page, 'Settings live in');
+  await page.keyboard.type(' See ');
+  await page.keyboard.press('Control+Shift+K');
+  const dialog = page.getByRole('dialog', { name: 'Insert cross-reference' });
+  await dialog.getByLabel('Refers to').selectOption('page');
+  await expect(dialog.locator('datalist option[value="fig-how-it-flows"]')).toHaveText('Figure: How it flows (gets a name)');
+  await dialog.getByLabel('Target').fill('fig-how-it-flows');
+  await dialog.getByRole('button', { name: 'Insert' }).click();
+  await waitForSave(page);
+  // Named, and referred to by it: its caption is the link's text.
+  expect(file('guide/install.md')).toContain('See {ref}`fig-how-it-flows`');
+  expect(file('guide/install.md')).toContain(':name: fig-how-it-flows\n');
+  await expect(page.getByRole('button', { name: '#fig-how-it-flows' })).toBeVisible();
+});
+
+test('referring to a figure on another page names it there', async () => {
+  const { page } = ctx;
+  // A figure without a name on another page, as it was written.
+  appendFileSync(join(ctx.project, 'docs', 'guide', 'configure.md'), '\n:::{figure} ../images/diagram.svg\nThe settings screen\n:::\n');
+  await openPage(page, 'Installing Widget');
+  await clickEndOf(page, 'Settings live in');
+  await page.keyboard.type(' See ');
+  await page.keyboard.press('Control+Shift+K');
+  const dialog = page.getByRole('dialog', { name: 'Insert cross-reference' });
+  await dialog.getByLabel('Refers to').selectOption('page');
+  await expect(dialog.locator('datalist option[value="fig-the-settings-screen"]')).toHaveText('Figure: The settings screen — Configuring Widget (gets a name)');
+  await dialog.getByLabel('Target').fill('fig-the-settings-screen');
+  await dialog.getByRole('button', { name: 'Insert' }).click();
+  await waitForSave(page);
+  expect(file('guide/install.md')).toContain('See {ref}`fig-the-settings-screen`');
+  await expect.poll(() => file('guide/configure.md')).toContain(':::{figure} ../images/diagram.svg\n:name: fig-the-settings-screen\n\nThe settings screen\n:::\n');
 });
 
 test('inserting an image, and a link target for a heading', async () => {

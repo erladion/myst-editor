@@ -15,6 +15,11 @@ import type { EditorContext } from '../editor/context';
 import type { DialogApi } from '../components/Dialogs';
 import { resolveRef } from '../paths';
 import { resolveLink, resolveRole, suggestTargets } from '../sphinx';
+import type { Node as PMNode } from 'prosemirror-model';
+import { loadDocument } from '../../../core/document';
+
+// Other pages, parsed for the cross-reference dialog: again only when their text changes.
+const parsedPages = new Map<string, { text: string; doc: PMNode }>();
 
 const api = window.myst;
 
@@ -106,6 +111,23 @@ export function useEditorContext(dialogs: RefObject<DialogApi | null>, ws: Works
       resolveRole: (role, target) => resolveRole(build(), current()?.current ?? null, role, target),
       resolveLink: (href) => resolveLink(build(), current()?.current ?? null, href),
       suggest: (role) => suggestTargets(build(), current()?.current ?? null, role),
+      async otherPages() {
+        const w = current();
+        if (!w?.current) return [];
+        const own = projectFor(w.project.projects, w.current)?.id ?? null;
+        const out: { path: string; title: string; doc: PMNode }[] = [];
+        for (const path of w.project.files) {
+          if (path === w.current || !path.endsWith('.md') || (projectFor(w.project.projects, path)?.id ?? null) !== own) continue;
+          const text = w.get(path) ? w.sourceOf(path) : await api.readFile(path).catch(() => null);
+          if (text === null) continue;
+          // Parsed once for each text the page has.
+          let hit = parsedPages.get(path);
+          if (hit?.text !== text) parsedPages.set(path, (hit = { text, doc: loadDocument(text, configFor(w.project, path)).doc }));
+          out.push({ path, title: w.project.titles[path] ?? path, doc: hit.doc });
+        }
+        return out;
+      },
+      editPage: (path, change) => current()?.edit(path, change) ?? Promise.resolve(false),
       subscribe(listener) {
         listeners.current.add(listener);
         return () => listeners.current.delete(listener);
