@@ -225,3 +225,20 @@ test('what the website’s templates put around the content isn’t printed', as
   expect(text[0]).toMatch(/^Harbor documentation \w+ \d+, \d{4}$/);
   expect(text.join(' ')).not.toMatch(/A banner|A footer/);
 });
+
+test('every line of the contents has its page, whatever is in the heading', async () => {
+  const pdf = await exportPdf('[pdf]\ntoc_depth = 2\n', (docs) => {
+    writeFileSync(
+      join(docs, 'guides', 'headings.md'),
+      '# Awkward headings\n\nText.\n\n' +
+        '## A very long heading that goes on and on and on, far longer than most headings in a manual would ever be, so that it wraps\n\nText.\n\n' +
+        '## Math $x^2$ heading\n\nText.\n\n## Image ![logo](../_static/badge.svg) heading\n\nText.\n\n## Last one\n\nText.\n',
+    );
+    writeFileSync(join(docs, 'index.md'), readFileSync(join(docs, 'index.md'), 'utf8').replace('guides/secrets', 'guides/secrets\nguides/headings'));
+    writeFileSync(join(docs, 'conf.py'), readFileSync(join(docs, 'conf.py'), 'utf8').replace('"deflist",', '"deflist",\n    "dollarmath",'));
+  });
+  const contents = (await pageTexts(pdf))[1];
+  // (Wrapped headings' titles in the outline lose the space at the line break; an
+  // image's alt text is in its title, and maths isn't.)
+  expect(contents).toMatch(/Awkward headings 6 .*so that it wraps 6 Math \S+ heading 6 Image heading \d Last one \d$/);
+});

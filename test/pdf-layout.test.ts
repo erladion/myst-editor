@@ -27,6 +27,21 @@ describe('headingPages', () => {
     ];
     expect(headingPages(['Install Harbor', 'Deploy your first service', 'Deploy', 'Missing', 'Secrets'], entries)).toEqual([4, 5, 5, 0, 6]);
   });
+
+  it('lines up headings whose titles differ: wrapped, with an image or with maths', async () => {
+    const { headingPages } = await import('../src/main/pdf/outline.js');
+    const entries = [
+      { title: 'Plain heading', page: 9 },
+      { title: 'A very long heading that goes on, farlonger than most', page: 9 },
+      { title: 'Math heading', page: 10 },
+      { title: 'Imagelogoheading', page: 11 },
+      { title: 'Last one', page: 12 },
+    ];
+    const headings = ['Plain heading', 'A very long heading that goes on, far longer than most', 'Math x2 heading', 'Image heading', 'Last one'];
+    expect(headingPages(headings, entries)).toEqual([9, 9, 10, 11, 12]);
+    // Where there aren't as many of each, those in between can't be told apart.
+    expect(headingPages(['Plain heading', 'Math x2 heading', 'Image heading', 'Last one'], [entries[0], entries[3], entries[4]])).toEqual([9, 0, 0, 12]);
+  });
 });
 
 describe('the PDF stylesheet', () => {
