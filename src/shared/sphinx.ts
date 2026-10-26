@@ -40,6 +40,7 @@ export interface BuildResult {
   read_docs?: string[];
   written_docs?: string[];
   consistency_checked?: boolean;
+  variables?: Record<string, string>; // see variables_of
   duration: number;
 }
 
@@ -51,6 +52,8 @@ export interface SphinxInfo {
   warnings: SphinxWarning[];
   builtAt: number; // ms since epoch, also used to refresh the preview
   duration: number;
+  // What the PDF can show as {name}: author, copyright and html_context, from conf.py.
+  variables: Record<string, string>;
 }
 
 // A Python found on this computer, and what it has installed.

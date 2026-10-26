@@ -28,6 +28,7 @@ export interface LayoutOptions {
   tocDepth: number; // levels of the contents: 1 is chapters only
   date: string;
   project: string;
+  variables: Record<string, string>; // other {name}s: from conf.py, and [pdf.variables]
 }
 
 const MARGIN = PDF_MARGIN_MM;
@@ -94,9 +95,12 @@ export const layoutScript = (opts: LayoutOptions) => `
   const version = (typeof DOCUMENTATION_OPTIONS !== 'undefined' && DOCUMENTATION_OPTIONS.VERSION) || '';
   const h1 = root && headingOf(root);
   let manual = opts.title || (h1 ? textOf(h1) : document.title.trim());
+  // The PDF's own placeholders, then the project's variables; anything else is left as written.
   const fill = (text, chapter) =>
-    text.replace(/\\{(\\w+)\\}/g, (all, name) =>
-      ({ title: manual, date: opts.date, version, project: opts.project, chapter: chapter || '' })[name] ?? all);
+    text.replace(/\\{(\\w+)\\}/g, (all, name) => {
+      const own = { title: manual, date: opts.date, version, project: opts.project, chapter: chapter || '' };
+      return Object.hasOwn(own, name) ? own[name] : Object.hasOwn(opts.variables, name) ? opts.variables[name] : all;
+    });
   // The title may say {version} or {date} too.
   manual = fill(manual);
 

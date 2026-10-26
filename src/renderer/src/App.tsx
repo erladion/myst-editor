@@ -584,7 +584,7 @@ export function App() {
         />
       )}
       {exportingPdf && <ExportPdfDialog projectId={activeProject?.id ?? null} onClose={closeExportPdf} />}
-      {projectSettings && <ProjectSettingsDialog projectId={activeProject?.id ?? null} projectName={projects.length > 1 ? activeProject?.name : undefined} onClose={closeProjectSettings} />}
+      {projectSettings && <ProjectSettingsDialog projectId={activeProject?.id ?? null} projectName={projects.length > 1 ? activeProject?.name : undefined} confVariables={(activeProject && buildStates[activeProject.id]?.info?.variables) || null} onClose={closeProjectSettings} />}
       <AskPassHost />
       {renaming && (
         <RenamePageDialog

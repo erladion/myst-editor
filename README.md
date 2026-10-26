@@ -199,8 +199,10 @@ case_sensitive = true
 [conditions.colors]                  # optional
 CapabilityX = "teal"                 # purple, orange, teal, magenta, blue, olive, green, slate or "#rrggbb"
 
-# File → Export PDF. {page} {pages} {chapter} {title} {date} {version} {logo} can be
-# used in the cover's texts and in the headers and footers.
+# File → Export PDF. {page} {pages} {chapter} {title} {date} {version} {project} {logo}
+# can be used in the cover's texts and in the headers and footers, and so can the
+# project's variables: {author} and {copyright} from conf.py, the texts and numbers in
+# its html_context (as conf.py and config-inited handlers leave it), and [pdf.variables].
 [pdf]
 paper = "A4"                         # A4 | Letter
 logo = "_static/logo.svg"            # relative to this file: on the cover, and {logo}
@@ -226,6 +228,9 @@ toc_depth = 2                        # levels in the contents
 site_css = false                     # leave out conf.py's html_css_files and html_style
                                      # (default: used; extensions' stylesheets always are)
 css = "_static/pdf.css"              # the PDF's own stylesheet, used last
+
+[pdf.variables]                      # the PDF's own {name}s, over conf.py's
+classification = "Internal"
 
 # The cover's logo, title (with the subtitle under it), subtitle and note, moved from
 # their usual places (dragged there in Project Settings): mm from the page's top-left

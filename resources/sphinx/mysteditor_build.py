@@ -172,6 +172,23 @@ def mark_lines(app, doctree, docname):
     walk(doctree)
 
 
+def variables_of(config):
+    """Values from the configuration the PDF's headers, footers and cover can show as
+    {name}: author and copyright, then html_context's texts and numbers, as conf.py
+    and config-inited handlers left it."""
+    out = {}
+
+    def add(name, value):
+        if isinstance(name, str) and re.fullmatch(r"\w+", name) and isinstance(value, (str, int, float)) and not isinstance(value, bool):
+            out[name] = str(value)
+
+    for name in ("author", "copyright"):
+        add(name, getattr(config, name, None))
+    for name, value in dict(getattr(config, "html_context", None) or {}).items():
+        add(name, value)
+    return out
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--srcdir", required=True)
@@ -211,6 +228,11 @@ def main():
             freshenv=args.fresh,
             confoverrides=overrides,
         )
+
+        try:
+            result["variables"] = variables_of(app.config)
+        except Exception:
+            traceback.print_exc()
 
         # Sphinx buffers warnings while reading and flushes them when reading ends,
         # so phases switch at the events that follow each flush.

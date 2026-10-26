@@ -194,3 +194,31 @@ describe('the PDF’s stylesheets', () => {
     expect(problems.map((p) => p.message)).toEqual(['[pdf] site_css must be true or false', '[pdf] css must be a stylesheet (.css)']);
   });
 });
+
+describe('the PDF’s variables', () => {
+  const read = (text: string, outer?: string) =>
+    loadEditorConfig([...(outer ? [{ file: '.mysteditor.toml', text: outer, readCapabilities: () => '[]' }] : []), { file: 'docs/.mysteditor.toml', text, readCapabilities: () => '[]' }]);
+
+  it('writes them as a table of their own, and takes it out with the last', () => {
+    const text = editPdf('[pdf]\npaper = "A4"\n', { variables: { classification: 'Internal', document_id: 'HB-0042' } });
+    expect(text).toBe('[pdf]\npaper = "A4"\n\n[pdf.variables]\nclassification = "Internal"\ndocument_id = "HB-0042"\n');
+    expect(read(text).pdf.variables).toEqual({ classification: 'Internal', document_id: 'HB-0042' });
+    expect(editPdf(text, { variables: { classification: null, document_id: null } })).toBe('[pdf]\npaper = "A4"\n');
+  });
+
+  it('adds to and overrides those of a settings file further out', () => {
+    const { pdf, problems } = read('[pdf.variables]\nclassification = "Public"\n', '[pdf.variables]\nclassification = "Internal"\nowner = "Docs team"\n');
+    expect(problems).toEqual([]);
+    expect(pdf.variables).toEqual({ classification: 'Public', owner: 'Docs team' });
+  });
+
+  it('says what’s wrong with one', () => {
+    const { problems, pdf } = read('[pdf.variables]\npage = "x"\n"two words" = "x"\nlist = ["a"]\nyear = 2026\n');
+    expect(problems.map((p) => p.message)).toEqual([
+      '[pdf.variables] page is one of the PDF’s own placeholders',
+      '[pdf.variables] two words: names are letters, digits and _',
+      '[pdf.variables] list must be text',
+    ]);
+    expect(pdf.variables).toEqual({ year: '2026' });
+  });
+});

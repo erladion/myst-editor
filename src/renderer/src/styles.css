@@ -3037,6 +3037,10 @@ button.secondary {
   font-size: 12.5px;
 }
 
+.placeholders.placeholders-list {
+  margin-top: 6px;
+}
+
 .placeholders table {
   border-collapse: collapse;
   margin: 6px 0 4px;
@@ -3329,6 +3333,18 @@ button.secondary {
 .pdf-font-file code {
   flex: 1;
   overflow-wrap: anywhere;
+}
+
+.pdf-variables {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pdf-variable {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto;
+  gap: 6px;
 }
 
 /* A figure's or table's name, on its card: what cross-references use. */

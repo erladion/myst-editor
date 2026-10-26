@@ -265,3 +265,34 @@ test('the PDF’s stylesheets: without the website’s, with its own', async () 
   await expect(again.getByLabel('Use the website’s stylesheets')).not.toBeChecked();
   await expect(again.getByRole('textbox', { name: 'PDF stylesheet' })).toHaveValue('_static/pdf.css');
 });
+
+test('the PDF’s own variables', async () => {
+  ctx = await launch({ fixture: 'fixture-showcase' });
+  await page().getByRole('button', { name: 'Not now' }).click();
+  const dialog = await openSettings();
+  await dialog.getByRole('tab', { name: 'Variables' }).click();
+  await expect(dialog.getByText('Shown once Sphinx has built the project.')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Add a variable' }).click();
+  await dialog.getByLabel('Variable 1 name').fill('page');
+  await expect(dialog.getByText('{page} is one of the PDF’s own placeholders')).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Save' })).toBeDisabled();
+  await dialog.getByLabel('Variable 1 name').fill('classification');
+  await dialog.getByLabel('Variable 1 value').fill('Internal');
+  await dialog.getByRole('button', { name: 'Add a variable' }).click();
+  await dialog.getByLabel('Variable 2 name').fill('document_id');
+  await dialog.getByLabel('Variable 2 value').fill('HB-0042');
+  await dialog.getByRole('tab', { name: 'Headers and footers' }).click();
+  await expect(dialog.getByRole('region', { name: 'PDF headers and footers' }).locator('.placeholders tr', { hasText: '{document_id}' })).toHaveText('{document_id}“HB-0042” (a variable)');
+  await dialog.getByRole('button', { name: 'Save' }).click();
+  await expect(dialog).toBeHidden();
+  expect(toml()).toBe('[pdf.variables]\nclassification = "Internal"\ndocument_id = "HB-0042"\n');
+
+  // Taking one out takes it out of the file.
+  const again = await openSettings();
+  await again.getByRole('tab', { name: 'Variables' }).click();
+  await expect(again.getByLabel('Variable 2 value')).toHaveValue('HB-0042');
+  await again.getByRole('button', { name: 'Remove variable 1' }).click();
+  await again.getByRole('button', { name: 'Save' }).click();
+  await expect(again).toBeHidden();
+  expect(toml()).toBe('[pdf.variables]\ndocument_id = "HB-0042"\n');
+});

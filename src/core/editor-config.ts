@@ -57,6 +57,8 @@
 //   toc_depth = 2                        # levels in the contents
 //   site_css = false                     # leave out conf.py's html_css_files (default: kept)
 //   css = "_static/pdf.css"              # a stylesheet for the PDF only, applied last
+//   [pdf.variables]                      # {name} in the headers, footers and cover, as
+//   classification = "Internal"          # are author, copyright and html_context from conf.py
 import { parse as parseToml } from 'smol-toml';
 
 export const SETTINGS_FILE = '.mysteditor.toml';
@@ -162,7 +164,11 @@ export interface PdfDef {
   siteCss: boolean; // the stylesheets conf.py adds to the website (html_css_files, html_style)
   css: string | null; // the PDF's own stylesheet, as written
   cssPath: string | null; // relative to the opened folder
+  variables: Record<string, string>; // the PDF's own {name}s
 }
+
+// The PDF's own placeholders: variables can't have these names.
+export const PDF_PLACEHOLDERS = ['page', 'pages', 'chapter', 'title', 'date', 'version', 'project', 'logo'];
 
 export const DEFAULT_PDF: PdfDef = {
   paper: 'A4',
@@ -188,6 +194,7 @@ export const DEFAULT_PDF: PdfDef = {
   siteCss: true,
   css: null,
   cssPath: null,
+  variables: {},
 };
 
 export interface SettingsProblem {
@@ -492,8 +499,20 @@ function readPdf(t: Raw, prev: PdfDef, file: string, problem: (m: string) => voi
     pdf.css = v || null;
     pdf.cssPath = near(v);
   });
+  if (t.variables !== undefined) {
+    if (!isTable(t.variables)) problem('[pdf.variables] must be a table, like classification = "Internal"');
+    else {
+      pdf.variables = { ...pdf.variables };
+      for (const [name, value] of Object.entries(t.variables)) {
+        if (!/^\w+$/.test(name)) problem(`[pdf.variables] ${name}: names are letters, digits and _`);
+        else if (PDF_PLACEHOLDERS.includes(name)) problem(`[pdf.variables] ${name} is one of the PDF’s own placeholders`);
+        else if (typeof value === 'string' || typeof value === 'number') pdf.variables[name] = String(value);
+        else problem(`[pdf.variables] ${name} must be text`);
+      }
+    }
+  }
   for (const key of Object.keys(t)) {
-    if (!['paper', 'logo', 'title', 'subtitle', 'note', 'cover_background', 'cover_color', 'cover_images', 'cover', 'font', 'heading_font', 'code_font', 'fonts', 'headers_on', 'header', 'footer', 'numbering', 'toc_depth', 'site_css', 'css'].includes(key)) problem(`[pdf] unknown setting "${key}"`);
+    if (!['paper', 'logo', 'title', 'subtitle', 'note', 'cover_background', 'cover_color', 'cover_images', 'cover', 'font', 'heading_font', 'code_font', 'fonts', 'headers_on', 'header', 'footer', 'numbering', 'toc_depth', 'site_css', 'css', 'variables'].includes(key)) problem(`[pdf] unknown setting "${key}"`);
   }
   return pdf;
 }

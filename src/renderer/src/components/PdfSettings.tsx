@@ -2,7 +2,7 @@
 // CoverDesigner), the headers and footers (on a sketch of a page), numbering and the
 // contents' depth, and the stylesheets.
 import { useEffect, useMemo, useState } from 'react';
-import { COVER_PARTS, PAPER_SIZES, type PdfDef } from '../../../core/editor-config';
+import { COVER_PARTS, PAPER_SIZES, PDF_PLACEHOLDERS, type PdfDef } from '../../../core/editor-config';
 import type { PdfPatch } from '../../../core/project-settings';
 import { ASSET_SCHEME, type PdfFonts } from '../../../shared/api';
 import { CoverDesigner, fromSettings, type CoverForm } from './CoverDesigner';
@@ -21,6 +21,7 @@ export interface PdfForm extends CoverForm {
   tocDepth: number;
   siteCss: boolean;
   css: string; // relative to the settings file
+  variables: { name: string; value: string }[];
 }
 
 export const pdfForm = (pdf: PdfDef): PdfForm => ({
@@ -50,7 +51,27 @@ export const pdfForm = (pdf: PdfDef): PdfForm => ({
   tocDepth: pdf.tocDepth,
   siteCss: pdf.siteCss,
   css: pdf.css ?? '',
+  variables: Object.entries(pdf.variables).map(([name, value]) => ({ name, value })),
 });
+
+// What's wrong with the variables as written, if anything (they can't be saved then).
+export function variablesProblem(rows: PdfForm['variables']): string | null {
+  const seen = new Set<string>();
+  for (const { name: written, value } of rows) {
+    const name = written.trim();
+    if (!name) {
+      if (value.trim()) return 'A variable needs a name.';
+      continue;
+    }
+    if (!/^\w+$/.test(name)) return `“${name}”: a name is letters, digits and _, without spaces.`;
+    if (PDF_PLACEHOLDERS.includes(name)) return `{${name}} is one of the PDF’s own placeholders: choose another name.`;
+    if (seen.has(name)) return `There are two variables called ${name}.`;
+    seen.add(name);
+  }
+  return null;
+}
+
+const ownVariables = (rows: PdfForm['variables']): Record<string, string> => Object.fromEntries(rows.filter((v) => v.name.trim()).map((v) => [v.name.trim(), v.value]));
 
 // What changed from the settings as they are.
 export function pdfPatch(was: PdfDef, form: PdfForm): PdfPatch {
@@ -105,12 +126,17 @@ export function pdfPatch(was: PdfDef, form: PdfForm): PdfPatch {
   if (form.numbering !== was.numbering) out.numbering = form.numbering;
   if (form.tocDepth !== was.tocDepth) out.tocDepth = form.tocDepth;
   if (form.siteCss !== was.siteCss) out.siteCss = form.siteCss;
+  const own = ownVariables(form.variables);
+  const variables: NonNullable<PdfPatch['variables']> = {};
+  for (const name of Object.keys(was.variables)) if (!Object.hasOwn(own, name)) variables[name] = null;
+  for (const [name, value] of Object.entries(own)) if (was.variables[name] !== value) variables[name] = value;
+  if (Object.keys(variables).length) out.variables = variables;
   return out;
 }
 
 const SIDES = ['left', 'centre', 'right'] as const;
 
-export type PdfPane = 'pdf-pages' | 'pdf-cover' | 'pdf-fonts' | 'pdf-margins' | 'pdf-styles';
+export type PdfPane = 'pdf-pages' | 'pdf-cover' | 'pdf-fonts' | 'pdf-margins' | 'pdf-variables' | 'pdf-styles';
 
 interface Props {
   pane: string; // the one shown (see ProjectSettings' list)
@@ -119,6 +145,7 @@ interface Props {
   settingsFile: string;
   onChange: (form: PdfForm) => void;
   choose: (kind: 'image' | 'font' | 'css') => Promise<string | null>;
+  confVariables: Record<string, string> | null; // from the last Sphinx build; null: none yet
 }
 
 const STYLE_NAMES: Record<string, string> = {
@@ -138,8 +165,13 @@ const styleName = (weight: string, style: string) =>
     .join(' ')
     .replace(/^Regular Italic$/, 'Italic');
 
-export function PdfSettings({ pane, projectId, form, settingsFile, onChange, choose }: Props) {
+export function PdfSettings({ pane, projectId, form, settingsFile, onChange, choose, confVariables }: Props) {
   const set = <K extends keyof PdfForm>(key: K, value: PdfForm[K]) => onChange({ ...form, [key]: value });
+  // Every {name} the project has, and what it says: conf.py's, then the PDF's own over them.
+  const fromConf = Object.entries(confVariables ?? {}).filter(([name]) => !PDF_PLACEHOLDERS.includes(name));
+  const variables = Object.entries({ ...Object.fromEntries(fromConf), ...ownVariables(form.variables) });
+  const setVariable = (i: number, change: Partial<PdfForm['variables'][number]>) => set('variables', form.variables.map((v, k) => (k === i ? { ...v, ...change } : v)));
+  const problem = variablesProblem(form.variables);
   // What the font files are, and the fonts on this computer.
   const [fonts, setFonts] = useState<PdfFonts | null>(null);
   const [installed, setInstalled] = useState<string[] | null>(null);
@@ -262,7 +294,7 @@ export function PdfSettings({ pane, projectId, form, settingsFile, onChange, cho
           chooseImage={() => choose('image')}
           titleFont={form.headingFont.trim() || form.font.trim() || null}
         />
-        <Placeholders where="cover" />
+        <Placeholders where="cover" variables={variables} />
       </section>
 
       <section className="settings-section" hidden={pane !== 'pdf-fonts'} aria-label="PDF fonts">
@@ -335,7 +367,70 @@ export function PdfSettings({ pane, projectId, form, settingsFile, onChange, cho
           </div>
           {slots('footer')}
         </div>
-        <Placeholders where="margins" />
+        <Placeholders where="margins" variables={variables} />
+      </section>
+
+      <section className="settings-section" hidden={pane !== 'pdf-variables'} aria-label="PDF variables">
+        <h3>Variables</h3>
+        <p className="muted">Shown wherever a header, a footer or the cover says {'{name}'}.</p>
+        <div className="field">
+          <span className="field-label">The PDF’s own</span>
+          <div className="pdf-variables">
+            {form.variables.map((v, i) => (
+              <div key={i} className="pdf-variable">
+                <input aria-label={`Variable ${i + 1} name`} value={v.name} spellCheck={false} placeholder="name" onChange={(e) => setVariable(i, { name: e.target.value })} />
+                <input aria-label={`Variable ${i + 1} value`} value={v.value} placeholder="What it says" onChange={(e) => setVariable(i, { value: e.target.value })} />
+                <button
+                  type="button"
+                  aria-label={`Remove variable ${i + 1}`}
+                  onClick={() =>
+                    set(
+                      'variables',
+                      form.variables.filter((_, k) => k !== i),
+                    )
+                  }
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+            <div>
+              <button type="button" onClick={() => set('variables', [...form.variables, { name: '', value: '' }])}>
+                Add a variable
+              </button>
+            </div>
+            {problem ? <small className="field-error">{problem}</small> : <small>For the PDF only. One with the same name as one from conf.py is used instead of it.</small>}
+          </div>
+        </div>
+        <div className="field">
+          <span className="field-label">From conf.py</span>
+          {confVariables === null ? (
+            <small>Shown once Sphinx has built the project.</small>
+          ) : fromConf.length ? (
+            <div className="placeholders placeholders-list">
+              <table aria-label="Variables from conf.py">
+                <tbody>
+                  {fromConf.map(([name, value]) => (
+                    <tr key={name}>
+                      <td>
+                        <code>{`{${name}}`}</code>
+                      </td>
+                      <td>
+                        {value}
+                        {Object.hasOwn(ownVariables(form.variables), name) && <span className="muted"> (the PDF’s own is used)</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <small>None yet.</small>
+          )}
+          <small>
+            <code>author</code>, <code>copyright</code>, and the texts and numbers in <code>html_context</code>, as conf.py and its extensions leave them (config-inited handlers included). Changes to conf.py show here after the next build, and in the next PDF.
+          </small>
+        </div>
       </section>
 
       <section className="settings-section" hidden={pane !== 'pdf-styles'} aria-label="PDF stylesheets">
@@ -396,7 +491,7 @@ const PLACEHOLDERS: {
   { name: '{logo}', what: 'The logo (set on the cover)', where: 'margins' },
 ];
 
-function Placeholders({ where }: { where: 'cover' | 'margins' }) {
+function Placeholders({ where, variables }: { where: 'cover' | 'margins'; variables: [string, string][] }) {
   return (
     <div className="placeholders">
       <span className="field-label">{where === 'cover' ? 'In the title, under the title and at the foot' : 'In each slot: text, and'}</span>
@@ -408,6 +503,14 @@ function Placeholders({ where }: { where: 'cover' | 'margins' }) {
                 <code>{p.name}</code>
               </td>
               <td>{p.what}</td>
+            </tr>
+          ))}
+          {variables.map(([name, value]) => (
+            <tr key={`variable-${name}`}>
+              <td>
+                <code>{`{${name}}`}</code>
+              </td>
+              <td>{value ? `“${value}” (a variable)` : 'Nothing (a variable)'}</td>
             </tr>
           ))}
         </tbody>

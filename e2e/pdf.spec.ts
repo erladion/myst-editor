@@ -185,3 +185,30 @@ test('only the PDF’s own stylesheet', async () => {
   expect(fonts.some((f) => f.startsWith('KaTeX_SansSerif-Italic'))).toBe(true);
   expect(await words(pdf)).toContain('PDF words');
 });
+
+test('variables from conf.py and the PDF’s own, in the headers and footers', async () => {
+  const pdf = await exportPdf(
+    '[pdf]\nheader = ["{author}", "", ""]\nfooter = ["{classification}", "{document_id}", "© {copyright} {missing}"]\n\n[pdf.variables]\nclassification = "Confidential"\n',
+    (docs) =>
+      appendFileSync(
+        join(docs, 'conf.py'),
+        'author = "Harbor Labs"\ncopyright = "2026, Harbor Labs"\nhtml_context = {"classification": "Internal", "nested": {"a": 1}}\n' +
+          'def add_context(app, config):\n    config.html_context["document_id"] = "HB-0042"\n' +
+          'def setup(app):\n    app.connect("config-inited", add_context)\n',
+      ),
+  );
+  const text = await pageTexts(pdf);
+  // A chapter's page: the PDF's own over conf.py's; a name that isn't one, as written.
+  for (const words of ['Harbor Labs', 'Confidential', 'HB-0042', '© 2026, Harbor Labs {missing}']) expect(text[3]).toContain(words);
+  expect(text[3]).not.toContain('Internal');
+
+  // Project Settings lists them, from the build.
+  await ctx.app.evaluate(({ Menu }) => Menu.getApplicationMenu()!.getMenuItemById('project-settings')!.click());
+  const dialog = ctx.page.getByRole('dialog', { name: 'Project settings' });
+  await dialog.getByRole('tab', { name: 'Variables' }).click();
+  const fromConf = dialog.getByRole('table', { name: 'Variables from conf.py' });
+  await expect(fromConf.getByRole('row')).toHaveText(['{author}Harbor Labs', '{copyright}2026, Harbor Labs', '{classification}Internal (the PDF’s own is used)', '{document_id}HB-0042']);
+  await dialog.screenshot({ path: test.info().outputPath('variables.png') });
+  await dialog.getByRole('tab', { name: 'Headers and footers' }).click();
+  await expect(dialog.getByRole('region', { name: 'PDF headers and footers' }).locator('.placeholders tr', { hasText: '{classification}' })).toHaveText('{classification}“Confidential” (a variable)');
+});

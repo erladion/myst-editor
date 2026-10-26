@@ -67,6 +67,7 @@ export interface PdfPatch {
   tocDepth?: number | null;
   siteCss?: boolean | null;
   css?: string | null;
+  variables?: Record<string, string | null>; // by name; null: taken out
 }
 
 export function editPdf(text: string, patch: PdfPatch): string {
@@ -89,7 +90,9 @@ export function editPdf(text: string, patch: PdfPatch): string {
       writes.push([['cover', part, key], v === null || v === undefined ? undefined : v]);
     }
   }
+  for (const [name, value] of Object.entries(patch.variables ?? {})) writes.push([['variables', name], value ?? undefined]);
   let next = write(text, 'pdf', writes);
+  if (patch.variables) next = removeTomlTableIfEmpty(next, ['pdf', 'variables']);
   // A part back in its usual place: its table goes.
   for (const [part, place] of Object.entries(patch.cover ?? {})) if (!place) next = removeTomlTableIfEmpty(next, ['pdf', 'cover', part]);
   return next;

@@ -5,7 +5,7 @@ import { CONDITION_PALETTE, type ConditionsDef } from '../../../core/editor-conf
 import type { ConditionsPatch } from '../../../core/project-settings';
 import type { ProjectSettingsInfo } from '../../../shared/api';
 import { conditionColor } from '../editor/conditions';
-import { PdfSettings, pdfForm, pdfPatch, type PdfForm } from './PdfSettings';
+import { PdfSettings, pdfForm, pdfPatch, variablesProblem, type PdfForm } from './PdfSettings';
 
 const api = window.myst;
 
@@ -17,6 +17,7 @@ const PANES: [string, string][] = [
   ['pdf-cover', 'Cover'],
   ['pdf-fonts', 'Fonts'],
   ['pdf-margins', 'Headers and footers'],
+  ['pdf-variables', 'Variables'],
   ['pdf-styles', 'Stylesheets'],
 ];
 
@@ -26,10 +27,11 @@ const KEYWORD = /^[\w-]+$/;
 interface Props {
   projectId: string | null;
   projectName?: string; // when the folder has more than one project
+  confVariables: Record<string, string> | null; // conf.py's {name}s for the PDF, from the last build
   onClose: () => void;
 }
 
-export function ProjectSettingsDialog({ projectId, projectName, onClose }: Props) {
+export function ProjectSettingsDialog({ projectId, projectName, confVariables, onClose }: Props) {
   const [info, setInfo] = useState<ProjectSettingsInfo | null>(null);
   const [enabled, setEnabled] = useState(false);
   const [file, setFile] = useState('');
@@ -246,7 +248,7 @@ export function ProjectSettingsDialog({ projectId, projectName, onClose }: Props
                     </div>
                   )}
                 </section>
-                {pdf && <PdfSettings pane={pane} projectId={projectId} form={pdf} settingsFile={info.file} onChange={setPdf} choose={choose} />}
+                {pdf && <PdfSettings pane={pane} projectId={projectId} form={pdf} settingsFile={info.file} onChange={setPdf} choose={choose} confVariables={confVariables} />}
               </div>
             </div>
             {error && (
@@ -258,7 +260,7 @@ export function ProjectSettingsDialog({ projectId, projectName, onClose }: Props
               <button type="button" onClick={onClose} disabled={busy}>
                 Cancel
               </button>
-              <button type="submit" className="primary" disabled={busy || (enabled && badKeywords)}>
+              <button type="submit" className="primary" disabled={busy || (enabled && badKeywords) || (!!pdf && !!variablesProblem(pdf.variables))}>
                 Save
               </button>
             </div>
