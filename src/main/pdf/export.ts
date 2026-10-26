@@ -3,13 +3,13 @@
 // print's outline says which page each heading is on, for the contents' numbers.
 import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell } from 'electron';
 import { promises as fs } from 'node:fs';
-import { basename, extname, join } from 'node:path';
+import { basename, dirname, extname, join } from 'node:path';
 import type { PdfDef } from '../../core/editor-config.js';
 import type { PdfResult } from '../../shared/api.js';
 import { current, requireProject, toWindow } from '../state.js';
 import { loadSettings, updateSettings } from '../settings.js';
 import { managerOf } from '../sphinx/service.js';
-import { CODE_FONTS, layoutScript, PRINT_CSS, TEXT_FONTS, type LayoutOptions } from './layout.js';
+import { CODE_FONTS, cssWithFileUrls, layoutScript, PRINT_CSS, TEXT_FONTS, type LayoutOptions } from './layout.js';
 import { cssString, fontFace, fontInfo } from './fonts.js';
 import { resolveInside } from '../project.js';
 import { headingPages, outlineOf } from './outline.js';
@@ -62,7 +62,16 @@ export async function logoImages(root: string, logo: string): Promise<{ cover: s
   return { cover, margin: `data:image/svg+xml;base64,${Buffer.from(sized).toString('base64')}` };
 }
 
-async function print(htmlFile: string, layout: Omit<LayoutOptions, 'rootDoc'>, signal: AbortSignal, step: (s: string) => void): Promise<{ pdf: Uint8Array; pages: number }> {
+// The project's PDF stylesheet (see cssWithFileUrls).
+async function pdfStylesheet(root: string, path: string): Promise<string> {
+  const file = resolveInside(root, path);
+  const css = await fs.readFile(file, 'utf8').catch(() => {
+    throw new Error(`There’s no PDF stylesheet at ${path}.`);
+  });
+  return cssWithFileUrls(css, dirname(file));
+}
+
+async function print(htmlFile: string, layout: Omit<LayoutOptions, 'rootDoc'>, css: string | null, signal: AbortSignal, step: (s: string) => void): Promise<{ pdf: Uint8Array; pages: number }> {
   const win = new BrowserWindow({ show: false, width: 1000, height: 1400, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } });
   const cancel = () => win.destroy();
   signal.addEventListener('abort', cancel);
@@ -71,6 +80,9 @@ async function print(htmlFile: string, layout: Omit<LayoutOptions, 'rootDoc'>, s
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     await win.loadFile(htmlFile);
     await win.webContents.insertCSS(PRINT_CSS);
+    // The project's own, after the page's stylesheets (inserted ones come before them):
+    // it has the last word.
+    if (css) await win.webContents.executeJavaScript(`document.head.append(Object.assign(document.createElement('style'), { textContent: ${JSON.stringify(css)} }))`);
     const { headings, firstChapter }: { headings: string[]; firstChapter: number } = await win.webContents.executeJavaScript(layoutScript({ ...layout, rootDoc: basename(htmlFile, '.html') }));
     step('Laying out the pages…');
     const first = await win.webContents.printToPDF(PRINT);
@@ -113,9 +125,11 @@ export function registerPdfIpc() {
     const step = (s: string) => toWindow('pdf-progress', s);
     try {
       step('Building the pages with Sphinx…');
-      const html = await manager.buildOnePage(run.signal);
-      if (run.signal.aborted) return null;
       const settings: PdfDef = project.config.editor.pdf;
+      if (settings.css && !settings.cssPath) throw new Error(`The PDF stylesheet must be in the opened folder: ${settings.css}`);
+      const css = settings.cssPath ? await pdfStylesheet(p.root, settings.cssPath) : null;
+      const html = await manager.buildOnePage(run.signal, settings.siteCss);
+      if (run.signal.aborted) return null;
       const logo = settings.logoPath ? await logoImages(p.root, settings.logoPath) : null;
       const background = settings.coverBackgroundPath ? (await imageData(p.root, settings.coverBackgroundPath, 'cover background')).url : null;
       // The project's font files, embedded: the PDF looks the same on every computer.
@@ -159,7 +173,7 @@ export function registerPdfIpc() {
         date: new Date().toLocaleDateString(app.getLocale(), { year: 'numeric', month: 'long', day: 'numeric' }),
         project: project.name,
       };
-      const { pdf, pages } = await print(html, layout, run.signal, step);
+      const { pdf, pages } = await print(html, layout, css, run.signal, step);
       await fs.writeFile(path, pdf);
       exported = path;
       return { ok: true, path, pages };

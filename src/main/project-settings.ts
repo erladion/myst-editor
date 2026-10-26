@@ -62,7 +62,7 @@ export function registerProjectSettingsIpc() {
 
   // A file the settings name (a capabilities file, chosen or new, or a logo), as
   // the settings file would name it.
-  ipcMain.handle('choose-settings-file', async (_e, projectId: string | null, kind: 'capabilities' | 'new-capabilities' | 'image' | 'font') => {
+  ipcMain.handle('choose-settings-file', async (_e, projectId: string | null, kind: 'capabilities' | 'new-capabilities' | 'image' | 'font' | 'css') => {
     const p = requireProject();
     const { path } = settingsFor(p, projectId);
     const create = kind === 'new-capabilities';
@@ -71,10 +71,12 @@ export function registerProjectSettingsIpc() {
         ? [{ name: 'Images', extensions: ['svg', 'png', 'jpg', 'jpeg', 'gif', 'webp'] }]
         : kind === 'font'
           ? [{ name: 'Fonts', extensions: ['ttf', 'otf', 'woff', 'woff2'] }]
-          : [{ name: 'JSON', extensions: ['json'] }];
+          : kind === 'css'
+            ? [{ name: 'Stylesheets', extensions: ['css'] }]
+            : [{ name: 'JSON', extensions: ['json'] }];
     const result = create
       ? await dialog.showSaveDialog(current.win!, { title: 'New capabilities file', defaultPath: join(dirname(path), 'capabilities.json'), filters })
-      : await dialog.showOpenDialog(current.win!, { title: kind === 'image' ? 'Choose an image' : kind === 'font' ? 'Choose a font file' : 'Choose the capabilities file', defaultPath: dirname(path), properties: ['openFile'], filters });
+      : await dialog.showOpenDialog(current.win!, { title: kind === 'image' ? 'Choose an image' : kind === 'font' ? 'Choose a font file' : kind === 'css' ? 'Choose the PDF stylesheet' : 'Choose the capabilities file', defaultPath: dirname(path), properties: ['openFile'], filters });
     const file = 'filePaths' in result ? result.filePaths[0] : result.filePath;
     if (result.canceled || !file) return null;
     try {

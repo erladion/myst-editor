@@ -55,6 +55,8 @@
 //                                        # slots with {page} or {pages} stay empty where there's no number
 //   numbering = "content"                # content: from the first page after the contents | cover
 //   toc_depth = 2                        # levels in the contents
+//   site_css = false                     # leave out conf.py's html_css_files (default: kept)
+//   css = "_static/pdf.css"              # a stylesheet for the PDF only, applied last
 import { parse as parseToml } from 'smol-toml';
 
 export const SETTINGS_FILE = '.mysteditor.toml';
@@ -157,6 +159,9 @@ export interface PdfDef {
   headersOn: 'numbered' | 'not-cover' | 'all';
   numbering: 'content' | 'cover';
   tocDepth: number;
+  siteCss: boolean; // the stylesheets conf.py adds to the website (html_css_files, html_style)
+  css: string | null; // the PDF's own stylesheet, as written
+  cssPath: string | null; // relative to the opened folder
 }
 
 export const DEFAULT_PDF: PdfDef = {
@@ -180,6 +185,9 @@ export const DEFAULT_PDF: PdfDef = {
   headersOn: 'numbered',
   numbering: 'content',
   tocDepth: 2,
+  siteCss: true,
+  css: null,
+  cssPath: null,
 };
 
 export interface SettingsProblem {
@@ -475,8 +483,17 @@ function readPdf(t: Raw, prev: PdfDef, file: string, problem: (m: string) => voi
     if (Number.isInteger(t.toc_depth) && (t.toc_depth as number) >= 1 && (t.toc_depth as number) <= 4) pdf.tocDepth = t.toc_depth as number;
     else problem('[pdf] toc_depth must be 1, 2, 3 or 4');
   }
+  if (t.site_css !== undefined) {
+    if (typeof t.site_css === 'boolean') pdf.siteCss = t.site_css;
+    else problem('[pdf] site_css must be true or false');
+  }
+  text('css', (v) => {
+    if (v && !/\.css$/i.test(v)) return problem('[pdf] css must be a stylesheet (.css)');
+    pdf.css = v || null;
+    pdf.cssPath = near(v);
+  });
   for (const key of Object.keys(t)) {
-    if (!['paper', 'logo', 'title', 'subtitle', 'note', 'cover_background', 'cover_color', 'cover_images', 'cover', 'font', 'heading_font', 'code_font', 'fonts', 'headers_on', 'header', 'footer', 'numbering', 'toc_depth'].includes(key)) problem(`[pdf] unknown setting "${key}"`);
+    if (!['paper', 'logo', 'title', 'subtitle', 'note', 'cover_background', 'cover_color', 'cover_images', 'cover', 'font', 'heading_font', 'code_font', 'fonts', 'headers_on', 'header', 'footer', 'numbering', 'toc_depth', 'site_css', 'css'].includes(key)) problem(`[pdf] unknown setting "${key}"`);
   }
   return pdf;
 }

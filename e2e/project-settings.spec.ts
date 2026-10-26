@@ -1,7 +1,7 @@
 // File → Project Settings: turning conditional content on and off, and its settings,
 // written into the project's .mysteditor.toml.
 import { expect, test } from '@playwright/test';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { launch, type App } from './helpers';
 
@@ -240,4 +240,28 @@ test('sets up the PDF: paper, cover, headers and footers', async () => {
   await again.getByRole('button', { name: 'Save' }).click();
   await expect(again).toBeHidden();
   expect(readFileSync(settings, 'utf8')).not.toContain('cover_images');
+});
+
+test('the PDF’s stylesheets: without the website’s, with its own', async () => {
+  ctx = await launch({ fixture: 'fixture-showcase', prepare: (dir) => writeFileSync(join(dir, 'docs', '_static', 'pdf.css'), 'body { color: #222; }\n') });
+  await page().getByRole('button', { name: 'Not now' }).click();
+  await ctx.app.evaluate(({ dialog }, path) => {
+    dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [path] })) as typeof dialog.showOpenDialog;
+  }, join(ctx.project, 'docs', '_static', 'pdf.css'));
+  const dialog = await openSettings();
+  await dialog.getByRole('tab', { name: 'Stylesheets' }).click();
+  const site = dialog.getByLabel('Use the website’s stylesheets');
+  await expect(site).toBeChecked();
+  await site.uncheck();
+  await dialog.getByRole('button', { name: 'Choose the PDF stylesheet' }).click();
+  await expect(dialog.getByRole('textbox', { name: 'PDF stylesheet' })).toHaveValue('_static/pdf.css');
+  await dialog.getByRole('button', { name: 'Save' }).click();
+  await expect(dialog).toBeHidden();
+  expect(toml()).toBe('[pdf]\nsite_css = false\ncss = "_static/pdf.css"\n');
+
+  // Read back as saved.
+  const again = await openSettings();
+  await again.getByRole('tab', { name: 'Stylesheets' }).click();
+  await expect(again.getByLabel('Use the website’s stylesheets')).not.toBeChecked();
+  await expect(again.getByRole('textbox', { name: 'PDF stylesheet' })).toHaveValue('_static/pdf.css');
 });

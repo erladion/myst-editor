@@ -110,7 +110,10 @@ about a minute. File → Project Settings sets it up (`[pdf]` below): the paper;
 cover, on a preview where graphics are dragged into place (a background to the page's
 edges, the logo, title, subtitle, a note, and any graphics, all of which can be moved); the fonts (font files in
 the project are put in the PDF, so it looks the same everywhere); the headers and
-footers; and the page numbering.
+footers; the page numbering; and the stylesheets. The website's own stylesheets
+(`html_css_files` in `conf.py`) are used in the PDF too unless turned off, and a
+stylesheet of the PDF's own can be added after everything else. The PDF is printed,
+so `@media print` rules apply and `@media screen` ones don't.
 
 View → Appearance switches between light and dark. The menus are in the title bar;
 View → Use System Title Bar puts them back in a menu bar of their own.
@@ -220,6 +223,9 @@ headers_on = "numbered"              # numbered | not-cover | all: on which page
 numbering = "content"                # from the first chapter (the pages before it
                                      # are unnumbered) | cover
 toc_depth = 2                        # levels in the contents
+site_css = false                     # leave out conf.py's html_css_files and html_style
+                                     # (default: used; extensions' stylesheets always are)
+css = "_static/pdf.css"              # the PDF's own stylesheet, used last
 
 # The cover's logo, title (with the subtitle under it), subtitle and note, moved from
 # their usual places (dragged there in Project Settings): mm from the page's top-left

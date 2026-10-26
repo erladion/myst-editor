@@ -1,7 +1,7 @@
 // File → Export PDF: the project as one PDF, with a title page, one table of
 // contents and each chapter on a new page. Needs a Sphinx build (see sphinx.spec.ts).
 import { expect, test } from '@playwright/test';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PDFDocument } from 'pdf-lib';
 import { headingPages, outlineOf } from '../src/main/pdf/outline';
@@ -15,9 +15,16 @@ test.afterEach(async () => {
   await ctx.app.close().catch(() => {});
 });
 
-// Build the sample project, export its PDF, and return the PDF.
-async function exportPdf(settings?: string): Promise<Buffer> {
-  ctx = await launch({ fixture: 'fixture-showcase', prepare: settings ? (dir) => writeFileSync(join(dir, 'docs', '.mysteditor.toml'), settings) : undefined });
+// Build the sample project, export its PDF, and return the PDF. `prepare`: changes
+// to the project's docs folder first.
+async function exportPdf(settings?: string, prepare?: (docs: string) => void): Promise<Buffer> {
+  ctx = await launch({
+    fixture: 'fixture-showcase',
+    prepare: (dir) => {
+      if (settings) writeFileSync(join(dir, 'docs', '.mysteditor.toml'), settings);
+      prepare?.(join(dir, 'docs'));
+    },
+  });
   const { page, app } = ctx;
   await page.getByRole('button', { name: 'Allow' }).click();
   await expect(page.locator('.chip-button', { hasText: /problem/ })).toBeVisible({ timeout: 180_000 });
@@ -151,4 +158,30 @@ width = 50
   const logo = (await textPlaces(pdf, 0)).find((t) => t.str === 'Harbor')!;
   expect(logo.x).toBeGreaterThan(140);
   expect(logo.y).toBeLessThan(60);
+});
+
+// The website's stylesheet: a font for paragraphs, and words at the end.
+const withStylesheets = (docs: string) => {
+  appendFileSync(join(docs, 'conf.py'), 'html_static_path = ["_static"]\nhtml_css_files = ["site.css"]\n');
+  writeFileSync(join(docs, '_static', 'site.css'), '@font-face { font-family: SiteFont; src: url(fonts/KaTeX_SansSerif-Bold.woff); }\np { font-family: SiteFont; }\nbody::after { content: "Website words"; }\n');
+  // The PDF's: other words there, in a font found next to it.
+  writeFileSync(join(docs, '_static', 'pdf.css'), '@font-face { font-family: PdfFont; src: url("fonts/KaTeX_SansSerif-Italic.woff2"); }\nbody::after { content: "PDF words"; font-family: PdfFont; }\n');
+};
+const words = async (pdf: Buffer) => (await pageTexts(pdf)).join(' ');
+
+test('the website’s stylesheets, with the PDF’s own after them', async () => {
+  const pdf = await exportPdf('[pdf]\ncss = "_static/pdf.css"\n', withStylesheets);
+  const fonts = await fontNames(pdf);
+  expect(fonts).toContain('KaTeX_SansSerif-Bold'); // the website's paragraph font
+  expect(fonts.some((f) => f.startsWith('KaTeX_SansSerif-Italic'))).toBe(true);
+  expect(await words(pdf)).toContain('PDF words');
+  expect(await words(pdf)).not.toContain('Website words');
+});
+
+test('only the PDF’s own stylesheet', async () => {
+  const pdf = await exportPdf('[pdf]\nsite_css = false\ncss = "_static/pdf.css"\n', withStylesheets);
+  const fonts = await fontNames(pdf);
+  expect(fonts).not.toContain('KaTeX_SansSerif-Bold');
+  expect(fonts.some((f) => f.startsWith('KaTeX_SansSerif-Italic'))).toBe(true);
+  expect(await words(pdf)).toContain('PDF words');
 });

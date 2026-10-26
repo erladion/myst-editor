@@ -2,6 +2,8 @@
 // Chromium prints it: a cover, one table of contents, each chapter on a new page,
 // headers and footers ([pdf] in .mysteditor.toml), and links that work in a single
 // document. Runs in the page, as a script.
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { PAPER_MM, PDF_MARGIN_MM, type CoverPart, type CoverPlace, type PaperSize } from '../../core/editor-config.js';
 
 export interface LayoutOptions {
@@ -282,6 +284,16 @@ export const layoutScript = (opts: LayoutOptions) => `
 // The fonts when none are chosen.
 export const TEXT_FONTS = '"Noto Sans", "Segoe UI", "DejaVu Sans", "Liberation Sans", Arial, sans-serif';
 export const CODE_FONTS = '"DejaVu Sans Mono", "Liberation Mono", Consolas, monospace';
+
+// A stylesheet's references to other files (fonts, images, stylesheets), relative to
+// `dir`, as file: URLs: it's added to the page as text, which has no place of its own
+// to resolve them against.
+export function cssWithFileUrls(css: string, dir: string): string {
+  const absolute = (ref: string) => (/^([a-z][\w+.-]*:|#|\/)/i.test(ref) ? ref : pathToFileURL(join(dir, ref)).href);
+  return css
+    .replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/g, (_m, q: string, ref: string) => `url(${q}${absolute(ref.trim())}${q})`)
+    .replace(/@import\s+(['"])([^'"]+)\1/g, (_m, q: string, ref: string) => `@import ${q}${absolute(ref)}${q}`);
+}
 
 export const PRINT_CSS = `
 :root { --pdf-font: ${TEXT_FONTS}; --pdf-heading-font: var(--pdf-font); --pdf-code-font: ${CODE_FONTS}; }

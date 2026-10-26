@@ -1,6 +1,6 @@
 // Project Settings' PDF section ([pdf] in .mysteditor.toml): paper, the cover (see
 // CoverDesigner), the headers and footers (on a sketch of a page), numbering and the
-// contents' depth.
+// contents' depth, and the stylesheets.
 import { useEffect, useMemo, useState } from 'react';
 import { COVER_PARTS, PAPER_SIZES, type PdfDef } from '../../../core/editor-config';
 import type { PdfPatch } from '../../../core/project-settings';
@@ -19,6 +19,8 @@ export interface PdfForm extends CoverForm {
   headersOn: 'numbered' | 'not-cover' | 'all';
   numbering: 'content' | 'cover';
   tocDepth: number;
+  siteCss: boolean;
+  css: string; // relative to the settings file
 }
 
 export const pdfForm = (pdf: PdfDef): PdfForm => ({
@@ -46,6 +48,8 @@ export const pdfForm = (pdf: PdfDef): PdfForm => ({
   headersOn: pdf.headersOn,
   numbering: pdf.numbering,
   tocDepth: pdf.tocDepth,
+  siteCss: pdf.siteCss,
+  css: pdf.css ?? '',
 });
 
 // What changed from the settings as they are.
@@ -62,6 +66,7 @@ export function pdfPatch(was: PdfDef, form: PdfForm): PdfPatch {
     ['font', form.font, was.font],
     ['headingFont', form.headingFont, was.headingFont],
     ['codeFont', form.codeFont, was.codeFont],
+    ['css', form.css, was.css],
   ] as const) {
     const v = text(now, before);
     if (v !== undefined) out[key] = v;
@@ -99,12 +104,13 @@ export function pdfPatch(was: PdfDef, form: PdfForm): PdfPatch {
   if (form.headersOn !== was.headersOn) out.headersOn = form.headersOn;
   if (form.numbering !== was.numbering) out.numbering = form.numbering;
   if (form.tocDepth !== was.tocDepth) out.tocDepth = form.tocDepth;
+  if (form.siteCss !== was.siteCss) out.siteCss = form.siteCss;
   return out;
 }
 
 const SIDES = ['left', 'centre', 'right'] as const;
 
-export type PdfPane = 'pdf-pages' | 'pdf-cover' | 'pdf-fonts' | 'pdf-margins';
+export type PdfPane = 'pdf-pages' | 'pdf-cover' | 'pdf-fonts' | 'pdf-margins' | 'pdf-styles';
 
 interface Props {
   pane: string; // the one shown (see ProjectSettings' list)
@@ -112,7 +118,7 @@ interface Props {
   form: PdfForm;
   settingsFile: string;
   onChange: (form: PdfForm) => void;
-  choose: (kind: 'image' | 'font') => Promise<string | null>;
+  choose: (kind: 'image' | 'font' | 'css') => Promise<string | null>;
 }
 
 const STYLE_NAMES: Record<string, string> = {
@@ -330,6 +336,29 @@ export function PdfSettings({ pane, projectId, form, settingsFile, onChange, cho
           {slots('footer')}
         </div>
         <Placeholders where="margins" />
+      </section>
+
+      <section className="settings-section" hidden={pane !== 'pdf-styles'} aria-label="PDF stylesheets">
+        <h3>Stylesheets</h3>
+        <div className="field">
+          <label className="check">
+            <input type="checkbox" checked={form.siteCss} onChange={(e) => set('siteCss', e.target.checked)} />
+            Use the website’s stylesheets
+          </label>
+          <small>The ones conf.py adds (html_css_files and html_style). Those that extensions add, for cards, tabs and the like, are always used.</small>
+        </div>
+        <div className="field">
+          <label htmlFor="pdf-css">PDF stylesheet</label>
+          <div className="row">
+            <input id="pdf-css" value={form.css} spellCheck={false} placeholder="None" onChange={(e) => set('css', e.target.value)} />
+            <button type="button" aria-label="Choose the PDF stylesheet" onClick={() => void choose('css').then((f) => f && set('css', f))}>
+              Choose…
+            </button>
+          </div>
+          <small>
+            For the PDF only, and used last, so its rules win. The PDF is printed, so <code>@media print</code> rules in the website’s stylesheets apply too, and <code>@media screen</code> ones don’t.
+          </small>
+        </div>
       </section>
     </>
   );

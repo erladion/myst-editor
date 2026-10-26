@@ -175,3 +175,22 @@ describe('moving the cover’s parts', () => {
     ]);
   });
 });
+
+describe('the PDF’s stylesheets', () => {
+  const read = (text: string) => loadEditorConfig([{ file: 'docs/.mysteditor.toml', text, readCapabilities: () => '[]' }]);
+
+  it('leaves out the website’s, and adds its own', () => {
+    const text = editPdf('[pdf]\npaper = "A4"\n', { siteCss: false, css: '_static/pdf.css' });
+    expect(text).toBe('[pdf]\npaper = "A4"\nsite_css = false\ncss = "_static/pdf.css"\n');
+    const { pdf, problems } = read(text);
+    expect(problems).toEqual([]);
+    expect(pdf).toMatchObject({ siteCss: false, css: '_static/pdf.css', cssPath: 'docs/_static/pdf.css' });
+    expect(read('').pdf).toMatchObject({ siteCss: true, css: null });
+    expect(editPdf(text, { siteCss: true, css: null })).toBe('[pdf]\npaper = "A4"\nsite_css = true\n');
+  });
+
+  it('says what’s wrong with them', () => {
+    const { problems } = read('[pdf]\nsite_css = "no"\ncss = "_static/pdf.scss"\n');
+    expect(problems.map((p) => p.message)).toEqual(['[pdf] site_css must be true or false', '[pdf] css must be a stylesheet (.css)']);
+  });
+});

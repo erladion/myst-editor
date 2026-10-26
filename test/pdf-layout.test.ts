@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { CODE_FONTS, layoutScript, TEXT_FONTS } from '../src/main/pdf/layout.js';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { CODE_FONTS, cssWithFileUrls, layoutScript, TEXT_FONTS } from '../src/main/pdf/layout.js';
 
 describe('layoutScript', () => {
   it('is a script that parses, with the options in it', () => {
@@ -24,5 +26,14 @@ describe('headingPages', () => {
       { title: 'Secrets', page: 6 },
     ];
     expect(headingPages(['Install Harbor', 'Deploy your first service', 'Deploy', 'Missing', 'Secrets'], entries)).toEqual([4, 5, 5, 0, 6]);
+  });
+});
+
+describe('the PDF stylesheet', () => {
+  it('refers to its fonts and images by where they are, next to it', () => {
+    const dir = join('/projects', 'docs', '_static');
+    const at = (f: string) => pathToFileURL(join(dir, f)).href;
+    const css = cssWithFileUrls(`@import "print-extra.css";\n@font-face { src: url(fonts/Brand.woff2) format("woff2"), url('../fonts/Brand.ttf'); }\nbody { background: url("data:image/png;base64,AA") , url(https://example.com/a.png); }\nh1 { filter: url(#glow); }`, dir);
+    expect(css).toBe(`@import "${at('print-extra.css')}";\n@font-face { src: url(${at('fonts/Brand.woff2')}) format("woff2"), url('${at('../fonts/Brand.ttf')}'); }\nbody { background: url("data:image/png;base64,AA") , url(https://example.com/a.png); }\nh1 { filter: url(#glow); }`);
   });
 });

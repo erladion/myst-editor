@@ -3,10 +3,11 @@
 Run with the project's environment's Python:
 
     python mysteditor_build.py --srcdir DIR --outdir DIR --doctreedir DIR \
-        --result FILE [--builder html] [--fresh] [--pdf]
+        --result FILE [--builder html] [--fresh] [--pdf [--no-site-css]]
 
 --pdf builds the whole project as one page (singlehtml) with Sphinx's plain theme,
-for the editor to lay out and print as a PDF.
+for the editor to lay out and print as a PDF; --no-site-css leaves out the
+stylesheets conf.py adds (html_css_files, html_style).
 
 The result file holds the toctree, page titles, every cross-reference target and
 the warnings, each tagged with the build phase it came from:
@@ -180,11 +181,15 @@ def main():
     parser.add_argument("--builder", default="html")
     parser.add_argument("--fresh", action="store_true")
     parser.add_argument("--pdf", action="store_true")
+    parser.add_argument("--no-site-css", action="store_true")
     args = parser.parse_args()
     if args.pdf:
         args.builder = "singlehtml"
     # The plain theme: the HTML theme's screen layout doesn't print well.
     overrides = {"html_theme": "basic", "html_theme_options": {}, "html_sidebars": {}} if args.pdf else {}
+    # Without the website's own stylesheets (those extensions add are kept).
+    if args.pdf and args.no_site_css:
+        overrides.update({"html_css_files": [], "html_style": None})
 
     started = time.time()
     warnings = WarningCollector()

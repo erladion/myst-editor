@@ -147,7 +147,7 @@ export interface MystApi {
   saveProjectSettings(projectId: string | null, patch: { conditions?: ConditionsPatch; pdf?: PdfPatch }): Promise<{ ok: true } | { ok: false; message: string }>;
   // A file for the settings: a capabilities file picked (or made, with an empty list),
   // or an image (a logo, the cover's); relative to the settings file, null if cancelled.
-  chooseSettingsFile(projectId: string | null, kind: 'capabilities' | 'new-capabilities' | 'image' | 'font'): Promise<{ path: string } | { error: string } | null>;
+  chooseSettingsFile(projectId: string | null, kind: 'capabilities' | 'new-capabilities' | 'image' | 'font' | 'css'): Promise<{ path: string } | { error: string } | null>;
   readCapabilities(projectId: string | null, file: string, key: string | null): Promise<{ names: string[] } | { error: string }>;
   // What font files are (relative to the settings file); the fonts installed here.
   pdfFonts(projectId: string | null, files: string[]): Promise<PdfFonts>;

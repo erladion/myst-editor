@@ -306,13 +306,13 @@ export class SphinxManager {
   // The whole project as one page, with Sphinx's plain theme, for a PDF: the page's
   // file. Built apart from the preview's builds (its own folders), so neither makes
   // the other read every page again.
-  async buildOnePage(signal: AbortSignal): Promise<string> {
+  async buildOnePage(signal: AbortSignal, siteCss = true): Promise<string> {
     if (!this.python) throw new Error('Sphinx isn’t set up for this project yet. Allow it to build first (the banner at the top).');
     const dir = join(this.opts.dataDir, 'builds', this.key, 'pdf');
     const resultFile = join(dir, 'result.json');
     await fs.mkdir(dir, { recursive: true });
     await fs.rm(resultFile, { force: true });
-    const args = [this.driverPath(), '--srcdir', this.project.sourceDir, '--outdir', join(dir, 'html'), '--doctreedir', join(dir, 'doctrees'), '--result', resultFile, '--pdf'];
+    const args = [this.driverPath(), '--srcdir', this.project.sourceDir, '--outdir', join(dir, 'html'), '--doctreedir', join(dir, 'doctrees'), '--result', resultFile, '--pdf', ...(siteCss ? [] : ['--no-site-css'])];
     const { output } = await run(this.python, args, { cwd: this.project.sourceDir, env: this.buildEnv(), log: (t) => this.write(t), signal, timeoutMs: BUILD_TIMEOUT_MS });
     if (signal.aborted) throw new Error('Cancelled');
     if (!existsSync(resultFile)) throw new CommandError(`Sphinx stopped unexpectedly:\n${output.trim().split('\n').slice(-12).join('\n')}`, output);

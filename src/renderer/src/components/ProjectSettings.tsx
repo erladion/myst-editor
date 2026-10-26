@@ -17,6 +17,7 @@ const PANES: [string, string][] = [
   ['pdf-cover', 'Cover'],
   ['pdf-fonts', 'Fonts'],
   ['pdf-margins', 'Headers and footers'],
+  ['pdf-styles', 'Stylesheets'],
 ];
 
 const DEFAULTS = { block: ['if', 'endif'], inline: ['if-inline', 'endif-inline'] } as const;
@@ -119,7 +120,7 @@ export function ProjectSettingsDialog({ projectId, projectName, onClose }: Props
     setBusy(false);
   };
 
-  const choose = async (kind: 'capabilities' | 'new-capabilities' | 'image' | 'font'): Promise<string | null> => {
+  const choose = async (kind: 'capabilities' | 'new-capabilities' | 'image' | 'font' | 'css'): Promise<string | null> => {
     const result = await api.chooseSettingsFile(projectId, kind);
     if (!result) return null;
     if ('error' in result) {
