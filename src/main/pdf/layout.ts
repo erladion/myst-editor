@@ -40,6 +40,11 @@ const MARGIN = PDF_MARGIN_MM;
 export const layoutScript = (opts: LayoutOptions) => `
 (async (opts) => {
   const main = document.querySelector('[role="main"]') || document.body;
+  // What the website puts around the content (a template's banner, header or footer)
+  // isn't printed: anything before the cover would take a page of its own.
+  for (let el = main; el !== document.body && el.parentElement; el = el.parentElement) {
+    for (const other of el.parentElement.children) if (other !== el) other.classList.add('pdf-hidden');
+  }
   const isMarker = (el) => el && el.tagName === 'SPAN' && el.id.startsWith('document-');
   // The page (document) an element came from: the section after a document-… marker.
   const docOf = (el) => {
@@ -311,7 +316,7 @@ body {
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
 }
-div.related, div.sphinxsidebar, div.footer, div.clearer, a.headerlink, #searchbox, nav.contents, div.contents.local { display: none !important; }
+.pdf-hidden, div.related, div.sphinxsidebar, div.footer, div.clearer, a.headerlink, #searchbox, nav.contents, div.contents.local { display: none !important; }
 div.document, div.documentwrapper, div.bodywrapper, div.body {
   margin: 0 !important; padding: 0 !important; float: none !important; width: auto !important; max-width: none !important; min-width: 0 !important;
 }

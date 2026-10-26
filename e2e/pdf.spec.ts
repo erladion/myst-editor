@@ -1,7 +1,7 @@
 // File → Export PDF: the project as one PDF, with a title page, one table of
 // contents and each chapter on a new page. Needs a Sphinx build (see sphinx.spec.ts).
 import { expect, test } from '@playwright/test';
-import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PDFDocument } from 'pdf-lib';
 import { headingPages, outlineOf } from '../src/main/pdf/outline';
@@ -211,4 +211,17 @@ test('variables from conf.py and the PDF’s own, in the headers and footers', a
   await dialog.screenshot({ path: test.info().outputPath('variables.png') });
   await dialog.getByRole('tab', { name: 'Headers and footers' }).click();
   await expect(dialog.getByRole('region', { name: 'PDF headers and footers' }).locator('.placeholders tr', { hasText: '{classification}' })).toHaveText('{classification}“Confidential” (a variable)');
+});
+
+test('what the website’s templates put around the content isn’t printed', async () => {
+  const pdf = await exportPdf('[pdf]\nsite_css = false\n', (docs) => {
+    mkdirSync(join(docs, '_templates'));
+    writeFileSync(join(docs, '_templates', 'layout.html'), '{% extends "!layout.html" %}\n{% block header %}<div class="banner">A banner</div>{% endblock %}\n{% block footer %}<div class="site-footer">A footer</div>{% endblock %}\n');
+    appendFileSync(join(docs, 'conf.py'), 'templates_path = ["_templates"]\n');
+  });
+  const text = await pageTexts(pdf);
+  // The cover first, and pages as without them.
+  expect(text).toHaveLength(8);
+  expect(text[0]).toMatch(/^Harbor documentation \w+ \d+, \d{4}$/);
+  expect(text.join(' ')).not.toMatch(/A banner|A footer/);
 });
