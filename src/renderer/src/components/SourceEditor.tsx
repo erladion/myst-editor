@@ -80,6 +80,8 @@ const theme = EditorView.theme({
   '&.cm-focused': { outline: 'none' },
   '.cm-scroller': { fontFamily: 'var(--font-mono)', lineHeight: '1.6' },
   '.cm-content': { padding: '16px 0 120px', caretColor: 'var(--fg)' },
+  // The cursor drawSelection draws (CodeMirror's own is black, unseen in dark mode).
+  '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--fg)' },
   '.cm-line': { padding: '0 16px 0 8px' },
   '.cm-gutters': { backgroundColor: 'var(--bg-soft)', color: 'var(--fg-muted)', border: 'none' },
   '.cm-activeLine': { backgroundColor: 'color-mix(in srgb, var(--accent) 6%, transparent)' },

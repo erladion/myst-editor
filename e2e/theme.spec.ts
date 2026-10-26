@@ -27,3 +27,15 @@ test('switches to dark and back, and remembers the choice', async () => {
   await expect.poll(() => settings().theme).toBe('light');
   await app.evaluate(({ app }) => app.exit(0)).catch(() => {});
 });
+
+test('the cursor shows in dark mode, in the Markdown view too', async () => {
+  const { app, page } = await launch();
+  await app.evaluate(({ Menu }) => Menu.getApplicationMenu()!.getMenuItemById('theme-dark')!.click());
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.locator('.prose p').first().click();
+  expect(await page.locator('.prose').evaluate((e) => getComputedStyle(e).caretColor)).toBe('rgb(230, 232, 235)');
+  await page.keyboard.press('Control+/');
+  await page.locator('.cm-content').click();
+  await expect(page.locator('.cm-cursor').first()).toHaveCSS('border-left-color', 'rgb(230, 232, 235)');
+  await app.evaluate(({ app }) => app.exit(0)).catch(() => {});
+});
