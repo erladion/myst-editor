@@ -145,7 +145,7 @@ kept. In GitHub Actions:
   env:
     GH_TOKEN: ${{ github.token }}
   run: |
-    gh release download v0.23.1 --repo erladion/myst-editor --pattern '*.AppImage' --output mysteditor.AppImage
+    gh release download v0.23.2 --repo erladion/myst-editor --pattern '*.AppImage' --output mysteditor.AppImage
     chmod +x mysteditor.AppImage
     ./mysteditor.AppImage --appimage-extract-and-run --ozone-platform=headless --no-sandbox \
       --export-pdf docs --output manual.pdf | grep -v '^/tmp/appimage_extracted_'
