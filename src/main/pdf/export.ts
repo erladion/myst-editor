@@ -5,7 +5,9 @@ import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell } from 'electro
 import { promises as fs } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
 import type { PdfDef } from '../../core/editor-config.js';
-import type { PdfResult } from '../../shared/api.js';
+import type { PdfResult, SphinxProject } from '../../shared/api.js';
+import type { SphinxWarning } from '../../shared/sphinx.js';
+import type { SphinxManager } from '../sphinx/manager.js';
 import { current, requireProject, toWindow } from '../state.js';
 import { loadSettings, updateSettings } from '../settings.js';
 import { managerOf } from '../sphinx/service.js';
@@ -15,6 +17,9 @@ import { resolveInside } from '../project.js';
 import { headingPages, outlineOf } from './outline.js';
 
 let running: AbortController | null = null;
+
+// A file name for the project's PDF: its name, without characters file systems refuse.
+export const pdfName = (project: SphinxProject) => project.name.replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'manual';
 // The last PDF made: the only file the window may ask to open.
 let exported: string | null = null;
 
@@ -103,6 +108,71 @@ async function print(htmlFile: string, layout: Omit<LayoutOptions, 'rootDoc'>, c
 
 const plain = (e: unknown) => (e instanceof Error ? e.message : String(e)).replace(/^Error: /, '');
 
+// A project's PDF: built as one page by its Sphinx, laid out with its [pdf] settings
+// and printed. For File → Export PDF and the command line (cli.ts) alike. Throws what
+// went wrong; `warnings` are the one-page build's.
+export async function makePdf(
+  root: string,
+  project: SphinxProject,
+  manager: SphinxManager,
+  signal: AbortSignal,
+  step: (s: string) => void,
+): Promise<{ pdf: Uint8Array; pages: number; warnings: SphinxWarning[] }> {
+  step('Building the pages with Sphinx…');
+  const settings: PdfDef = project.config.editor.pdf;
+  if (settings.css && !settings.cssPath) throw new Error(`The PDF stylesheet must be in the opened folder: ${settings.css}`);
+  const css = settings.cssPath ? await pdfStylesheet(root, settings.cssPath) : null;
+  const { html, variables, version, release, warnings } = await manager.buildOnePage(signal, settings.siteCss);
+  if (signal.aborted) throw new Error('Cancelled');
+  const logo = settings.logoPath ? await logoImages(root, settings.logoPath) : null;
+  const background = settings.coverBackgroundPath ? (await imageData(root, settings.coverBackgroundPath, 'cover background')).url : null;
+  // The project's font files, embedded: the PDF looks the same on every computer.
+  const faces: string[] = [];
+  for (const f of settings.fonts) {
+    if (!f.path) throw new Error(`Font files must be in the opened folder: ${f.file}`);
+    const bytes = await fs.readFile(resolveInside(root, f.path)).catch(() => {
+      throw new Error(`There’s no font file at ${f.path}.`);
+    });
+    faces.push(fontFace(fontInfo(bytes, f.path), bytes, f.path));
+  }
+  const family = (name: string | null, fallback: string) => (name ? `${cssString(name)}, ${fallback}` : fallback);
+  const fonts = {
+    text: family(settings.font, TEXT_FONTS),
+    heading: family(settings.headingFont ?? settings.font, TEXT_FONTS),
+    code: family(settings.codeFont, CODE_FONTS),
+    faces: faces.join('\n'),
+  };
+  const graphics = [];
+  for (const img of settings.coverImages) {
+    if (!img.path) throw new Error(`Graphics on the cover must be in the opened folder: ${img.file}`);
+    graphics.push({ src: (await imageData(root, img.path, 'graphic')).url, x: img.x, y: img.y, width: img.width, height: img.height });
+  }
+  const layout = {
+    paper: settings.paper,
+    title: settings.title,
+    subtitle: settings.subtitle,
+    note: settings.note,
+    coverLogo: logo?.cover ?? null,
+    coverBackground: background,
+    coverColor: settings.coverColor,
+    coverImages: graphics,
+    coverPlaces: settings.cover,
+    marginLogo: logo?.margin ?? null,
+    fonts,
+    header: settings.header,
+    footer: settings.footer,
+    headersOn: settings.headersOn,
+    numbering: settings.numbering,
+    tocDepth: settings.tocDepth,
+    date: new Date().toLocaleDateString(app.getLocale(), { year: 'numeric', month: 'long', day: 'numeric' }),
+    project: project.name,
+    version,
+    release,
+    variables: { ...variables, ...settings.variables },
+  };
+  return { ...(await print(html, layout, css, signal, step)), warnings };
+}
+
 export function registerPdfIpc() {
   ipcMain.handle('export-pdf', async (_e, projectId: string | null): Promise<PdfResult | null> => {
     const p = requireProject();
@@ -113,7 +183,7 @@ export function registerPdfIpc() {
     const saved = (await loadSettings()).pdfPaths?.[project.sourceDir];
     const chosen = await dialog.showSaveDialog(current.win!, {
       title: 'Export PDF',
-      defaultPath: saved ?? join(app.getPath('documents'), `${project.name.replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'manual'}.pdf`),
+      defaultPath: saved ?? join(app.getPath('documents'), `${pdfName(project)}.pdf`),
       filters: [{ name: 'PDF', extensions: ['pdf'] }],
     });
     if (chosen.canceled || !chosen.filePath) return null;
@@ -122,61 +192,8 @@ export function registerPdfIpc() {
 
     running?.abort();
     const run = (running = new AbortController());
-    const step = (s: string) => toWindow('pdf-progress', s);
     try {
-      step('Building the pages with Sphinx…');
-      const settings: PdfDef = project.config.editor.pdf;
-      if (settings.css && !settings.cssPath) throw new Error(`The PDF stylesheet must be in the opened folder: ${settings.css}`);
-      const css = settings.cssPath ? await pdfStylesheet(p.root, settings.cssPath) : null;
-      const { html, variables, version, release } = await manager.buildOnePage(run.signal, settings.siteCss);
-      if (run.signal.aborted) return null;
-      const logo = settings.logoPath ? await logoImages(p.root, settings.logoPath) : null;
-      const background = settings.coverBackgroundPath ? (await imageData(p.root, settings.coverBackgroundPath, 'cover background')).url : null;
-      // The project's font files, embedded: the PDF looks the same on every computer.
-      const faces: string[] = [];
-      for (const f of settings.fonts) {
-        if (!f.path) throw new Error(`Font files must be in the opened folder: ${f.file}`);
-        const bytes = await fs.readFile(resolveInside(p.root, f.path)).catch(() => {
-          throw new Error(`There’s no font file at ${f.path}.`);
-        });
-        faces.push(fontFace(fontInfo(bytes, f.path), bytes, f.path));
-      }
-      const family = (name: string | null, fallback: string) => (name ? `${cssString(name)}, ${fallback}` : fallback);
-      const fonts = {
-        text: family(settings.font, TEXT_FONTS),
-        heading: family(settings.headingFont ?? settings.font, TEXT_FONTS),
-        code: family(settings.codeFont, CODE_FONTS),
-        faces: faces.join('\n'),
-      };
-      const graphics = [];
-      for (const img of settings.coverImages) {
-        if (!img.path) throw new Error(`Graphics on the cover must be in the opened folder: ${img.file}`);
-        graphics.push({ src: (await imageData(p.root, img.path, 'graphic')).url, x: img.x, y: img.y, width: img.width, height: img.height });
-      }
-      const layout = {
-        paper: settings.paper,
-        title: settings.title,
-        subtitle: settings.subtitle,
-        note: settings.note,
-        coverLogo: logo?.cover ?? null,
-        coverBackground: background,
-        coverColor: settings.coverColor,
-        coverImages: graphics,
-        coverPlaces: settings.cover,
-        marginLogo: logo?.margin ?? null,
-        fonts,
-        header: settings.header,
-        footer: settings.footer,
-        headersOn: settings.headersOn,
-        numbering: settings.numbering,
-        tocDepth: settings.tocDepth,
-        date: new Date().toLocaleDateString(app.getLocale(), { year: 'numeric', month: 'long', day: 'numeric' }),
-        project: project.name,
-        version,
-        release,
-        variables: { ...variables, ...settings.variables },
-      };
-      const { pdf, pages } = await print(html, layout, css, run.signal, step);
+      const { pdf, pages } = await makePdf(p.root, project, manager, run.signal, (s) => toWindow('pdf-progress', s));
       await fs.writeFile(path, pdf);
       exported = path;
       return { ok: true, path, pages };

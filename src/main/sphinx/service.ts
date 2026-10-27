@@ -28,6 +28,15 @@ function envFor(p: ProjectInfo, id: string): Record<string, string> {
 export const outputDirOf = (id: string) => sphinx.get(id)?.outputDir ?? null;
 export const managerOf = (id: string) => sphinx.get(id) ?? null;
 
+// Where managers keep environments and builds, and find the build driver and uv.
+export const managerPaths = () => ({
+  // Tests share one data dir so Python and packages are only downloaded once.
+  dataDir: process.env.MYSTEDITOR_SPHINX_DATA ?? join(app.getPath('userData'), 'sphinx'),
+  // out/main/index.js → the repository, where resources/ lives in development.
+  appRoot: join(import.meta.dirname, '..', '..'),
+  resourcesPath: app.isPackaged ? process.resourcesPath : null,
+});
+
 // Trust and the environment choice belong to the opened folder, so one decision
 // covers all its projects (e.g. two guides sharing one .venv). `onBuilt` hears about
 // every finished build.
@@ -39,11 +48,7 @@ export async function startSphinx(p: ProjectInfo, onBuilt: (p: ProjectInfo, info
     const manager = new SphinxManager(sp, {
       root: p.root,
       searchDirs: p.projects.map((x) => x.sourceDir),
-      // Tests share one data dir so Python and packages are only downloaded once.
-      dataDir: process.env.MYSTEDITOR_SPHINX_DATA ?? join(app.getPath('userData'), 'sphinx'),
-      // out/main/index.js → the repository, where resources/ lives in development.
-      appRoot: join(import.meta.dirname, '..', '..'),
-      resourcesPath: app.isPackaged ? process.resourcesPath : null,
+      ...managerPaths(),
       trusted: !!settings.trusted?.includes(p.root),
       buildInputs: () => p.buildInputs,
       extraEnv: () => envFor(p, sp.id),

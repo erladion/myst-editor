@@ -14,6 +14,7 @@ import {
   type SphinxInfo,
   type SphinxState,
   type SphinxStatus,
+  type SphinxWarning,
 } from '../../shared/sphinx.js';
 import { ensureEnvironment, environmentIsCurrent, findUv, hasManagedPython, uvEnv, type EnvPaths } from './environment.js';
 import { planEnvironment } from './discover.js';
@@ -145,6 +146,13 @@ export class SphinxManager {
     this.state = { ...this.state, info: null };
     rmSync(this.savedFile, { force: true });
     void this.setUp();
+  }
+
+  // Sets up the environment without building or asking (the command line's PDF export,
+  // where running the command is the say-so). Throws what the window would show.
+  async prepare(): Promise<void> {
+    await (this.opts.environment?.kind === 'existing' ? this.useExisting(this.opts.environment.python) : this.useManaged());
+    if (!this.python) throw new Error(this.state.status.kind === 'error' ? this.state.status.message : 'Sphinx couldn’t be set up.');
   }
 
   private async askForTrust() {
@@ -306,7 +314,7 @@ export class SphinxManager {
   // The whole project as one page, with Sphinx's plain theme, for a PDF: the page's
   // file. Built apart from the preview's builds (its own folders), so neither makes
   // the other read every page again.
-  async buildOnePage(signal: AbortSignal, siteCss = true): Promise<{ html: string; variables: Record<string, string>; version: string; release: string }> {
+  async buildOnePage(signal: AbortSignal, siteCss = true): Promise<{ html: string; variables: Record<string, string>; version: string; release: string; warnings: SphinxWarning[] }> {
     if (!this.python) throw new Error('Sphinx isn’t set up for this project yet. Allow it to build first (the banner at the top).');
     const dir = join(this.opts.dataDir, 'builds', this.key, 'pdf');
     const resultFile = join(dir, 'result.json');
@@ -318,7 +326,7 @@ export class SphinxManager {
     if (!existsSync(resultFile)) throw new CommandError(`Sphinx stopped unexpectedly:\n${output.trim().split('\n').slice(-12).join('\n')}`, output);
     const result: BuildResult = JSON.parse(await fs.readFile(resultFile, 'utf8'));
     if (!result.ok) throw new Error(`The Sphinx build failed:\n${(result.error ?? 'Unknown error').trim().split('\n').slice(-3).join('\n')}`);
-    return { html: join(dir, 'html', `${result.root_doc ?? 'index'}.html`), variables: result.variables ?? {}, version: result.version ?? '', release: result.release ?? '' };
+    return { html: join(dir, 'html', `${result.root_doc ?? 'index'}.html`), variables: result.variables ?? {}, version: result.version ?? '', release: result.release ?? '', warnings: result.warnings };
   }
 
   private apply(raw: BuildResult, fresh: boolean) {

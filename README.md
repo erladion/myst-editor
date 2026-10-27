@@ -115,6 +115,42 @@ footers; the page numbering; and the stylesheets. The website's own stylesheets
 stylesheet of the PDF's own can be added after everything else. The PDF is printed,
 so `@media print` rules apply and `@media screen` ones don't.
 
+**PDF from the command line (CI):** the same PDF, without a window:
+
+```sh
+mysteditor --export-pdf docs --output manual.pdf
+mysteditor --export-pdf . --project guides/admin --output admin.pdf
+```
+
+`--export-pdf` takes the folder with `conf.py` (and its `.mysteditor.toml`), or a
+folder with Sphinx projects under it and `--project` to say which (settings files are
+then layered from that folder down, as in the app). Sphinx runs in an environment set
+up from the project's requirements, as the app does (cached between runs in the app's
+data folder, or in `MYSTEDITOR_SPHINX_DATA`), or in `--python <path>`, one that already
+has Sphinx and MyST-Parser. `--fail-on-warning` exits with 1 when Sphinx or the
+settings warn about anything (the PDF is still made). Progress goes to stdout,
+warnings and errors to stderr; the exit code is 0 for a PDF, 1 when it failed and 2
+for a mistake in the options. `mysteditor --export-pdf --help` lists the options.
+
+On Linux without a display, put Chromium's `--ozone-platform=headless` first (or run
+it under `xvfb-run`). Ubuntu 24.04 blocks the user namespaces Chromium's sandbox uses,
+so add `--no-sandbox` there, and run the AppImage with `--appimage-extract-and-run`
+where FUSE isn't installed (it lists what it extracts: filter that out). On Windows,
+pipe it (`| Write-Output` in PowerShell), so its output shows and the exit code is
+kept. In GitHub Actions:
+
+```yaml
+- name: Make the PDF
+  shell: bash # pipefail: a failed export fails the step
+  env:
+    GH_TOKEN: ${{ github.token }}
+  run: |
+    gh release download v0.23.0 --repo erladion/myst-editor --pattern '*.AppImage' --output mysteditor.AppImage
+    chmod +x mysteditor.AppImage
+    ./mysteditor.AppImage --appimage-extract-and-run --ozone-platform=headless --no-sandbox \
+      --export-pdf docs --output manual.pdf | grep -v '^/tmp/appimage_extracted_'
+```
+
 View → Appearance switches between light and dark. The menus are in the title bar;
 View → Use System Title Bar puts them back in a menu bar of their own.
 

@@ -1,6 +1,6 @@
 # Push a version tag (git tag v0.3.0 && git push origin v0.3.0) to test on Linux and
-# Windows, build the AppImage, RPM, .deb and Windows installer, and publish them as a
-# GitHub release. The tag must match the version in package.json.
+# Windows, build the AppImage, RPM, .deb and Windows installer, check the packaged app
+# makes a PDF from the command line, and publish them as a GitHub release. The tag must match the version in package.json.
 name: Release
 
 on:
@@ -54,6 +54,23 @@ jobs:
       - run: npm ci
       - name: Build the packages
         run: npm run ${{ matrix.script }}
+      # The packaged app makes a PDF from the command line, as in people's own CI: on
+      # Linux without a display (and without FUSE or Chromium's sandbox).
+      - name: Make a PDF from the command line (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          chmod +x release/*.AppImage
+          release/*.AppImage --appimage-extract-and-run --ozone-platform=headless --no-sandbox \
+            --export-pdf e2e/fixture-showcase/docs --output smoke.pdf | grep -v '^/tmp/appimage_extracted_'
+          test -s smoke.pdf
+      - name: Make a PDF from the command line (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & release\win-unpacked\mysteditor.exe --export-pdf e2e\fixture-showcase\docs --output smoke.pdf | Write-Output
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path smoke.pdf)) { exit 1 }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: packages-${{ runner.os }}
