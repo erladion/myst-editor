@@ -1149,6 +1149,22 @@ button.toc-toggle:hover {
   font: 15px/1.7 var(--font-doc);
 }
 
+/* A condition among a toctree's entries: named in its colour, its entries striped
+   (left of their bullets). */
+.toc-entries .toc-cond {
+  list-style: none;
+  margin: 4px 0 2px -20px;
+  font: 12.5px/1.6 var(--font-ui);
+}
+
+.prose .toc-entries:has(> .cond-in) {
+  padding-left: 44px;
+}
+
+.toc-entries .cond-in::before {
+  left: calc(-20px - var(--cond-depth) * 5px);
+}
+
 .chips {
   display: flex;
   flex-wrap: wrap;

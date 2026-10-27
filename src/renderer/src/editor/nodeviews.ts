@@ -8,8 +8,8 @@ import { loadDocument } from '../../../core/document';
 import type { EditorContext } from './context';
 import { ADMONITIONS, CALLOUT_CHOICES, ICONS, REFERENCE_ROLES, directiveInfo, splitRoleValue } from './directives';
 import { renderMath } from './math';
-import { describe, parseCondition, readMarker, withExpression } from '../../../core/conditions';
-import { removeCondition } from './conditions';
+import { describe, parseCondition, readMarker, unknownNames, withExpression } from '../../../core/conditions';
+import { condStripes, conditionColor, conditionsKey, exprVisible, removeCondition, tocConditionsOf } from './conditions';
 import { FORMATTING, LINE_BREAKS, inlineTag, lineTagOf, safeHtml } from './html';
 
 // "A or B and not C" with the capability names as chips.
@@ -20,6 +20,17 @@ function conditionChips(text: string): Node[] {
 }
 
 type GetPos = () => number | undefined;
+
+// A node view's own classes, leaving alone those ProseMirror's decorations add
+// (conditions, checks): it only adds them again when they change, so a view that
+// redraws must not take them off.
+const ownClasses = new WeakMap<HTMLElement, string[]>();
+function setOwnClass(dom: HTMLElement, cls: string) {
+  dom.classList.remove(...(ownClasses.get(dom) ?? []));
+  const next = cls.split(/\s+/).filter(Boolean);
+  dom.classList.add(...next);
+  ownClasses.set(dom, next);
+}
 
 // ---- helpers ------------------------------------------------------------------
 
@@ -112,7 +123,7 @@ class DirectiveView implements NodeView {
   private render() {
     const { name, args, options } = this.node.attrs;
     const info = directiveInfo(name, this.ctx.config.editor);
-    this.dom.className = `directive tone-${info.tone} directive-${name}`;
+    setOwnClass(this.dom, `directive tone-${info.tone} directive-${name}`);
     // Rebuild the header unless only the argument changed while the writer is typing it.
     const key = JSON.stringify([name, options]);
     if (key === this.rendered && this.argInput) {
@@ -291,13 +302,14 @@ abstract class CardView implements NodeView {
     if (source !== null && source !== this.node.attrs.source) replaceWithSource(this.view, this.getPos, this.node, source, this.ctx);
   }
 
-  protected card(cls: string, title: Node[], body: Node[]) {
-    this.dom.className = `card ${cls}`;
+  // `preview`: whether the build's rendering may stand in for `body`.
+  protected card(cls: string, title: Node[], body: Node[], preview = true) {
+    setOwnClass(this.dom, `card ${cls}`);
     const header = el('div', { class: 'card-header' }, ...title, el('span', { class: 'spacer' }), button('Edit…', 'Edit the source of this block', () => this.edit()));
     if (this.previewId) previewListeners.delete(this.previewId);
     this.previewId = null;
     this.shown = this.pending = null;
-    if (!this.previewUrl) return this.dom.replaceChildren(header, ...body);
+    if (!this.previewUrl || !preview) return this.dom.replaceChildren(header, ...body);
 
     // The built HTML in a sandboxed frame on the build's own origin; the card's own
     // preview stays as the fallback until the frame says it has something to show.
@@ -369,8 +381,79 @@ abstract class CardView implements NodeView {
 }
 
 class OpaqueDirectiveView extends CardView {
+  private tocConditions: string | null = null; // "View as", for a toctree with conditions
+
+  constructor(node: PMNode, view: EditorView, getPos: GetPos, ctx: EditorContext, decorations: readonly Decoration[] = []) {
+    super(node, view, getPos, ctx, decorations);
+    this.tocConditions = tocConditionsOf(decorations);
+  }
+
   protected editTitle() {
     return `Edit {${this.node.attrs.name}} block`;
+  }
+
+  update(node: PMNode, decorations: readonly Decoration[]) {
+    const tocConditions = tocConditionsOf(decorations);
+    if (node.type !== this.node.type || tocConditions === this.tocConditions) return super.update(node, decorations);
+    // "View as" changed: what's greyed out among the entries.
+    this.tocConditions = tocConditions;
+    this.node = node;
+    this.previewUrl = previewUrlOf(decorations);
+    this.render();
+    return true;
+  }
+
+  // A toctree's entries, as links, and its conditions' markers among them: each
+  // condition named in its colour, its entries with its stripe, greyed out when
+  // "View as" leaves them out.
+  private tocItems(body: string): { items: HTMLElement[]; conditional: boolean } {
+    const settings = this.ctx.config.editor.conditions;
+    const viewAs = conditionsKey.getState(this.view.state)?.viewAs ?? null;
+    const items: HTMLElement[] = [];
+    const open: { color: string; hidden: boolean; li: HTMLElement }[] = [];
+    let conditional = false;
+    for (const line of body.split('\n').map((l) => l.trim())) {
+      if (!line || line.startsWith(':')) continue;
+      const marker = settings && readMarker(line, settings.block);
+      if (settings && marker) {
+        conditional = true;
+        if (marker.kind === 'end') {
+          if (open.pop()) continue;
+          items.push(el('li', { class: 'cond-start toc-cond cond-unmatched', title: 'This end marker has no matching start' }, 'End of a condition that wasn’t started'));
+          continue;
+        }
+        const parsed = parseCondition(marker.expr);
+        const problem = !parsed.ok ? parsed.error : unknownNames(parsed.names, settings).map((n) => `Unknown capability “${n}”`).join('\n');
+        const color = conditionColor(marker.expr, settings);
+        const hidden = open.some((o) => o.hidden) || (parsed.ok && !exprVisible(parsed.expr, settings, viewAs));
+        const li = el(
+          'li',
+          { class: `cond-start toc-cond${problem ? ' cond-problem' : ''}${hidden ? ' cond-off' : ''}`, style: `--cond: ${color}`, ...(problem ? { title: problem } : {}) },
+          el('span', { class: 'cond-label' }, 'Shown only when'),
+          el('span', { class: 'cond-expr' }, ...(parsed.ok ? conditionChips(describe(parsed.expr)) : [marker.expr])),
+        );
+        items.push(li);
+        open.push({ color, hidden, li });
+        continue;
+      }
+      const { title, target } = splitRoleValue(line);
+      const a = el('a', { href: '#', title: `Open ${target}` }, title ?? this.ctx.pageTitle(target) ?? target);
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.ctx.openDocument(target);
+      });
+      if (!open.length) {
+        items.push(el('li', {}, a));
+        continue;
+      }
+      const { depth, style } = condStripes(open.map((o) => o.color));
+      items.push(el('li', { class: `cond-in cond-d${depth}${open.some((o) => o.hidden) ? ' cond-off' : ''}`, style }, a));
+    }
+    for (const { li } of open) {
+      li.classList.add('cond-unmatched');
+      li.title = 'This condition has no end marker';
+    }
+    return { items, conditional };
   }
 
   protected render() {
@@ -385,25 +468,11 @@ class OpaqueDirectiveView extends CardView {
     }
 
     if (name === 'toctree') {
-      const entries = body
-        .split('\n')
-        .map((l) => l.trim())
-        .filter((l) => l && !l.startsWith(':'));
       const caption = options.find(([k]: string[]) => k === 'caption')?.[1];
-      const list = el(
-        'ul',
-        { class: 'toc-entries' },
-        ...entries.map((entry) => {
-          const { title, target } = splitRoleValue(entry);
-          const a = el('a', { href: '#', title: `Open ${target}` }, title ?? this.ctx.pageTitle(target) ?? target);
-          a.addEventListener('click', (e) => {
-            e.preventDefault();
-            this.ctx.openDocument(target);
-          });
-          return el('li', {}, a);
-        }),
-      );
-      return this.card('card-toc', [label('Table of contents'), ...(caption ? [el('span', { class: 'muted' }, caption)] : [])], [list]);
+      const { items, conditional } = this.tocItems(body);
+      // With conditions among the entries, the card shows them all, marked; the build
+      // would show only those of its own capabilities.
+      return this.card('card-toc', [label('Table of contents'), ...(caption ? [el('span', { class: 'muted' }, caption)] : [])], [el('ul', { class: 'toc-entries' }, ...items)], !conditional);
     }
 
     const declared = this.ctx.config.editor.directives[name];
@@ -456,13 +525,13 @@ class RawBlockView extends CardView {
     const settings = this.ctx.config.editor.conditions;
     const marker = settings && readMarker(source, settings.block);
     if (kind === 'condition-end' || marker?.kind !== 'start') {
-      this.dom.className = 'cond-end-line';
+      setOwnClass(this.dom, 'cond-end-line');
       this.dom.title = 'End of the condition';
       return this.dom.replaceChildren(el('span', {}, 'end of condition'));
     }
     const parsed = parseCondition(marker.expr);
     const pos = () => this.getPos();
-    this.dom.className = 'cond-start';
+    setOwnClass(this.dom, 'cond-start');
     this.dom.replaceChildren(
       el('span', { class: 'cond-label' }, 'Shown only when'),
       el('span', { class: 'cond-expr' }, ...(parsed.ok ? conditionChips(describe(parsed.expr)) : [marker.expr])),
@@ -748,7 +817,7 @@ class RoleView extends InlineView {
 
 class InlineMathView extends InlineView {
   protected render() {
-    this.dom.className = 'inline-math';
+    setOwnClass(this.dom, 'inline-math');
     renderMath(this.dom, this.node.attrs.value, false);
   }
 
@@ -765,7 +834,7 @@ class RefLinkView extends InlineView {
   protected render() {
     const { href } = this.node.attrs;
     const resolved = this.ctx.resolveLink(href);
-    this.dom.className = `role role-ref${resolved.broken ? ' role-broken' : ''}`;
+    setOwnClass(this.dom, `role role-ref${resolved.broken ? ' role-broken' : ''}`);
     this.dom.title = resolved.broken ? `Link target not found: ${href}` : `Link to ${href} (title filled in by Sphinx)`;
     this.dom.replaceChildren(el('span', { class: 'role-arrow' }, resolved.broken ? '⚠' : '↗'), resolved.title ?? href.replace(/^#/, ''));
   }
@@ -781,7 +850,7 @@ class RefLinkView extends InlineView {
 
 class FootnoteRefView extends InlineView {
   protected render() {
-    this.dom.className = 'footnote-ref';
+    setOwnClass(this.dom, 'footnote-ref');
     this.dom.title = `Footnote ${this.node.attrs.label}`;
     this.dom.replaceChildren(el('sup', {}, `[${this.node.attrs.label}]`));
   }
@@ -802,13 +871,13 @@ class HtmlInlineView extends InlineView {
     const marker = this.marker();
     if (marker?.kind === 'start') {
       const parsed = parseCondition(marker.expr);
-      this.dom.className = 'cond-pill cond-pill-start';
+      setOwnClass(this.dom, 'cond-pill cond-pill-start');
       this.dom.title = `Shown only when ${parsed.ok ? describe(parsed.expr) : marker.expr} (double-click to change)`;
       this.dom.textContent = `if ${parsed.ok ? describe(parsed.expr) : marker.expr}`;
       return;
     }
     if (marker?.kind === 'end') {
-      this.dom.className = 'cond-pill cond-pill-end';
+      setOwnClass(this.dom, 'cond-pill cond-pill-end');
       this.dom.title = 'End of the inline condition';
       this.dom.textContent = 'end';
       return;
@@ -823,11 +892,11 @@ class HtmlInlineView extends InlineView {
     this.dom.dataset.raw = value;
     this.dom.title = `${value} (HTML; double-click to edit)`;
     const shown = (cls: string, ...children: Node[]) => {
-      this.dom.className = `html-tag ${cls}`;
+      setOwnClass(this.dom, `html-tag ${cls}`);
       this.dom.replaceChildren(...children);
     };
     if (!tag || (tag.attrs && !['a', 'span', 'img', 'ol', 'li', 'td', 'th'].includes(tag.name))) {
-      this.dom.className = 'html-inline';
+      setOwnClass(this.dom, 'html-inline');
       this.dom.title = 'Inline HTML (double-click to edit)';
       this.dom.textContent = value;
       return;
@@ -849,7 +918,7 @@ class HtmlInlineView extends InlineView {
     // Ends of block-level tags start a new line too, so text after a list is below it.
     if (LINE_BREAKS.has(tag.name) && !(tag.name === 'li' && tag.kind === 'close')) return shown(lineBreak.length ? 'html-block' : 'html-hidden', ...lineBreak);
     if (tag.name in FORMATTING || tag.name === 'a' || tag.name === 'span' || tag.name === 'li') return shown('html-hidden');
-    this.dom.className = 'html-inline';
+    setOwnClass(this.dom, 'html-inline');
     this.dom.textContent = value;
   }
 
@@ -893,7 +962,7 @@ class ImageView extends InlineView {
 
 class TargetView extends InlineView {
   protected render() {
-    this.dom.className = 'target';
+    setOwnClass(this.dom, 'target');
     this.dom.title = 'Link target: other pages can refer to the next section with this label';
     this.dom.replaceChildren(el('span', { class: 'target-icon' }, '⚓'), this.node.attrs.label);
   }

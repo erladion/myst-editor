@@ -5,7 +5,7 @@ import { Plugin, PluginKey, type Command, type EditorState, type Transaction } f
 import { Decoration, DecorationSet } from 'prosemirror-view';
 import { AddMarkStep, RemoveMarkStep, ReplaceStep } from 'prosemirror-transform';
 import { CONDITION_PALETTE, type ConditionsDef } from '../../../core/editor-config';
-import { endMarker, evaluate, parseCondition, readMarker, startMarker, unknownNames, withExpression, type ParseResult } from '../../../core/conditions';
+import { endMarker, evaluate, parseCondition, readMarker, startMarker, unknownNames, withExpression, type Expr, type ParseResult } from '../../../core/conditions';
 import { isInTable, selectedRect } from 'prosemirror-tables';
 import { schema, type RowCondition } from '../../../core/schema';
 
@@ -93,10 +93,29 @@ interface PluginState {
 export const conditionsKey = new PluginKey<PluginState>('conditions');
 
 export function regionVisible(region: Region, settings: ConditionsDef, viewAs: string[] | null): boolean {
-  if (!viewAs || !region.parsed.ok) return true;
-  const have = new Set(settings.caseSensitive ? viewAs : viewAs.map((c) => c.toLowerCase()));
-  return evaluate(region.parsed.expr, (n) => have.has(settings.caseSensitive ? n : n.toLowerCase()));
+  return !region.parsed.ok || exprVisible(region.parsed.expr, settings, viewAs);
 }
+
+// Whether "View as" (null: everything) shows what the condition is on.
+export function exprVisible(expr: Expr, settings: ConditionsDef, viewAs: string[] | null): boolean {
+  if (!viewAs) return true;
+  const have = new Set(settings.caseSensitive ? viewAs : viewAs.map((c) => c.toLowerCase()));
+  return evaluate(expr, (n) => have.has(settings.caseSensitive ? n : n.toLowerCase()));
+}
+
+// One 3px stripe per condition (outermost first, at most four), 2px apart.
+export function condStripes(colors: string[]): { depth: number; style: string } {
+  const shown = colors.slice(0, 4);
+  const stripes = shown.map((c, i) => `${c} ${i * 5}px ${i * 5 + 3}px, transparent ${i * 5 + 3}px ${i * 5 + 5}px`).join(', ');
+  return { depth: shown.length, style: `--cond-stripes: linear-gradient(to right, ${stripes})` };
+}
+
+// Toctrees with markers among their entries: their view draws those itself (see
+// nodeviews.ts), and is told of "View as" by this decoration's spec changing.
+export const tocConditionsOf = (decorations: readonly Decoration[]): string | null => {
+  const spec = decorations.find((d) => d.spec.tocConditions !== undefined)?.spec;
+  return spec ? (spec.tocConditions as string) : null;
+};
 
 function decorate(doc: PMNode, settings: ConditionsDef | null, viewAs: string[] | null): DecorationSet {
   if (!settings) return DecorationSet.empty;
@@ -137,18 +156,22 @@ function decorate(doc: PMNode, settings: ConditionsDef | null, viewAs: string[] 
     });
   }
   for (const [pos, { node, colors, hidden }] of inside) {
-    // One 3px stripe per condition, 2px apart.
-    const shown = colors.slice(0, 4);
-    const stripes = shown.map((c, i) => `${c} ${i * 5}px ${i * 5 + 3}px, transparent ${i * 5 + 3}px ${i * 5 + 5}px`).join(', ');
+    const { depth, style } = condStripes(colors);
     decorations.push(
       Decoration.node(pos, pos + node.nodeSize, {
-        class: `cond-in cond-d${shown.length}${hidden ? ' cond-off' : ''}`,
+        class: `cond-in cond-d${depth}${hidden ? ' cond-off' : ''}`,
         // Only the stripes: a nested condition's own marker sits inside the outer one and
         // keeps its own --cond.
-        style: `--cond-stripes: linear-gradient(to right, ${stripes})`,
+        style,
       }),
     );
   }
+  doc.descendants((node, pos) => {
+    if (node.type.name === 'opaque_directive' && node.attrs.name === 'toctree' && node.attrs.source.includes('<!--')) {
+      decorations.push(Decoration.node(pos, pos + node.nodeSize, {}, { tocConditions: JSON.stringify(viewAs) }));
+    }
+    return node.isBlock && !node.isTextblock;
+  });
   decorateRows(doc, settings, viewAs, decorations);
   for (const m of unmatched) {
     decorations.push(
