@@ -50,7 +50,7 @@
 //   code_font = "JetBrains Mono"
 //   fonts = ["_static/fonts/SourceSerif4-Regular.ttf"]   # font files, the same everywhere
 //   header = ["{logo}", "", "{chapter}"] # left, centre, right
-//   footer = ["", "{page}", ""]          # {page} {pages} {chapter} {title} {date} {version} {logo}
+//   footer = ["", "{page}", ""]          # {page} {pages} {chapter} {title} {date} {version} {release} {logo}
 //   headers_on = "numbered"              # numbered pages | not-cover | all (the cover too);
 //                                        # slots with {page} or {pages} stay empty where there's no number
 //   numbering = "content"                # content: from the first page after the contents | cover
@@ -168,7 +168,7 @@ export interface PdfDef {
 }
 
 // The PDF's own placeholders: variables can't have these names.
-export const PDF_PLACEHOLDERS = ['page', 'pages', 'chapter', 'title', 'date', 'version', 'project', 'logo'];
+export const PDF_PLACEHOLDERS = ['page', 'pages', 'chapter', 'title', 'date', 'version', 'release', 'project', 'logo'];
 
 export const DEFAULT_PDF: PdfDef = {
   paper: 'A4',

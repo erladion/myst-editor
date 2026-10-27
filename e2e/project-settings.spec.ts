@@ -138,7 +138,7 @@ test('sets up the PDF: paper, cover, headers and footers', async () => {
   await dialog.getByLabel('Paper').selectOption('Letter');
   await show('Cover');
   // The cover's texts can't have page numbers: not offered there.
-  await expect(dialog.getByRole('region', { name: 'PDF cover' })).toContainText('{version}The version: release in conf.py');
+  await expect(dialog.getByRole('region', { name: 'PDF cover' })).toContainText('{version}The version: version in conf.py, such as 2.4{release}The full version: release in conf.py, such as 2.4.0');
   await expect(dialog.getByRole('region', { name: 'PDF cover' })).not.toContainText('{page}');
   await pick('harbor-logo.svg');
   await dialog.getByRole('button', { name: 'Choose the logo' }).click();

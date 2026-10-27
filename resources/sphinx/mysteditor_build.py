@@ -230,6 +230,9 @@ def main():
         )
 
         try:
+            # version: the short one ("2.4"); release: the full one ("2.4.0").
+            result["version"] = str(app.config.version or "")
+            result["release"] = str(app.config.release or "")
             result["variables"] = variables_of(app.config)
         except Exception:
             traceback.print_exc()

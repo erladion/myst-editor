@@ -199,7 +199,7 @@ case_sensitive = true
 [conditions.colors]                  # optional
 CapabilityX = "teal"                 # purple, orange, teal, magenta, blue, olive, green, slate or "#rrggbb"
 
-# File → Export PDF. {page} {pages} {chapter} {title} {date} {version} {project} {logo}
+# File → Export PDF. {page} {pages} {chapter} {title} {date} {version} {release} {project} {logo}
 # can be used in the cover's texts and in the headers and footers, and so can the
 # project's variables: {author} and {copyright} from conf.py, the texts and numbers in
 # its html_context (as conf.py and config-inited handlers leave it), and [pdf.variables].

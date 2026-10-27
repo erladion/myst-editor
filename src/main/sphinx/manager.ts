@@ -306,7 +306,7 @@ export class SphinxManager {
   // The whole project as one page, with Sphinx's plain theme, for a PDF: the page's
   // file. Built apart from the preview's builds (its own folders), so neither makes
   // the other read every page again.
-  async buildOnePage(signal: AbortSignal, siteCss = true): Promise<{ html: string; variables: Record<string, string> }> {
+  async buildOnePage(signal: AbortSignal, siteCss = true): Promise<{ html: string; variables: Record<string, string>; version: string; release: string }> {
     if (!this.python) throw new Error('Sphinx isn’t set up for this project yet. Allow it to build first (the banner at the top).');
     const dir = join(this.opts.dataDir, 'builds', this.key, 'pdf');
     const resultFile = join(dir, 'result.json');
@@ -318,7 +318,7 @@ export class SphinxManager {
     if (!existsSync(resultFile)) throw new CommandError(`Sphinx stopped unexpectedly:\n${output.trim().split('\n').slice(-12).join('\n')}`, output);
     const result: BuildResult = JSON.parse(await fs.readFile(resultFile, 'utf8'));
     if (!result.ok) throw new Error(`The Sphinx build failed:\n${(result.error ?? 'Unknown error').trim().split('\n').slice(-3).join('\n')}`);
-    return { html: join(dir, 'html', `${result.root_doc ?? 'index'}.html`), variables: result.variables ?? {} };
+    return { html: join(dir, 'html', `${result.root_doc ?? 'index'}.html`), variables: result.variables ?? {}, version: result.version ?? '', release: result.release ?? '' };
   }
 
   private apply(raw: BuildResult, fresh: boolean) {

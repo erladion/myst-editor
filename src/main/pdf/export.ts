@@ -128,7 +128,7 @@ export function registerPdfIpc() {
       const settings: PdfDef = project.config.editor.pdf;
       if (settings.css && !settings.cssPath) throw new Error(`The PDF stylesheet must be in the opened folder: ${settings.css}`);
       const css = settings.cssPath ? await pdfStylesheet(p.root, settings.cssPath) : null;
-      const { html, variables } = await manager.buildOnePage(run.signal, settings.siteCss);
+      const { html, variables, version, release } = await manager.buildOnePage(run.signal, settings.siteCss);
       if (run.signal.aborted) return null;
       const logo = settings.logoPath ? await logoImages(p.root, settings.logoPath) : null;
       const background = settings.coverBackgroundPath ? (await imageData(p.root, settings.coverBackgroundPath, 'cover background')).url : null;
@@ -172,6 +172,8 @@ export function registerPdfIpc() {
         tocDepth: settings.tocDepth,
         date: new Date().toLocaleDateString(app.getLocale(), { year: 'numeric', month: 'long', day: 'numeric' }),
         project: project.name,
+        version,
+        release,
         variables: { ...variables, ...settings.variables },
       };
       const { pdf, pages } = await print(html, layout, css, run.signal, step);

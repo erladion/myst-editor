@@ -470,7 +470,8 @@ const PLACEHOLDERS: {
     what: 'The title: the cover’s, or the root page’s',
     where: 'both',
   },
-  { name: '{version}', what: 'The version: release in conf.py', where: 'both' },
+  { name: '{version}', what: 'The version: version in conf.py, such as 2.4', where: 'both' },
+  { name: '{release}', what: 'The full version: release in conf.py, such as 2.4.0', where: 'both' },
   { name: '{date}', what: 'The day the PDF is made', where: 'both' },
   {
     name: '{project}',

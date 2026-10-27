@@ -68,7 +68,7 @@ test('uses the project’s cover, paper, headers and footers', async () => {
 paper = "Letter"
 logo = "_static/harbor-logo.svg"
 title = "Harbor manual"
-subtitle = "Version {version} · {date}"
+subtitle = "Version {version} ({release}) · {date}"
 note = "© Harbor Labs. For customers only."
 header = ["{logo}", "", "{chapter}"]
 footer = ["{title}", "", "Page {page} of {pages}"]
@@ -89,7 +89,7 @@ fonts = ["_static/fonts/KaTeX_SansSerif-Regular.ttf", "_static/fonts/KaTeX_SansS
   const text = await pageTexts(pdf);
   // ("Harbor" first: the logo's text; then the title, subtitle and note, and the
   // badge's text.)
-  expect(text[0]).toMatch(/^Harbor Harbor manual ?Version 2\.4\.0 · \w+ \d+, \d{4} ?© Harbor Labs\. For customers only\. ?CERTIFIED ?2026$/);
+  expect(text[0]).toMatch(/^Harbor Harbor manual ?Version 2\.4 \(2\.4\.0\) · \w+ \d+, \d{4} ?© Harbor Labs\. For customers only\. ?CERTIFIED ?2026$/);
   // Numbered from the cover (which has no margins): the contents is page 2.
   // (Margins first, in no set order; the logo's text is "Harbor".)
   expect(text[1]).toContain('Contents Install Harbor 4 Deploy your first service 5 Configuration 6 Roll back a deploy 7 Secrets 8');

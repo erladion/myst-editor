@@ -9,7 +9,7 @@ describe('layoutScript', () => {
       rootDoc: 'index', paper: 'A4', title: 'A "quoted" title', subtitle: '{date}', note: 'Line one\nline two',
       coverLogo: null, coverBackground: null, coverColor: null, coverImages: [], coverPlaces: { title: { x: 20, y: 100, width: null, size: 40, align: 'center' } }, marginLogo: null,
       header: ['', '', '{chapter}'], footer: ['', '{page}', ''], fonts: { text: TEXT_FONTS, heading: TEXT_FONTS, code: CODE_FONTS, faces: '' },
-      headersOn: 'all', numbering: 'content', tocDepth: 2, date: 'today', project: 'P', variables: { classification: 'Internal' },
+      headersOn: 'all', numbering: 'content', tocDepth: 2, date: 'today', project: 'P', version: '2.4', release: '2.4.0', variables: { classification: 'Internal' },
     });
     expect(() => new Function(script)).not.toThrow();
     expect(script).toContain('"title":"A \\"quoted\\" title"');

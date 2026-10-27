@@ -41,6 +41,8 @@ export interface BuildResult {
   written_docs?: string[];
   consistency_checked?: boolean;
   variables?: Record<string, string>; // see variables_of
+  version?: string; // conf.py's version and release
+  release?: string;
   duration: number;
 }
 

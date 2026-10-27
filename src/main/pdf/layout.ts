@@ -28,6 +28,8 @@ export interface LayoutOptions {
   tocDepth: number; // levels of the contents: 1 is chapters only
   date: string;
   project: string;
+  version: string; // conf.py's version ("2.4")
+  release: string; // and release ("2.4.0")
   variables: Record<string, string>; // other {name}s: from conf.py, and [pdf.variables]
 }
 
@@ -96,17 +98,15 @@ export const layoutScript = (opts: LayoutOptions) => `
   });
   const numbering = chapters.length ? opts.numbering : 'cover';
 
-  // Sphinx's documentation_options.js declares it with const: not on window.
-  const version = (typeof DOCUMENTATION_OPTIONS !== 'undefined' && DOCUMENTATION_OPTIONS.VERSION) || '';
   const h1 = root && headingOf(root);
   let manual = opts.title || (h1 ? textOf(h1) : document.title.trim());
   // The PDF's own placeholders, then the project's variables; anything else is left as written.
   const fill = (text, chapter) =>
     text.replace(/\\{(\\w+)\\}/g, (all, name) => {
-      const own = { title: manual, date: opts.date, version, project: opts.project, chapter: chapter || '' };
+      const own = { title: manual, date: opts.date, version: opts.version, release: opts.release, project: opts.project, chapter: chapter || '' };
       return Object.hasOwn(own, name) ? own[name] : Object.hasOwn(opts.variables, name) ? opts.variables[name] : all;
     });
-  // The title may say {version} or {date} too.
+  // The title may say {version}, {release} or {date} too.
   manual = fill(manual);
 
   // The cover: the logo, the title, the subtitle and a note at its foot. The root
