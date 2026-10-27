@@ -94,6 +94,10 @@ export function buildMenu(theme: Theme = nativeTheme.themeSource) {
         { label: 'Clone Repository…', click: () => send('clone') },
         { type: 'separator' },
         { id: 'go-to-page', label: withKeys('Go to Page…', 'C-x b'), ...keys('CmdOrCtrl+P', 'C-x b'), click: () => send('go-to-page') },
+        // The keys and the mouse's back and forward buttons are the window's (see
+        // pageHistory.ts): before the editors, which have uses for Alt+←.
+        { id: 'go-back', label: 'Back', ...(emacsKeys ? {} : { accelerator: 'Alt+Left' }), registerAccelerator: false, click: () => send('go-back') },
+        { id: 'go-forward', label: 'Forward', ...(emacsKeys ? {} : { accelerator: 'Alt+Right' }), registerAccelerator: false, click: () => send('go-forward') },
         { type: 'separator' },
         { label: 'New Page…', ...keys('CmdOrCtrl+N', null), click: () => send('new-page') },
         { label: 'Delete Page…', click: () => send('delete-page') },

@@ -103,7 +103,7 @@ export type NewProjectResult = { ok: true; path: string; note: string | null } |
 
 export type PdfResult = { ok: true; path: string; pages: number } | { ok: false; message: string };
 
-export type MenuCommand = 'open-folder' | 'save' | 'toggle-source' | 'clone' | 'new-page' | 'delete-page' | 'go-to-page' | 'toggle-outline' | 'page-history' | 'switch-branch' | 'rename-page' | 'find' | 'toggle-emacs' | 'search-pages' | 'about' | 'project-settings' | 'export-pdf' | 'shortcuts' | 'new-project' | 'command-palette';
+export type MenuCommand = 'open-folder' | 'save' | 'toggle-source' | 'clone' | 'new-page' | 'delete-page' | 'go-to-page' | 'toggle-outline' | 'page-history' | 'switch-branch' | 'rename-page' | 'find' | 'toggle-emacs' | 'search-pages' | 'about' | 'project-settings' | 'export-pdf' | 'shortcuts' | 'new-project' | 'command-palette' | 'go-back' | 'go-forward';
 
 export interface MystApi {
   // The project from the command line or the last session, if any.

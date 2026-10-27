@@ -45,6 +45,7 @@ import { useEditorContext } from './app/editorContext';
 import { landingPage, useFolder } from './app/folder';
 import { usePageActions } from './app/pageActions';
 import { useScrollPlaces } from './app/scrollPlaces';
+import { usePageHistory } from './app/pageHistory';
 import { previewUrlOf, usePreviewBuild, usePreviewFollow } from './app/previews';
 import { NO_ALERTS, useVale } from './app/vale';
 import { useFind } from './app/find';
@@ -135,6 +136,7 @@ export function App() {
   }, [ws]);
 
   const onScroll = useScrollPlaces(ws, scrollRef, mode);
+  const goInHistory = usePageHistory(ws, openPage, emacs);
 
   const toggleMode = useCallback(() => {
     setMode((m) => (m === 'rich' ? 'markdown' : 'rich'));
@@ -229,6 +231,8 @@ export function App() {
       else if (cmd === 'new-page' && ws) setNewPage({ folder: null });
       else if (cmd === 'delete-page' && ws?.current) void deletePage(ws.current);
       else if (cmd === 'go-to-page' && ws) setGoTo(true);
+      else if (cmd === 'go-back') goInHistory('back');
+      else if (cmd === 'go-forward') goInHistory('forward');
       else if (cmd === 'page-history' && ws?.current) setHistory(ws.current);
       else if (cmd === 'switch-branch' && ws) setBranchesOpen(true);
       else if (cmd === 'rename-page' && ws?.current) setRenaming(ws.current);

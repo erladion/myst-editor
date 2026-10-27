@@ -41,6 +41,7 @@ export const SHORTCUTS: { group: string; keys: [string, string][] }[] = [
     keys: [
       ['Command palette: any command by name', 'Ctrl+Shift+P'],
       ['Go to a page', 'Ctrl+P'],
+      ['Back to the page before, and forward again (or the mouse’s side buttons)', 'Alt+←, Alt+→'],
       ['New page', 'Ctrl+N'],
       ['Save', 'Ctrl+S'],
       ['Find and replace in the page', 'Ctrl+F'],
