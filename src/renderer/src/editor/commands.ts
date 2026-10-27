@@ -278,6 +278,32 @@ function docTargets(doc: PMNode): Target[] {
   return out;
 }
 
+// A page's link targets ("anchors"), with what follows each, and whether Sphinx gives
+// a link to it a title of its own (a heading's, a figure's or table's caption): one
+// before a paragraph has none, so a link needs words of its own. Sphinx's build lists
+// only those with titles, so these come from the pages.
+interface Anchor {
+  label: string;
+  follows: string; // the start of the block after it
+  titled: boolean;
+}
+
+function docAnchors(doc: PMNode): Anchor[] {
+  const out: Anchor[] = [];
+  doc.descendants((node, _pos, parent, index) => {
+    if (node.type !== nodes.target) return !node.isTextblock;
+    const next = parent?.maybeChild(index + 1) ?? null;
+    const caption = next?.type === nodes.md_directive && (next.attrs.name === 'figure' ? next.firstChild?.textContent.trim() : next.attrs.name === 'table' ? String(next.attrs.args).trim() : '');
+    const text = (next?.textContent ?? '').replace(/\s+/g, ' ').trim();
+    out.push({ label: node.attrs.label, follows: text.length > 60 ? `${text.slice(0, 60).replace(/\s+\S*$/, '')}…` : text, titled: next?.type === nodes.heading || !!caption });
+    return false;
+  });
+  return out;
+}
+
+// Link text from an anchor's name: "before-you-start" → "before you start".
+const anchorWords = (label: string) => label.replace(/[-_.]+/g, ' ').trim();
+
 // The labels a document uses: link targets, and figures' and tables' names.
 function docLabels(doc: PMNode, into: Set<string>) {
   doc.descendants((node) => {
@@ -313,6 +339,7 @@ export async function insertReference(ctx: EditorContext, run: (cmd: Command) =>
       return { ...t, path: p.path, page: p.title, proposed };
     }),
   );
+  const anchors = pages.flatMap((p) => docAnchors(p.doc).map((a) => ({ ...a, page: p.path ? p.title : null })));
   const values = await ctx.ui.editFields({
     title: 'Insert cross-reference',
     submit: 'Insert',
@@ -324,6 +351,7 @@ export async function insertReference(ctx: EditorContext, run: (cmd: Command) =>
         choices: [
           { value: 'ref', label: 'A section, figure or table (by its name)' },
           ...(targets.length ? [{ value: 'page', label: 'A figure, table or image' }] : []),
+          ...(anchors.length ? [{ value: 'anchor', label: 'An anchor (a link target)' }] : []),
           { value: 'doc', label: 'A page' },
           { value: 'term', label: 'A glossary term' },
           { value: 'numref', label: ctx.config.numfig ? 'A figure or table, as “Figure 2”' : 'A figure or table, as “Figure 2” (needs numfig = True in conf.py)' },
@@ -338,17 +366,26 @@ export async function insertReference(ctx: EditorContext, run: (cmd: Command) =>
         suggestions: (values) =>
           values.name === 'page'
             ? targets.map((t) => ({ value: t.label ?? t.proposed, label: `${KIND_NAMES[t.kind]}: ${t.description}${t.path ? ` — ${t.page}` : ''}${t.label ? '' : ' (gets a name)'}` }))
-            : ctx.suggest(values.name),
+            : values.name === 'anchor'
+              ? anchors.map((a) => ({ value: a.label, label: `${a.follows || '(nothing after it)'}${a.page ? ` — ${a.page}` : ''}` }))
+              : ctx.suggest(values.name),
       },
-      { key: 'title', label: 'Link text', value: '', help: 'Optional: Sphinx shows the section’s title or the caption otherwise. An image has neither, so its description is used.' },
+      {
+        key: 'title',
+        label: 'Link text',
+        value: '',
+        help: 'Optional: Sphinx shows the section’s title or the caption otherwise. An image has neither, so its description is used; an anchor before a paragraph neither, so its name, as words.',
+      },
     ],
   });
   if (!values?.target) return;
   const target = values.target.trim();
   const chosen = values.name === 'page' ? targets.find((t) => (t.label ?? t.proposed) === target) : undefined;
   // Without a caption (an image, a figure with none), the link needs words of its own.
-  const title = values.title.trim() || (values.name === 'page' && !chosen?.captioned ? (chosen?.description ?? 'this') : '');
-  const role = values.name === 'page' ? 'ref' : values.name;
+  // An anchor with no title of its own (before a paragraph, say), however it was chosen.
+  const anchor = values.name === 'ref' || values.name === 'anchor' ? anchors.find((a) => a.label === target) : undefined;
+  const title = values.title.trim() || (values.name === 'page' && !chosen?.captioned ? (chosen?.description ?? 'this') : anchor && !anchor.titled ? anchorWords(target) : '');
+  const role = values.name === 'page' || values.name === 'anchor' ? 'ref' : values.name;
   // Named on its own page first (found again there by its place), and saved.
   if (chosen && !chosen.label && chosen.path) {
     const named = await ctx.editPage(chosen.path, (s) => {

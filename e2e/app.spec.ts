@@ -267,6 +267,24 @@ test('referring to a figure on another page names it there', async () => {
   await expect.poll(() => file('guide/configure.md')).toContain(':::{figure} ../images/diagram.svg\n:name: fig-the-settings-screen\n\nThe settings screen\n:::\n');
 });
 
+test('referring to an anchor before a paragraph, on another page', async () => {
+  const { page } = ctx;
+  // A link target before a paragraph: Sphinx gives a link to it no title, and doesn't list it.
+  appendFileSync(join(ctx.project, 'docs', 'guide', 'configure.md'), '\n(before-you-start)=\nCheck the license file is in place before anything else.\n');
+  await openPage(page, 'Installing Widget');
+  await clickEndOf(page, 'Settings live in');
+  await page.keyboard.type(' See ');
+  await page.keyboard.press('Control+Shift+K');
+  const dialog = page.getByRole('dialog', { name: 'Insert cross-reference' });
+  await dialog.getByLabel('Refers to').selectOption('anchor');
+  await expect(dialog.locator('datalist option[value="before-you-start"]')).toHaveText('Check the license file is in place before anything else. — Configuring Widget');
+  await dialog.getByLabel('Target').fill('before-you-start');
+  await dialog.getByRole('button', { name: 'Insert' }).click();
+  await waitForSave(page);
+  // With words of its own: the anchor's name, as words.
+  expect(file('guide/install.md')).toContain('See {ref}`before you start <before-you-start>`');
+});
+
 test('inserting an image, and a link target for a heading', async () => {
   const { page } = ctx;
   await openPage(page, 'Installing Widget');

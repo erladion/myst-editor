@@ -99,7 +99,10 @@ shows its caption; with `numfig = True` in `conf.py`, "as Figure 2" numbers it).
 "A figure, table or image": it lists those on every page of the project, and one
 without a name gets one when chosen, on its own page (a figure's or table's `:name:`,
 from its caption; a link target before an image, whose link then has its own text, as
-an image has no caption).
+an image has no caption). "An anchor (a link target)" lists the project's link targets, those
+Insert → Link target places before any block, with the start of what follows each
+(Sphinx's build doesn't list those before a paragraph): a link to one of those needs
+words of its own, so without link text it gets the anchor's name, as words.
 
 **PDF:** File → Export PDF… builds the whole project as one PDF: a cover, one table
 of contents with page numbers, then the pages in the order of the contents (each
