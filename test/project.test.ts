@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildInputsOf, firstHeading, placeImage, saveImage, searchPages, listDocuments, openProject, resolveInside, unwatchedDir } from '../src/main/project.js';
+import { buildInputsOf, firstHeading, placeImage, saveImage, searchPages, listDocuments, openProject, resolveForReading, resolveInside, unwatchedDir } from '../src/main/project.js';
 import { FolderWatcher } from '../src/main/watch.js';
 
 function project() {
@@ -96,6 +96,18 @@ describe('resolveInside', () => {
     expect(() => resolveInside(base, '/etc/passwd')).toThrow(/outside the project/);
     symlinkSync(join(root, 'outside'), join(base, 'link'), 'junction'); // a junction needs no admin rights on Windows
     expect(() => resolveInside(base, 'link/secret.md')).toThrow(/outside the project/);
+  });
+});
+
+describe('resolveForReading', () => {
+  it('follows the folder’s symlinks out of it (a shared folder), but not ".." out of it', () => {
+    const root = project();
+    const base = join(root, 'docs');
+    symlinkSync(join(root, 'outside'), join(base, 'common'), 'junction');
+    expect(readFileSync(resolveForReading(base, 'common/secret.md'), 'utf8')).toBe('secret');
+    expect(() => resolveForReading(base, '../outside/secret.md')).toThrow(/outside the project/);
+    expect(() => resolveForReading(base, 'guide/../../outside/secret.md')).toThrow(/outside the project/);
+    expect(() => resolveForReading(base, '/etc/passwd')).toThrow(/outside the project/);
   });
 });
 

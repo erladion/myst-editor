@@ -13,7 +13,7 @@ import { loadSettings, updateSettings } from '../settings.js';
 import { managerOf } from '../sphinx/service.js';
 import { CODE_FONTS, cssWithFileUrls, layoutScript, PRINT_CSS, TEXT_FONTS, type LayoutOptions } from './layout.js';
 import { cssString, fontFace, fontInfo } from './fonts.js';
-import { resolveInside } from '../project.js';
+import { resolveForReading } from '../project.js';
 import { headingPages, outlineOf } from './outline.js';
 
 let running: AbortController | null = null;
@@ -39,7 +39,7 @@ const IMAGE_TYPES: Record<string, string> = { '.svg': 'image/svg+xml', '.png': '
 async function imageData(root: string, path: string, what: string): Promise<{ url: string; ratio: number }> {
   const type = IMAGE_TYPES[extname(path).toLowerCase()];
   if (!type) throw new Error(`The ${what} must be an SVG, PNG, JPEG, GIF or WebP image: ${path}`);
-  const bytes = await fs.readFile(resolveInside(root, path)).catch(() => {
+  const bytes = await fs.readFile(resolveForReading(root, path)).catch(() => {
     throw new Error(`There’s no ${what} at ${path}.`);
   });
   let ratio = 3;
@@ -69,7 +69,7 @@ export async function logoImages(root: string, logo: string): Promise<{ cover: s
 
 // The project's PDF stylesheet (see cssWithFileUrls).
 async function pdfStylesheet(root: string, path: string): Promise<string> {
-  const file = resolveInside(root, path);
+  const file = resolveForReading(root, path);
   const css = await fs.readFile(file, 'utf8').catch(() => {
     throw new Error(`There’s no PDF stylesheet at ${path}.`);
   });
@@ -124,13 +124,15 @@ export async function makePdf(
   const css = settings.cssPath ? await pdfStylesheet(root, settings.cssPath) : null;
   const { html, variables, version, release, warnings } = await manager.buildOnePage(signal, settings.siteCss);
   if (signal.aborted) throw new Error('Cancelled');
+  if (settings.logo && !settings.logoPath) throw new Error(`The logo must be in the opened folder: ${settings.logo}`);
+  if (settings.coverBackground && !settings.coverBackgroundPath) throw new Error(`The cover background must be in the opened folder: ${settings.coverBackground}`);
   const logo = settings.logoPath ? await logoImages(root, settings.logoPath) : null;
   const background = settings.coverBackgroundPath ? (await imageData(root, settings.coverBackgroundPath, 'cover background')).url : null;
   // The project's font files, embedded: the PDF looks the same on every computer.
   const faces: string[] = [];
   for (const f of settings.fonts) {
     if (!f.path) throw new Error(`Font files must be in the opened folder: ${f.file}`);
-    const bytes = await fs.readFile(resolveInside(root, f.path)).catch(() => {
+    const bytes = await fs.readFile(resolveForReading(root, f.path)).catch(() => {
       throw new Error(`There’s no font file at ${f.path}.`);
     });
     faces.push(fontFace(fontInfo(bytes, f.path), bytes, f.path));

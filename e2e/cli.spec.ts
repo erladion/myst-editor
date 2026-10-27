@@ -2,7 +2,7 @@
 // and on Linux no display either.
 import { expect, test } from '@playwright/test';
 import { spawn } from 'node:child_process';
-import { appendFileSync, cpSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdtempSync, readFileSync, renameSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import electronPath from 'electron';
@@ -65,6 +65,18 @@ test('a folder of several projects: which one, and settings layered from the fol
   // The default name: the project's, in the folder it was run from.
   expect(existsSync(join(dir, 'Admin Guide.pdf'))).toBe(true);
   expect((await pageTexts(readFileSync(join(dir, 'Admin Guide.pdf'))))[0]).toMatch(/For everyone$/);
+});
+
+test('the folder given may link to a shared one outside it, for its images', async () => {
+  const dir = copy('fixture-showcase');
+  const docs = join(dir, 'repo', 'docs');
+  // repo/common, shared by the repository's projects, linked in as docs/_static.
+  renameSync(join(docs, '_static'), join(dir, 'repo', 'common'));
+  symlinkSync(join(dir, 'repo', 'common'), join(docs, '_static'), 'junction');
+  writeFileSync(join(docs, '.mysteditor.toml'), '[pdf]\nlogo = "_static/harbor-logo.svg"\n');
+  const { code, out, err } = await run(dir, '--export-pdf', 'repo/docs', '--output', 'manual.pdf');
+  expect(code, out + err).toBe(0);
+  expect((await pageTexts(readFileSync(join(dir, 'manual.pdf'))))[0]).toMatch(/^Harbor Harbor documentation/);
 });
 
 test('warnings are printed, and with --fail-on-warning fail it', async () => {

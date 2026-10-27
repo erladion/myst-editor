@@ -558,12 +558,15 @@ function readDirective(name: string, def: unknown, problem: (m: string) => void)
 }
 
 // `p` relative to the folder `dir` (both with /), with . and .. resolved.
-function joinPath(dir: string, p: string): string {
+// `p` relative to `dir`, both inside the opened folder; null when it climbs out of it.
+function joinPath(dir: string, p: string): string | null {
   const out: string[] = [];
   for (const part of `${dir}/${p}`.split(/[\\/]/)) {
     if (!part || part === '.') continue;
-    if (part === '..') out.pop();
-    else out.push(part);
+    if (part === '..') {
+      if (!out.length) return null;
+      out.pop();
+    } else out.push(part);
   }
   return out.join('/');
 }

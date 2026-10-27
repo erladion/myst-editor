@@ -222,3 +222,10 @@ describe('the PDF’s variables', () => {
     expect(pdf.variables).toEqual({ year: '2026' });
   });
 });
+
+describe('files the PDF settings name', () => {
+  it('can’t climb out of the opened folder: they’re then not found, and said so', () => {
+    const { pdf } = loadEditorConfig([{ file: 'docs/.mysteditor.toml', text: '[pdf]\nlogo = "../_static/logo.svg"\ncover_background = "../../cover.png"\n', readCapabilities: () => '[]' }]);
+    expect(pdf).toMatchObject({ logo: '../_static/logo.svg', logoPath: '_static/logo.svg', coverBackground: '../../cover.png', coverBackgroundPath: null });
+  });
+});

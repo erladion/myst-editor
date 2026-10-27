@@ -1,7 +1,7 @@
 // File → Export PDF: the project as one PDF, with a title page, one table of
 // contents and each chapter on a new page. Needs a Sphinx build (see sphinx.spec.ts).
 import { expect, test } from '@playwright/test';
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync, renameSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PDFDocument } from 'pdf-lib';
 import { headingPages, outlineOf } from '../src/main/pdf/outline';
@@ -241,4 +241,19 @@ test('every line of the contents has its page, whatever is in the heading', asyn
   // (Wrapped headings' titles in the outline lose the space at the line break; an
   // image's alt text is in its title, and maths isn't.)
   expect(contents).toMatch(/Awkward headings 6 .*so that it wraps 6 Math \S+ heading 6 Image heading \d Last one \d$/);
+});
+
+test('images and fonts in a shared folder, linked into the project', async () => {
+  const pdf = await exportPdf(
+    '[pdf]\nlogo = "_static/harbor-logo.svg"\nfont = "KaTeX_SansSerif"\nfonts = ["_static/fonts/KaTeX_SansSerif-Regular.ttf"]\n',
+    (docs) => {
+      // _static is in a folder beside the project, shared by others (a junction on Windows).
+      const common = join(docs, '..', '..', 'common');
+      renameSync(join(docs, '_static'), common);
+      symlinkSync(common, join(docs, '_static'), 'junction');
+    },
+  );
+  const text = await pageTexts(pdf);
+  expect(text[0]).toMatch(/^Harbor Harbor documentation/); // the logo's text, then the title
+  expect(await fontNames(pdf)).toContain('KaTeX_SansSerif-Regular');
 });

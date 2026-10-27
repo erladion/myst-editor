@@ -369,6 +369,16 @@ export function resolveInside(base: string, rel: string): string {
   return target;
 }
 
+// Resolve `rel` inside `base` for reading a file the project refers to (an image, a
+// font, a stylesheet): it may not climb out with "..", but symlinks in the folder are
+// followed wherever they lead, so a shared folder linked into several projects works
+// (as it does in Sphinx). Writing, renaming and deleting keep to resolveInside.
+export function resolveForReading(base: string, rel: string): string {
+  const target = resolve(base, rel);
+  if (!isInside(resolve(base), target, true)) throw new Error(`Path is outside the project: ${rel}`);
+  return target;
+}
+
 export async function readDocument(project: ProjectInfo, rel: string): Promise<string> {
   return fs.readFile(resolveInside(project.root, rel), 'utf8');
 }

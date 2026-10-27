@@ -7,7 +7,7 @@ import { capabilityNames, loadEditorConfig, SETTINGS_FILE, type SettingsSource }
 import { editConditions, editPdf, type ConditionsPatch, type PdfPatch } from '../core/project-settings.js';
 import { tomlAt } from '../core/toml-edit.js';
 import type { PdfFonts, ProjectInfo, ProjectSettingsInfo } from '../shared/api.js';
-import { resolveInside, settingsSources } from './project.js';
+import { isInside, resolveForReading, resolveInside, settingsSources } from './project.js';
 import { current, requireProject } from './state.js';
 import { refreshProject } from './workspace.js';
 import { fontInfo, installedFonts } from './pdf/fonts.js';
@@ -79,15 +79,19 @@ export function registerProjectSettingsIpc() {
       : await dialog.showOpenDialog(current.win!, { title: kind === 'image' ? 'Choose an image' : kind === 'font' ? 'Choose a font file' : kind === 'css' ? 'Choose the PDF stylesheet' : 'Choose the capabilities file', defaultPath: dirname(path), properties: ['openFile'], filters });
     const file = 'filePaths' in result ? result.filePaths[0] : result.filePath;
     if (result.canceled || !file) return null;
-    try {
-      resolveInside(p.root, relative(p.root, file));
-    } catch {
-      return { error: 'Choose a file in the opened folder, so everyone working on the project has it.' };
-    }
-    if (create && !existsSync(file)) await fs.writeFile(file, '{\n  "capabilities": []\n}\n');
-    // Both as the disk spells them (Windows dialogs may give C:\PROGRA~1\… names).
+    // In the folder as the dialog gives it (through the folder's symlinks too, for files
+    // read), or as the disk spells it (Windows dialogs may give C:\PROGRA~1\… names).
     const real = (f: string) => join(realpathSync.native(dirname(f)), basename(f));
-    return { path: slashes(relative(realpathSync.native(dirname(path)), real(file))) };
+    let chosen: string | null = !create && isInside(p.root, file) ? file : null;
+    try {
+      if (!chosen && isInside(realpathSync.native(p.root), real(file))) chosen = real(file);
+      if (create) resolveInside(p.root, relative(p.root, file));
+    } catch {
+      chosen = null;
+    }
+    if (!chosen) return { error: 'Choose a file in the opened folder, so everyone working on the project has it.' };
+    if (create && !existsSync(chosen)) await fs.writeFile(chosen, '{\n  "capabilities": []\n}\n');
+    return { path: slashes(relative(realpathSync.native(dirname(path)), chosen)) };
   });
 
   // Font files (relative to the settings file): what each is.
@@ -97,7 +101,7 @@ export function registerProjectSettingsIpc() {
     const described = await Promise.all(
       files.map(async (file) => {
         try {
-          const target = resolveInside(p.root, relative(p.root, resolve(dirname(path), String(file))));
+          const target = resolveForReading(p.root, relative(p.root, resolve(dirname(path), String(file))));
           return { file, ...fontInfo(await fs.readFile(target), target) };
         } catch {
           return { file, error: 'There’s no such font file.' };
@@ -117,7 +121,7 @@ export function registerProjectSettingsIpc() {
     const { path } = settingsFor(p, projectId);
     try {
       const target = isAbsolute(file) ? file : resolve(dirname(path), file);
-      const names = capabilityNames(JSON.parse(await fs.readFile(resolveInside(p.root, relative(p.root, target)), 'utf8')), key || null);
+      const names = capabilityNames(JSON.parse(await fs.readFile(resolveForReading(p.root, relative(p.root, target)), 'utf8')), key || null);
       return names ? { names } : { error: `There’s no list of capabilities in it${key ? ` under “${key}”` : ''}.` };
     } catch (e) {
       return { error: (e as NodeJS.ErrnoException).code === 'ENOENT' ? 'There’s no such file.' : plain(e) };
