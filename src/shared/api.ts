@@ -1,5 +1,5 @@
 // The API the preload script exposes to the renderer as `window.myst`.
-import type { MystConfig } from '../core/project-config.js';
+import type { PageConfig } from '../core/format.js';
 import type { ConditionsDef, PdfDef, SettingsProblem } from '../core/editor-config.js';
 import type { ConditionsPatch, PdfPatch } from '../core/project-settings.js';
 import type { EnvironmentChoice, PythonCandidate, SphinxState } from './sphinx.js';
@@ -13,14 +13,14 @@ export interface SphinxProject {
   dir: string; // source directory relative to the opened folder ('' for the folder itself)
   sourceDir: string; // absolute
   confPy: string; // relative to the opened folder
-  config: MystConfig;
+  config: PageConfig;
 }
 
 export interface ProjectInfo {
   root: string; // the folder the writer opened
   name: string;
   projects: SphinxProject[]; // may be empty: a plain Markdown folder
-  defaultConfig: MystConfig; // for pages outside every project
+  defaultConfig: PageConfig; // for pages outside every project
   files: string[]; // Markdown files, POSIX paths relative to root
   titles: Record<string, string>; // first heading of each file, where found
   // Sizes and times of the folder's Python files and capabilities files (extensions

@@ -5,7 +5,7 @@ import { Plugin, PluginKey, type Transaction } from 'prosemirror-state';
 import { Decoration, DecorationSet } from 'prosemirror-view';
 import { parseSaved } from '../../../core/document';
 import { positionOfPath } from '../../../core/lines';
-import type { MystConfig } from '../../../core/project-config';
+import type { PageConfig } from '../../../core/format';
 
 export const previewsKey = new PluginKey<DecorationSet>('previews');
 
@@ -27,7 +27,7 @@ export interface PreviewBuild {
 
 // Decorations carrying each card's preview URL (in the decoration's spec), located
 // through the saved text like warnings are (see problems.ts).
-export function locatePreviews(doc: PMNode, savedText: string, config: MystConfig, build: PreviewBuild | null): DecorationSet {
+export function locatePreviews(doc: PMNode, savedText: string, config: PageConfig, build: PreviewBuild | null): DecorationSet {
   if (!build) return DecorationSet.empty;
   const saved = parseSaved(savedText, config);
   const decorations: Decoration[] = [];

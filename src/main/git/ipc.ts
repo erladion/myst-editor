@@ -4,6 +4,7 @@ import { app, dialog, ipcMain } from 'electron';
 import { promises as fs } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import type { ConflictFile } from '../../shared/git.js';
+import { isPage } from '../../core/format.js';
 import { readDocument } from '../project.js';
 import { current, requireProject, toWindow } from '../state.js';
 import { rereadAfterCheckout } from '../workspace.js';
@@ -91,7 +92,7 @@ export function registerGitIpc() {
       gitAction(async (root) => {
         const p = requireProject();
         const rel = relative(p.root, join(root, path)).split(sep).join('/');
-        if (!rel.startsWith('..') && rel.endsWith('.md')) {
+        if (!rel.startsWith('..') && isPage(rel)) {
           const now = await readDocument(p, rel).catch(() => null);
           if (now !== null) await snapshots().keep(p.root, rel, now, { force: true });
         }

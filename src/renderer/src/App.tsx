@@ -29,6 +29,7 @@ import { ChecksChip, ChecksPanel, type PageFindings } from './components/Checks'
 import { checksOf, fixFinding, showFinding } from './editor/checks';
 import { checkDoc } from '../../core/checks';
 import { loadDocument } from '../../core/document';
+import { pagesOf } from '../../core/format';
 import { editorCommands, type PaletteCommand } from './app/palette';
 import { ValeChip } from './components/ValeChip';
 import { OpeningCard, Welcome } from './components/Welcome';
@@ -623,6 +624,7 @@ export function App() {
           titles={ws.project.titles}
           contentsPages={newPageContents}
           contentsDefault={(folder, pages) => defaultContents(ws.project, folder, pages)}
+          extension={(folder) => pagesOf(configFor(ws.project, folder ? `${folder}/page` : 'page')).extension}
           onCreate={createPage}
           onClose={() => setNewPage(null)}
         />

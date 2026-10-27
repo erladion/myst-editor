@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildInputsOf, firstHeading, placeImage, saveImage, searchPages, listDocuments, openProject, resolveForReading, resolveInside, unwatchedDir } from '../src/main/project.js';
+import { buildInputsOf, placeImage, saveImage, searchPages, listDocuments, openProject, resolveForReading, resolveInside, unwatchedDir } from '../src/main/project.js';
+import { firstHeading } from '../src/core/myst/pages.js';
 import { FolderWatcher } from '../src/main/watch.js';
 
 function project() {

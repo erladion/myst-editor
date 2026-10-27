@@ -8,6 +8,7 @@ import { promises as fs, readFileSync, realpathSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { Buffer } from 'node:buffer';
 import { DEFAULT_CONFIG, readConfPy } from '../core/project-config.js';
+import { isPage, pageFormat } from '../core/format.js';
 import { loadEditorConfig, SETTINGS_FILE, type SettingsSource } from '../core/editor-config.js';
 import type { PageMatches, ProjectInfo, SphinxProject } from '../shared/api.js';
 
@@ -24,7 +25,7 @@ export async function unwatchedDir(parent: string, name: string): Promise<boolea
   // Build output (Python packaging, CMake, `sphinx-build docs build`), unless it holds pages.
   if (name === 'build' || name === 'dist') {
     try {
-      return !(await fs.readdir(dir)).some((f) => f.endsWith('.md'));
+      return !(await fs.readdir(dir)).some(isPage);
     } catch {
       return true;
     }
@@ -80,7 +81,7 @@ async function fingerprintOf(root: string, files: string[]): Promise<string> {
   return hash.digest('hex').slice(0, 24);
 }
 
-// One walk of the folder: its Markdown pages (sorted POSIX paths relative to it), the
+// One walk of the folder: its pages (sorted POSIX paths relative to it), the
 // directories holding a conf.py, and its Python files (extensions a build may load).
 async function scanFolder(root: string, found: (pages: number) => void = () => {}): Promise<{ files: string[]; confDirs: string[]; inputs: string[] }> {
   const files: string[] = [];
@@ -113,7 +114,7 @@ async function scanFolder(root: string, found: (pages: number) => void = () => {
         }
       }
       if (e.isFile()) {
-        if (e.name.endsWith('.md')) {
+        if (isPage(e.name)) {
           files.push(relative(root, join(dir, e.name)).split(sep).join('/'));
           if (files.length % 100 === 0) found(files.length);
         } else {
@@ -228,7 +229,7 @@ export async function readTitle(path: string): Promise<string | null> {
   try {
     handle = await fs.open(path, 'r');
     const { buffer, bytesRead } = await handle.read(Buffer.alloc(16384), 0, 16384, 0);
-    return firstHeading(buffer.subarray(0, bytesRead).toString('utf8'));
+    return pageFormat(path)?.title(buffer.subarray(0, bytesRead).toString('utf8')) ?? null;
   } catch {
     return null; // unreadable: the file name is shown instead
   } finally {
@@ -236,40 +237,7 @@ export async function readTitle(path: string): Promise<string | null> {
   }
 }
 
-export function firstHeading(text: string): string | null {
-  let body = text;
-  const fm = /^---\r?\n[\s\S]*?\r?\n---\r?\n/.exec(body);
-  if (fm) body = body.slice(fm[0].length);
-  let inFence: string | null = null;
-  const lines = body.split(/\r?\n/);
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const fence = /^\s*(`{3,}|~{3,}|:{3,})/.exec(line)?.[1];
-    if (fence) {
-      if (!inFence) inFence = fence[0];
-      else if (fence[0] === inFence) inFence = null;
-      continue;
-    }
-    if (inFence) continue;
-    const atx = /^ {0,3}#{1,6}\s+(.+?)\s*#*\s*$/.exec(line);
-    const setext = line.trim() && /^ {0,3}(=+|-+)\s*$/.test(lines[i + 1] ?? '') && !/^\s*[-*+]\s/.test(line);
-    const raw = atx?.[1] ?? (setext ? line.trim() : null);
-    if (raw) return plain(raw);
-  }
-  return null;
-}
-
-// Strip inline Markdown: roles, code, emphasis, links.
-function plain(text: string): string {
-  return text
-    .replace(/\{[\w:.-]+\}`([^`]*)`/g, (_m, v: string) => v.replace(/\s*<[^>]*>$/, ''))
-    .replace(/`([^`]*)`/g, '$1')
-    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/(\*\*|__|\*|_)(.+?)\1/g, '$2')
-    .trim();
-}
-
-// Markdown files under `base`, as sorted POSIX paths relative to it.
+// The pages under `base`, as sorted POSIX paths relative to it.
 export async function listDocuments(base: string): Promise<string[]> {
   return (await scanFolder(base)).files;
 }

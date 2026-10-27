@@ -9,6 +9,7 @@ import { FolderWatcher } from './watch.js';
 import type { ProjectInfo } from '../shared/api.js';
 import type { SphinxInfo } from '../shared/sphinx.js';
 import { SETTINGS_FILE } from '../core/editor-config.js';
+import { isPage } from '../core/format.js';
 import { current, requireProject, toWindow } from './state.js';
 import { loadSettings, updateSettings } from './settings.js';
 import { setRecentFolders } from './menu.js';
@@ -66,7 +67,7 @@ async function useProject(folder: string): Promise<ProjectInfo> {
 export const builtPages = new Set<string>();
 async function addBuiltPages(p: ProjectInfo, info: SphinxInfo) {
   const listed = new Set(p.files);
-  const missing = [...new Set(Object.values(info.docs).map((d) => d.source))].filter((s) => s.endsWith('.md') && !listed.has(s));
+  const missing = [...new Set(Object.values(info.docs).map((d) => d.source))].filter((s) => isPage(s) && !listed.has(s));
   const found: string[] = [];
   for (const rel of missing) {
     try {
@@ -183,7 +184,7 @@ function startWatching(p: ProjectInfo) {
     const before = new Set(p.files);
     let files = relist ? [...new Set([...(await listDocuments(p.root)), ...(await existing(p.root, builtPages))])] : [...p.files];
     if (!relist) {
-      for (const rel of changed.filter((r) => r.endsWith('.md'))) {
+      for (const rel of changed.filter(isPage)) {
         const exists = fingerprints.has(rel);
         if (exists && !before.has(rel)) files.push(rel);
         if (!exists) files = files.filter((f) => f !== rel);
@@ -191,7 +192,7 @@ function startWatching(p: ProjectInfo) {
       files.sort((a, b) => a.localeCompare(b));
     }
     const titles = Object.fromEntries(Object.entries(p.titles).filter(([f]) => files.includes(f)));
-    const reread = new Set([...changed.filter((r) => r.endsWith('.md')), ...files.filter((f) => !before.has(f))]);
+    const reread = new Set([...changed.filter(isPage), ...files.filter((f) => !before.has(f))]);
     for (const rel of reread) {
       if (!files.includes(rel)) continue;
       const title = await readTitle(join(p.root, rel));
@@ -200,7 +201,7 @@ function startWatching(p: ProjectInfo) {
     }
     if (current.project !== p) return;
     Object.assign(p, { files, titles });
-    const pages = changed.filter((r) => r.endsWith('.md') && files.includes(r));
+    const pages = changed.filter((r) => isPage(r) && files.includes(r));
     toWindow('files-changed', { files, titles, changed: pages });
     refreshGit();
     // Our own saves request builds directly; these are changes made outside the app.

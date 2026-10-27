@@ -4,7 +4,7 @@ import { Plugin, PluginKey, type Transaction } from 'prosemirror-state';
 import { Decoration, DecorationSet } from 'prosemirror-view';
 import { parseSaved } from '../../../core/document';
 import { blockPathAtLine, positionOfPath } from '../../../core/lines';
-import type { MystConfig } from '../../../core/project-config';
+import type { PageConfig } from '../../../core/format';
 import type { SphinxWarning } from '../../../shared/sphinx';
 
 export const problemsKey = new PluginKey<DecorationSet>('problems');
@@ -24,7 +24,7 @@ export const problemsPlugin = new Plugin<DecorationSet>({
 // saved, which may differ from what was loaded, so the saved text is parsed and the
 // block found there is located in `doc` by its position in the tree. Edits made since
 // the save can shift things slightly; the next build corrects it.
-export function locateProblems(doc: PMNode, savedText: string, config: MystConfig, warnings: SphinxWarning[]) {
+export function locateProblems(doc: PMNode, savedText: string, config: PageConfig, warnings: SphinxWarning[]) {
   if (!warnings.length) return [];
   const saved = parseSaved(savedText, config);
   const located: { pos: number; node: PMNode; warnings: SphinxWarning[] }[] = [];

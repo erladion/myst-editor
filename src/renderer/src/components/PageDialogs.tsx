@@ -1,6 +1,7 @@
 // Adding a page: its title, where it goes, and which table of contents lists it.
 import { useEffect, useState, type FormEvent } from 'react';
 import { pageSlug } from '../pages';
+import { pageFormat, pageStem } from '../../../core/format';
 
 export interface NewPage {
   title: string;
@@ -15,11 +16,12 @@ interface Props {
   titles: Record<string, string>;
   contentsPages: Promise<string[]>; // pages with a table of contents
   contentsDefault: (folder: string, pages: string[]) => string | null;
+  extension: (folder: string) => string; // of new pages there, e.g. ".md"
   onCreate: (page: NewPage) => Promise<void>;
   onClose: () => void;
 }
 
-export function NewPageDialog({ folders, folder: initialFolder, files, titles, contentsPages, contentsDefault, onCreate, onClose }: Props) {
+export function NewPageDialog({ folders, folder: initialFolder, files, titles, contentsPages, contentsDefault, extension, onCreate, onClose }: Props) {
   const [title, setTitle] = useState('');
   const [folder, setFolder] = useState(initialFolder);
   const [name, setName] = useState(''); // empty: from the title
@@ -36,7 +38,8 @@ export function NewPageDialog({ folders, folder: initialFolder, files, titles, c
     return () => window.removeEventListener('keydown', onKey);
   }, [busy, onClose]);
 
-  const file = `${(name.trim() || pageSlug(title)).replace(/\.md$/, '')}.md`;
+  const ext = extension(folder);
+  const file = `${pageStem(name.trim() || pageSlug(title))}${ext}`;
   const path = folder ? `${folder}/${file}` : file;
   const taken = files.has(path);
   const listedIn = contents === undefined ? (pages ? contentsDefault(folder, pages) : null) : contents;
@@ -129,10 +132,11 @@ export function RenamePageDialog({ path, title: initialTitle, folders, files, on
   const slash = path.lastIndexOf('/');
   const [title, setTitle] = useState(initialTitle);
   const [folder, setFolder] = useState(slash < 0 ? '' : path.slice(0, slash));
-  const [name, setName] = useState(path.slice(slash + 1).replace(/\.md$/, ''));
+  const ext = pageFormat(path)?.extension ?? '';
+  const [name, setName] = useState(pageStem(path.slice(slash + 1)));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const file = `${(name.trim() || 'page').replace(/\.md$/, '')}.md`;
+  const file = `${pageStem(name.trim() || 'page')}${ext}`;
   const target = folder ? `${folder}/${file}` : file;
   const taken = target !== path && files.has(target);
   const unchanged = target === path && title.trim() === initialTitle;

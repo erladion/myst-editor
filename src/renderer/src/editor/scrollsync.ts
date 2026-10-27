@@ -3,11 +3,11 @@
 // into it.
 import type { EditorView } from 'prosemirror-view';
 import { parseSaved } from '../../../core/document';
-import type { MystConfig } from '../../../core/project-config';
+import type { PageConfig } from '../../../core/format';
 import type { PreviewLine } from '../components/SphinxUi';
 
 // The start line of each top-level block of the saved page, then the line after it.
-export function blockLines(savedText: string, config: MystConfig): number[] {
+export function blockLines(savedText: string, config: PageConfig): number[] {
   const { doc, map } = parseSaved(savedText, config);
   const lines: number[] = [];
   doc.forEach((node) => lines.push(map.get(node.attrs.sid)?.line ?? lines[lines.length - 1] ?? 1));

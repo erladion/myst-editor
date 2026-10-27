@@ -1,5 +1,5 @@
 // What node views and commands need from the surrounding app.
-import type { MystConfig } from '../../../core/project-config';
+import type { PageConfig } from '../../../core/format';
 import type { ConditionsDef, OptionDef } from '../../../core/editor-config';
 import type { SourceMap } from '../../../core/sourcemap';
 import type { Resolution, Suggestion } from '../sphinx';
@@ -30,7 +30,7 @@ export interface EditorUi {
 
 export interface EditorContext {
   ui: EditorUi;
-  config: MystConfig;
+  config: PageConfig;
   // The open page, relative to the Sphinx source directory.
   filePath: string | null;
   // Pick an image file for the open page (see MystApi.chooseImage).

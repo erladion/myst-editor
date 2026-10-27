@@ -3,7 +3,8 @@
 import { app, dialog, ipcMain, shell } from 'electron';
 import { existsSync, promises as fs } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
-import { firstHeading, IMAGE_EXTENSIONS, placeImage, readDocument, resolveInside, saveImage, searchPages, writeDocument } from './project.js';
+import { IMAGE_EXTENSIONS, placeImage, readDocument, resolveInside, saveImage, searchPages, writeDocument } from './project.js';
+import { isPage, pageExtensions, pageFormat } from '../core/format.js';
 import { Snapshots } from './history.js';
 import { addCapability, isCapabilityName } from '../core/editor-config.js';
 import { accept as acceptWithVale, lint as lintWithVale } from './vale.js';
@@ -12,6 +13,8 @@ import { current, requireProject, toWindow } from './state.js';
 import { builtPages, fingerprints, fingerprintText, pagesChanged } from './workspace.js';
 import { buildFor } from './sphinx/service.js';
 import { git, refreshGit } from './git/service.js';
+
+const notAPage = `Pages are files ending in ${pageExtensions().join(' or ')}`;
 
 // Earlier versions of pages, kept by the app (see history.ts). Made when first needed:
 // the data folder may be set at start (MYSTEDITOR_USER_DATA).
@@ -68,7 +71,7 @@ export function registerFileIpc() {
     await writeDocument(requireProject(), rel, text);
     // A changed heading is a new title for the sidebar and dialogs.
     const p = requireProject();
-    const title = firstHeading(text);
+    const title = pageFormat(rel)?.title(text) ?? null;
     if ((title ?? undefined) !== p.titles[rel]) {
       p.titles = { ...p.titles };
       if (title) p.titles[rel] = title;
@@ -81,7 +84,7 @@ export function registerFileIpc() {
   // A new page; refuses to replace a file that exists.
   ipcMain.handle('create-page', async (_e, rel: string, text: string) => {
     const p = requireProject();
-    if (!rel.endsWith('.md')) throw new Error('Pages are Markdown files ending in .md');
+    if (!isPage(rel)) throw new Error(notAPage);
     const path = resolveInside(p.root, rel);
     await fs.mkdir(dirname(path), { recursive: true });
     try {
@@ -98,7 +101,7 @@ export function registerFileIpc() {
   // replace another file.
   ipcMain.handle('rename-page', async (_e, from: string, to: string) => {
     const p = requireProject();
-    if (!to.endsWith('.md')) throw new Error('Pages are Markdown files ending in .md');
+    if (!isPage(to)) throw new Error(notAPage);
     const source = resolveInside(p.root, from);
     const target = resolveInside(p.root, to);
     if (source === target) return;

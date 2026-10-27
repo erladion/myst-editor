@@ -8,6 +8,7 @@
 import { EMPTY_EDITOR_CONFIG, type EditorConfig } from './editor-config.js';
 
 export interface MystConfig {
+  format: 'myst';
   // Raw MyST-Parser extension names, e.g. "colon_fence", "dollarmath".
   extensions: string[];
   // Whether conf.py was found and read; false means "assume everything is enabled".
@@ -28,7 +29,7 @@ const OPTIONAL: Record<string, string> = {
   strikethrough: 'strikethrough',
 };
 
-export const DEFAULT_CONFIG: MystConfig = { extensions: Object.keys(OPTIONAL), fromConfPy: false, editor: EMPTY_EDITOR_CONFIG };
+export const DEFAULT_CONFIG: MystConfig = { format: 'myst', extensions: Object.keys(OPTIONAL), fromConfPy: false, editor: EMPTY_EDITOR_CONFIG };
 
 export function readConfPy(source: string): MystConfig {
   const extensions = new Set<string>();
@@ -43,7 +44,7 @@ export function readConfPy(source: string): MystConfig {
   for (const m of source.matchAll(/myst_enable_extensions\s*\.\s*extend\(\s*[[({]([^\])}]*)[\])}]\s*\)/g)) {
     strings(m[1]).forEach((e) => extensions.add(e));
   }
-  return { extensions: [...extensions], fromConfPy: true, numfig: /^\s*numfig\s*=\s*True\b/m.test(source), editor: EMPTY_EDITOR_CONFIG };
+  return { format: 'myst', extensions: [...extensions], fromConfPy: true, numfig: /^\s*numfig\s*=\s*True\b/m.test(source), editor: EMPTY_EDITOR_CONFIG };
 }
 
 // Flags for myst-parser matching the project's enabled extensions.

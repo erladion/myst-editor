@@ -1,14 +1,11 @@
-// Loading and saving documents, with a safety check on save.
+// Loading and saving documents, in the page's format, with a safety check on save.
 import type { Node as PMNode } from 'prosemirror-model';
-import { parseMyst } from './parse.js';
-import { serializeMyst } from './serialize.js';
+import type { LoadedDocument, PageConfig } from './format.js';
+import { formatOf } from './formats.js';
 import type { SourceMap } from './sourcemap.js';
-import { DEFAULT_CONFIG, parserExtensions, type MystConfig } from './project-config.js';
+import { DEFAULT_CONFIG } from './project-config.js';
 
-export interface LoadedDocument {
-  doc: PMNode;
-  map: SourceMap;
-}
+export type { LoadedDocument } from './format.js';
 
 export interface SaveResult {
   text: string;
@@ -18,21 +15,15 @@ export interface SaveResult {
   problem?: string;
 }
 
-export function loadDocument(text: string, config: MystConfig = DEFAULT_CONFIG): LoadedDocument {
-  const { directives, conditions, tables } = config.editor;
-  return parseMyst(text, {
-    extensions: parserExtensions(config),
-    directives: Object.fromEntries(Object.entries(directives).map(([name, d]) => [name, d.body])),
-    conditionKeywords: conditions?.block,
-    tableSpans: tables,
-  });
+export function loadDocument(text: string, config: PageConfig = DEFAULT_CONFIG): LoadedDocument {
+  return formatOf(config).load(text, config);
 }
 
 // A page's saved text, parsed, for the parts that locate things in it after each save
 // (problems, previews, Vale's remarks, the preview's scroll lines). They share one
 // parse, which the save's own check has usually done already. Not to be changed.
-const parsed: { text: string; config: MystConfig; result: LoadedDocument }[] = [];
-export function parseSaved(text: string, config: MystConfig = DEFAULT_CONFIG): LoadedDocument {
+const parsed: { text: string; config: PageConfig; result: LoadedDocument }[] = [];
+export function parseSaved(text: string, config: PageConfig = DEFAULT_CONFIG): LoadedDocument {
   const hit = parsed.find((p) => p.config === config && p.text === text);
   if (hit) return hit.result;
   const result = loadDocument(text, config);
@@ -41,8 +32,8 @@ export function parseSaved(text: string, config: MystConfig = DEFAULT_CONFIG): L
   return result;
 }
 
-export function saveDocument(doc: PMNode, map: SourceMap, config: MystConfig = DEFAULT_CONFIG): SaveResult {
-  const text = serializeMyst(doc, map, { tableSpans: config.editor.tables });
+export function saveDocument(doc: PMNode, map: SourceMap, config: PageConfig = DEFAULT_CONFIG): SaveResult {
+  const text = formatOf(config).save(doc, map, config);
   const reparsed = parseSaved(text, config).doc;
   const problem = firstDifference(semanticForm(doc), semanticForm(reparsed), 'document');
   return problem ? { text, verified: false, problem } : { text, verified: true };

@@ -5,7 +5,7 @@
 import type { Node as PMNode } from 'prosemirror-model';
 import { parseSaved } from './document.js';
 import { blockPathAtLine, positionOfPath } from './lines.js';
-import type { MystConfig } from './project-config.js';
+import type { PageConfig } from './format.js';
 import type { ValeAlert } from '../shared/vale.js';
 
 export interface LocatedAlert {
@@ -51,7 +51,7 @@ function textOf(node: PMNode, pos: number): { text: string; starts: number[] } {
   return { text, starts };
 }
 
-export function locateAlerts(doc: PMNode, savedText: string, config: MystConfig, alerts: ValeAlert[]): LocatedAlert[] {
+export function locateAlerts(doc: PMNode, savedText: string, config: PageConfig, alerts: ValeAlert[]): LocatedAlert[] {
   const saved = parseSaved(savedText, config);
   const lines = savedText.split('\n');
   const lineStart: number[] = [];

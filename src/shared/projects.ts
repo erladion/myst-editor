@@ -1,5 +1,6 @@
 // Which Sphinx project a page belongs to.
-import { DEFAULT_CONFIG, type MystConfig } from '../core/project-config.js';
+import { DEFAULT_CONFIG } from '../core/project-config.js';
+import type { PageConfig } from '../core/format.js';
 import type { ProjectInfo, SphinxProject } from './api.js';
 
 // The innermost project whose source directory contains `path` (relative to the
@@ -13,8 +14,8 @@ export function projectFor(projects: SphinxProject[], path: string): SphinxProje
   return best;
 }
 
-// The MyST dialect to read a page with.
-export function configFor(info: ProjectInfo, path: string): MystConfig {
+// How to read a page: its format and the project's settings for it.
+export function configFor(info: ProjectInfo, path: string): PageConfig {
   return projectFor(info.projects, path)?.config ?? info.defaultConfig ?? DEFAULT_CONFIG;
 }
 

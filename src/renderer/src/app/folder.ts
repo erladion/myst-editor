@@ -3,7 +3,8 @@
 // show in it, and the recent folders for the welcome screen.
 import { useCallback, useEffect, useState, type RefObject } from 'react';
 import type { ProjectInfo } from '../../../shared/api';
-import { fromProject } from '../../../shared/projects';
+import { isIndexPage } from '../../../core/format';
+import { dirname } from '../paths';
 import { Workspace } from '../workspace';
 import type { DialogApi } from '../components/Dialogs';
 import { loadPlaces } from '../places';
@@ -17,9 +18,9 @@ export const plainError = (e: unknown) => String(e instanceof Error ? e.message 
 export function landingPage(info: ProjectInfo): string | null {
   const { files, projects } = info;
   return (
-    projects.map((p) => fromProject(p, 'index.md')).find((f) => files.includes(f)) ??
-    files.find((f) => f === 'index.md') ??
-    files.find((f) => f.endsWith('/index.md')) ??
+    projects.map((p) => files.find((f) => dirname(f) === p.dir && isIndexPage(f))).find((f) => f) ??
+    files.find((f) => !f.includes('/') && isIndexPage(f)) ??
+    files.find(isIndexPage) ??
     files[0] ??
     null
   );

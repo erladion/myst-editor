@@ -10,6 +10,7 @@ import type { SphinxState } from '../../../shared/sphinx';
 import type { SourceMap } from '../../../core/sourcemap';
 import { configFor, projectFor } from '../../../shared/projects';
 import { DEFAULT_CONFIG } from '../../../core/project-config';
+import { pageExtensions } from '../../../core/format';
 import type { Workspace } from '../workspace';
 import type { EditorContext } from '../editor/context';
 import type { DialogApi } from '../components/Dialogs';
@@ -23,12 +24,12 @@ const parsedPages = new Map<string, { text: string; doc: PMNode }>();
 
 const api = window.myst;
 
-// The Markdown page a {doc} role or toctree entry refers to, if it exists.
+// The page a {doc} role or toctree entry refers to, if it exists.
 function findPage(info: ProjectInfo, from: string | null, ref: string): string | null {
   const projectDir = from ? (projectFor(info.projects, from)?.dir ?? '') : '';
   const target = resolveRef(from, ref, projectDir);
   if (!target) return null;
-  return [target, `${target}.md`, `${target}/index.md`].find((c) => info.files.includes(c)) ?? null;
+  return [target, ...pageExtensions().flatMap((ext) => [`${target}${ext}`, `${target}/index${ext}`])].find((c) => info.files.includes(c)) ?? null;
 }
 
 // A name for a picture pasted from the clipboard (browsers call them all image.png).
@@ -117,7 +118,7 @@ export function useEditorContext(dialogs: RefObject<DialogApi | null>, ws: Works
         const own = projectFor(w.project.projects, w.current)?.id ?? null;
         const out: { path: string; title: string; doc: PMNode }[] = [];
         for (const path of w.project.files) {
-          if (path === w.current || !path.endsWith('.md') || (projectFor(w.project.projects, path)?.id ?? null) !== own) continue;
+          if (path === w.current || (projectFor(w.project.projects, path)?.id ?? null) !== own) continue;
           const text = w.get(path) ? w.sourceOf(path) : await api.readFile(path).catch(() => null);
           if (text === null) continue;
           // Parsed once for each text the page has.

@@ -3,6 +3,7 @@ import { memo, useEffect, useMemo, useState, type ReactElement } from 'react';
 import type { SphinxProject } from '../../../shared/api';
 import type { SphinxInfo } from '../../../shared/sphinx';
 import { projectFor } from '../../../shared/projects';
+import { isIndexPage, pageStem } from '../../../core/format';
 import { basename } from '../paths';
 import { tocTree, type TocEntry } from '../sphinx';
 import type { ContentsMove } from '../pages';
@@ -66,9 +67,9 @@ function buildTree(files: string[], base: string): Folder {
     }
     folder.files.push(file);
   }
-  // index.md first, as the folder's landing page.
+  // The index page first, as the folder's landing page.
   const sort = (f: Folder) => {
-    f.files.sort((a, b) => Number(basename(b) === 'index.md') - Number(basename(a) === 'index.md') || a.localeCompare(b));
+    f.files.sort((a, b) => Number(isIndexPage(b)) - Number(isIndexPage(a)) || a.localeCompare(b));
     f.folders.forEach(sort);
   };
   sort(root);
@@ -129,7 +130,7 @@ export const Sidebar = memo(function Sidebar({ projectName, files, titles, proje
         onClick={() => onOpen(file)}
         onContextMenu={(e) => onPageMenu(e, file)}
       >
-        <span className="page-title">{titles[file] ?? basename(file).replace(/\.md$/, '')}</span>
+        <span className="page-title">{titles[file] ?? pageStem(basename(file))}</span>
         {unsaved.has(file) && <span className="unsaved-dot" title="Unsaved changes" />}
       </button>
     </li>
