@@ -6,7 +6,9 @@ import { createTokenizer } from 'myst-parser';
 import { splitDirective } from '../../../core/directive';
 import { loadDocument } from '../../../core/document';
 import type { EditorContext } from './context';
-import { ADMONITIONS, CALLOUT_CHOICES, ICONS, REFERENCE_ROLES, directiveInfo, splitRoleValue } from './directives';
+import { ICONS } from './tones';
+import { REFERENCE_ROLES, splitRoleValue } from '../formats/myst/directives';
+import { editingFor } from '../formats/editing';
 import { renderMath } from './math';
 import { describe, parseCondition, readMarker, unknownNames, withExpression } from '../../../core/conditions';
 import { condStripes, conditionColor, conditionsKey, exprVisible, removeCondition, tocConditionsOf } from './conditions';
@@ -122,7 +124,7 @@ class DirectiveView implements NodeView {
 
   private render() {
     const { name, args, options } = this.node.attrs;
-    const info = directiveInfo(name, this.ctx.config.editor);
+    const info = editingFor(this.ctx.config).block(name, this.ctx.config.editor);
     setOwnClass(this.dom, `directive tone-${info.tone} directive-${name}`);
     // Rebuild the header unless only the argument changed while the writer is typing it.
     const key = JSON.stringify([name, options]);
@@ -137,21 +139,17 @@ class DirectiveView implements NodeView {
 
   private buildHeader() {
     const { name, args, options } = this.node.attrs;
-    const info = directiveInfo(name, this.ctx.config.editor);
+    const info = editingFor(this.ctx.config).block(name, this.ctx.config.editor);
     const schema = this.ctx.config.editor.directives[name]?.options;
     const parts: Node[] = [icon(ICONS[info.tone])];
 
-    if (ADMONITIONS[name]) {
+    const callouts = editingFor(this.ctx.config).callouts;
+    if (callouts.is(name)) {
       const select = el('select', { class: 'directive-kind', title: 'Change the type of this callout' });
-      const names = CALLOUT_CHOICES.includes(name) ? CALLOUT_CHOICES : [name, ...CALLOUT_CHOICES];
-      for (const n of names) select.append(el('option', { value: n }, ADMONITIONS[n].label));
+      const names = callouts.names.includes(name) ? callouts.names : [name, ...callouts.names];
+      for (const n of names) select.append(el('option', { value: n }, callouts.label(n)));
       select.value = name;
-      select.addEventListener('change', () => {
-        const patch: Record<string, unknown> = { name: select.value };
-        if (select.value === 'admonition' && !args) patch.args = 'Title';
-        if (name === 'admonition' && select.value !== 'admonition') patch.args = '';
-        setAttrs(this.view, this.getPos, this.node, patch);
-      });
+      select.addEventListener('change', () => setAttrs(this.view, this.getPos, this.node, callouts.change(name, select.value, args)));
       parts.push(select);
     } else {
       parts.push(el('span', { class: 'directive-label' }, info.label));

@@ -4,14 +4,11 @@ import type { EditorView } from 'prosemirror-view';
 import type { Command, EditorState } from 'prosemirror-state';
 import { undo, redo } from 'prosemirror-history';
 import { schema } from '../../../core/schema';
-import {
-  blockKind, editLink, heading, inList, insertAsking, insertCaptionedTable, insertCard, insertCodeBlock, insertCodeDirective, insertDirective,
-  insertDivider, insertFigure, insertImage, insertTarget, insertMath, insertProjectDirective, insertReference, markActive, paragraph, toggleCode, toggleEm, toggleList, toggleQuote, toggleStrike, toggleStrong,
-} from '../editor/commands';
+import { blockKind, editLink, heading, inList, markActive, paragraph, toggleCode, toggleEm, toggleList, toggleQuote, toggleStrike, toggleStrong } from '../editor/commands';
+import { editingFor, runInsert, type InsertGroup, type InsertItem } from '../formats/editing';
 import type { EditorContext } from '../editor/context';
 import { keysFor } from '../shortcuts';
 import { changesOf } from '../editor/changes';
-import { ADMONITIONS, CALLOUT_CHOICES } from '../editor/directives';
 import { canConditionRows, conditionColor, conditionKind, makeConditional, removeRowCondition, rowCondition, setRowCondition } from '../editor/conditions';
 import type { ConditionsDef } from '../../../core/editor-config';
 import {
@@ -333,14 +330,12 @@ function MenuButton({ label, items, state, run }: { label: string; items: [strin
   );
 }
 
-const VERSION_NOTES = [
-  ['versionadded', 'New in version'],
-  ['versionchanged', 'Changed in version'],
-  ['deprecated', 'Deprecated'],
-  ['versionremoved', 'Removed in version'],
-] as const;
-const FILE_HELP = 'Relative to this page.';
-const LIST_TABLE = '* - Name\n  - Value\n* - first\n  - 1';
+// The Insert menu's columns, and the groups in each.
+const COLUMNS: InsertGroup[][] = [
+  ['Callouts', 'Version notes'],
+  ['Blocks', 'Text'],
+  ['Structure', 'This project', 'Inline'],
+];
 
 // Choosing a new table's size, as in Word: point at the grid (or use the arrow keys),
 // click or Enter. The first row is the table's headings.
@@ -411,7 +406,8 @@ function InsertMenu({ disabled, ctx, view, run }: { disabled: boolean; ctx: Edit
   useEffect(() => {
     if (!open) setPicking(false);
   }, [open]);
-  const projectDirectives = Object.entries(ctx.config.editor.directives).filter(([, d]) => d.insert);
+  // Made when it's open: the toolbar is drawn again on every change to the page.
+  const inserts = open ? editingFor(ctx.config).inserts(ctx) : [];
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -438,22 +434,28 @@ function InsertMenu({ disabled, ctx, view, run }: { disabled: boolean; ctx: Edit
     const over = el.getBoundingClientRect().right - (window.innerWidth - 8);
     if (over > 0) el.style.left = `${-over}px`;
   }, [open]);
-  const item = (label: string, action: () => void, keys = '') => (
-    <button
-      type="button"
-      role="menuitem"
-      aria-label={label}
-      aria-keyshortcuts={keys || undefined}
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={() => {
-        setOpen(false);
-        action();
-      }}
-    >
-      {label}
-      {keys && <span className="menu-key">{keys}</span>}
-    </button>
-  );
+  const entry = (it: InsertItem) => {
+    const keys = it.keys ? keysFor(it.keys) : '';
+    return (
+      <button
+        key={it.id}
+        type="button"
+        role="menuitem"
+        aria-label={it.label}
+        aria-keyshortcuts={keys || undefined}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => {
+          // A table's size first, on the grid in its place.
+          if (it.id === 'table') return setPicking(true);
+          setOpen(false);
+          runInsert(it, run, view?.state);
+        }}
+      >
+        {it.label}
+        {keys && <span className="menu-key">{keys}</span>}
+      </button>
+    );
+  };
   return (
     <div className="menu" ref={ref}>
       <button type="button" className="tb wide" aria-haspopup="menu" aria-expanded={open} disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={() => setOpen(!open)}>
@@ -474,58 +476,14 @@ function InsertMenu({ disabled, ctx, view, run }: { disabled: boolean; ctx: Edit
             />
           ) : (
           <>
-          <div className="menu-column">
-            <div className="menu-heading">Callouts</div>
-            {CALLOUT_CHOICES.map((n) =>
-              item(n === 'admonition' ? 'Callout with title' : ADMONITIONS[n].label, () => run(insertDirective(ctx, n, n === 'admonition' ? 'Title' : '')), n === 'note' ? keysFor('Callout (note)') : ''),
-            )}
-            <div className="menu-heading">Version notes</div>
-            {VERSION_NOTES.map(([name, label]) => item(`${label}…`, () => void insertAsking(ctx, run, { title: label, label: 'Version', placeholder: '2.1', insert: (v) => insertDirective(ctx, name, v) })))}
-          </div>
-          <div className="menu-column">
-            <div className="menu-heading">Blocks</div>
-            {item('Image…', () => insertImage(ctx, run))}
-            {item('Figure…', () => insertFigure(ctx, run), keysFor('Figure'))}
-            <button
-              type="button"
-              role="menuitem"
-              aria-label="Table…"
-              aria-keyshortcuts={keysFor('Table')}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => setPicking(true)}
-            >
-              Table…<span className="menu-key">{keysFor('Table')}</span>
-            </button>
-            {item('Table with caption', () => run(insertCaptionedTable(ctx)))}
-            {item('Code block', () => run(insertCodeBlock()), keysFor('Code block'))}
-            {item('Equation', () => run(insertMath(ctx)))}
-            {item('Dropdown', () => run(insertDirective(ctx, 'dropdown', 'Click to expand')))}
-            {item('Divider', () => run(insertDivider))}
-            <div className="menu-heading">Text</div>
-            {item('Topic', () => run(insertDirective(ctx, 'topic', 'Title')))}
-            {item('Sidebar', () => run(insertDirective(ctx, 'sidebar', 'Title')))}
-            {item('Rubric…', () => void insertAsking(ctx, run, { title: 'Insert rubric', label: 'Heading', help: 'A heading that isn’t a section: not in the contents, nothing nested under it.', insert: (v) => insertCard(ctx, 'rubric', v) }))}
-            {item('Epigraph', () => run(insertDirective(ctx, 'epigraph')))}
-            {item('Pull quote', () => run(insertDirective(ctx, 'pull-quote')))}
-            {item('Highlights', () => run(insertDirective(ctx, 'highlights')))}
-          </div>
-          <div className="menu-column">
-            <div className="menu-heading">Structure</div>
-            {item('Table of contents', () => run(insertCard(ctx, 'toctree', '', [['maxdepth', '2']])))}
-            {item('Contents of this page', () => run(insertCard(ctx, 'contents', '', [['local', '']])))}
-            {item('Glossary', () => run(insertCard(ctx, 'glossary', '', [], 'Term\n  What the term means.')))}
-            {item('Include a file…', () => void insertAsking(ctx, run, { title: 'Include a file', label: 'File', placeholder: 'snippets/common.md', help: FILE_HELP, insert: (v) => insertCard(ctx, 'include', v) }))}
-            {item('Code from a file…', () => void insertAsking(ctx, run, { title: 'Code from a file', label: 'File', placeholder: '../examples/hello.py', help: FILE_HELP, insert: (v) => insertCard(ctx, 'literalinclude', v) }))}
-            {item('List table', () => run(insertCard(ctx, 'list-table', 'Caption', [['header-rows', '1']], LIST_TABLE)))}
-            {item('CSV table', () => run(insertCard(ctx, 'csv-table', 'Caption', [['header-rows', '1']], 'Name, Value\nfirst, 1')))}
-            {item('Raw HTML', () => run(insertCodeDirective(ctx, 'raw', 'html')))}
-            {item('reStructuredText', () => run(insertCodeDirective(ctx, 'eval-rst')))}
-            {projectDirectives.length > 0 && <div className="menu-heading">This project</div>}
-            {projectDirectives.map(([name, def]) => item(def.label ?? name, () => run(insertProjectDirective(ctx, name, def))))}
-            <div className="menu-heading">Inline</div>
-            {item('Cross-reference…', () => insertReference(ctx, run, view?.state), keysFor('Cross-reference'))}
-            {view && item('Link target…', () => insertTarget(ctx, view.state, run))}
-          </div>
+          {COLUMNS.map((groups) => (
+            <div className="menu-column" key={groups[0]}>
+              {groups.map((group) => {
+                const items = inserts.filter((i) => i.group === group);
+                return items.length > 0 && [<div className="menu-heading" key={group}>{group}</div>, ...items.map(entry)];
+              })}
+            </div>
+          ))}
           </>
           )}
         </div>

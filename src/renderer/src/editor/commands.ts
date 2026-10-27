@@ -1,12 +1,9 @@
 // Editing commands used by the toolbar and keymap.
 import type { MarkType, Node as PMNode, NodeType } from 'prosemirror-model';
-import { NodeSelection, TextSelection, type Command, type EditorState, type Transaction } from 'prosemirror-state';
+import { NodeSelection, TextSelection, type Command, type EditorState } from 'prosemirror-state';
 import { setBlockType, toggleMark, wrapIn, lift } from 'prosemirror-commands';
 import { wrapInList, liftListItem } from 'prosemirror-schema-list';
 import { schema } from '../../../core/schema';
-import { newDirectiveFence } from '../../../core/project-config';
-import { renderHeader } from '../../../core/directive';
-import type { DirectiveDef } from '../../../core/editor-config';
 import type { EditorContext } from './context';
 
 const { nodes, marks } = schema;
@@ -60,7 +57,7 @@ export const toggleQuote: Command = (state, dispatch) => {
 
 // Insert a block after the current top-level-ish block (or replace an empty
 // paragraph), and put the cursor inside it.
-function insertBlock(node: PMNode, cursorOffset = 1): Command {
+export function insertBlock(node: PMNode, cursorOffset = 1): Command {
   return (state, dispatch) => {
     const { $from } = state.selection;
     const parent = $from.parent;
@@ -85,49 +82,7 @@ function insertBlock(node: PMNode, cursorOffset = 1): Command {
   };
 }
 
-export function insertDirective(ctx: EditorContext, name: string, args = ''): Command {
-  const node = nodes.md_directive.create({ name, args, fence: newDirectiveFence(ctx.config) }, nodes.paragraph.create());
-  return insertBlock(node, 2);
-}
-
-// A directive declared in .mysteditor.toml, with its options' defaults.
-export function insertProjectDirective(ctx: EditorContext, name: string, def: DirectiveDef): Command {
-  const fence = newDirectiveFence(ctx.config);
-  const options = Object.entries(def.options)
-    .filter(([, o]) => o.default !== undefined)
-    .map(([k, o]) => [k, o.default!] as [string, string]);
-  if (def.body === 'markdown') {
-    return insertBlock(nodes.md_directive.create({ name, fence, options }, nodes.paragraph.create()), 2);
-  }
-  if (def.body === 'text') {
-    return insertBlock(nodes.code_block.create({ name, directive: true, fence, options }));
-  }
-  const header = renderHeader(fence, name, '', options).replace(/\n$/, '');
-  return insertBlock(nodes.opaque_directive.create({ name, options, source: `${header}\n${fence}` }));
-}
-
-// A directive shown as a card, its source edited as Markdown (a toctree, an include…).
-export function insertCard(ctx: EditorContext, name: string, args = '', options: [string, string][] = [], body = ''): Command {
-  const fence = newDirectiveFence(ctx.config);
-  const header = renderHeader(fence, name, args, options);
-  const source = body ? `${header}\n${body}\n${fence}` : `${header.replace(/\n$/, '')}\n${fence}`;
-  return insertBlock(nodes.opaque_directive.create({ name, args, options, source }));
-}
-
-// A directive whose body is literal text (raw HTML, reStructuredText), edited as code.
-export function insertCodeDirective(ctx: EditorContext, name: string, args = ''): Command {
-  return insertBlock(nodes.code_block.create({ name, args, lang: args, directive: true, fence: newDirectiveFence(ctx.config) }));
-}
-
-// A table with a caption: the table directive around a Markdown table.
-export function insertCaptionedTable(ctx: EditorContext): Command {
-  const cell = (type: typeof nodes.table_cell, text = '') => type.create(null, nodes.paragraph.create(null, text ? schema.text(text) : undefined));
-  const row = (type: typeof nodes.table_cell, texts: string[]) => nodes.table_row.create(null, texts.map((t) => cell(type, t)));
-  const table = nodes.table.create({ pretty: true, ruleSpaces: true }, [row(nodes.table_header, ['Column 1', 'Column 2']), row(nodes.table_cell, ['', ''])]);
-  return insertBlock(nodes.md_directive.create({ name: 'table', args: 'Caption', fence: newDirectiveFence(ctx.config) }, table), 5);
-}
-
-// Directives that can't do without their argument (a version, a file): asked for first.
+// Blocks that can't do without their argument (a version, a file): asked for first.
 export async function insertAsking(
   ctx: EditorContext,
   run: (cmd: Command) => void,
@@ -146,34 +101,9 @@ export function insertCodeBlock(): Command {
   return insertBlock(nodes.code_block.create({ lang: '' }));
 }
 
-export function insertMath(ctx: EditorContext): Command {
-  const dollar = ctx.config.extensions.includes('dollarmath') || ctx.config.extensions.includes('amsmath');
-  const attrs = dollar ? {} : { directive: true, name: 'math', fence: newDirectiveFence(ctx.config) };
-  return insertBlock(nodes.math_block.create(attrs, schema.text('E = mc^2')));
-}
-
 export const insertDivider: Command = insertBlock(nodes.thematic_break.create());
 
-const IMAGE_HELP = 'Relative to this page. Images from outside the folder are copied into an images folder next to it.';
-
-export async function insertFigure(ctx: EditorContext, run: (cmd: Command) => void) {
-  const values = await ctx.ui.editFields({
-    title: 'Insert figure',
-    submit: 'Insert',
-    fields: [
-      { key: 'src', label: 'Image file', value: '', placeholder: 'images/diagram.png', help: IMAGE_HELP, browse: () => ctx.chooseImage() },
-      { key: 'alt', label: 'Description', value: '', help: 'Read aloud by screen readers' },
-      { key: 'caption', label: 'Caption', value: '' },
-      { key: 'name', label: 'Name', value: '', placeholder: 'fig-architecture', help: 'To refer to it from other places (Insert → Cross-reference). Left empty: made from the caption.' },
-    ],
-  });
-  if (!values?.src) return;
-  const options: [string, string][] = values.alt ? [['alt', values.alt]] : [];
-  const name = values.name.trim() || (values.caption.trim() ? uniqueLabel(ctx, `fig-${targetLabel(values.caption).slice(0, 40).replace(/-+$/, '')}`) : '');
-  if (name) options.push(['name', name]);
-  const caption = values.caption ? [nodes.paragraph.create(null, schema.text(values.caption))] : [nodes.paragraph.create()];
-  run(insertBlock(nodes.md_directive.create({ name: 'figure', args: values.src, options, fence: newDirectiveFence(ctx.config) }, caption), 2));
-}
+export const IMAGE_HELP = 'Relative to this page. Images from outside the folder are copied into an images folder next to it.';
 
 // An image in the text, `![description](path)`; a figure adds a caption and numbering.
 export async function insertImage(ctx: EditorContext, run: (cmd: Command) => void) {
@@ -237,171 +167,6 @@ export async function insertTarget(ctx: EditorContext, state: EditorState, run: 
   run((s, dispatch) => {
     const at = s.selection.$from.depth > 0 ? s.selection.$from.before(1) : s.selection.from;
     dispatch?.(s.tr.insert(at, nodes.target.create({ label })).scrollIntoView());
-    return true;
-  });
-}
-
-// What on a page can be referred to: figures, captioned tables and images, with the
-// name each has (a figure's or table's :name:, the link target before an image's
-// paragraph). In the page's order: `index` finds one again in the page as it is then.
-interface Target {
-  kind: 'figure' | 'table' | 'image';
-  index: number;
-  pos: number; // the figure or table; for an image, where its paragraph starts (a new target goes there)
-  label: string | null;
-  description: string;
-  captioned: boolean; // Sphinx shows its caption as the link's text
-}
-
-const slug = (text: string) => targetLabel(text).slice(0, 40).replace(/-+$/, '');
-const fileName = (src: string) => src.split('/').pop()!.replace(/\.\w+$/, '');
-
-function docTargets(doc: PMNode): Target[] {
-  const out: Target[] = [];
-  doc.descendants((node, pos) => {
-    if (node.type === nodes.md_directive && (node.attrs.name === 'figure' || node.attrs.name === 'table')) {
-      const figure = node.attrs.name === 'figure';
-      const label = (node.attrs.options as [string, string][]).find(([k]) => k === 'name')?.[1] || null;
-      const caption = figure ? (node.firstChild?.textContent.trim() ?? '') : String(node.attrs.args).trim();
-      out.push({ kind: figure ? 'figure' : 'table', index: out.length, pos, label, description: caption || (figure ? fileName(String(node.attrs.args)) : 'Table'), captioned: !!caption });
-      return true;
-    }
-    if (node.type !== nodes.image) return true;
-    const $pos = doc.resolve(pos);
-    const depth = $pos.depth; // the paragraph's
-    const index = $pos.index(depth - 1);
-    const before = index > 0 ? $pos.node(depth - 1).child(index - 1) : null;
-    const label = before?.type === nodes.target ? (before.attrs.label as string) : null;
-    out.push({ kind: 'image', index: out.length, pos: $pos.before(depth), label, description: String(node.attrs.alt || fileName(String(node.attrs.src))), captioned: false });
-    return false;
-  });
-  return out;
-}
-
-// A page's link targets ("anchors"), with what follows each, and whether Sphinx gives
-// a link to it a title of its own (a heading's, a figure's or table's caption): one
-// before a paragraph has none, so a link needs words of its own. Sphinx's build lists
-// only those with titles, so these come from the pages.
-interface Anchor {
-  label: string;
-  follows: string; // the start of the block after it
-  titled: boolean;
-}
-
-function docAnchors(doc: PMNode): Anchor[] {
-  const out: Anchor[] = [];
-  doc.descendants((node, _pos, parent, index) => {
-    if (node.type !== nodes.target) return !node.isTextblock;
-    const next = parent?.maybeChild(index + 1) ?? null;
-    const caption = next?.type === nodes.md_directive && (next.attrs.name === 'figure' ? next.firstChild?.textContent.trim() : next.attrs.name === 'table' ? String(next.attrs.args).trim() : '');
-    const text = (next?.textContent ?? '').replace(/\s+/g, ' ').trim();
-    out.push({ label: node.attrs.label, follows: text.length > 60 ? `${text.slice(0, 60).replace(/\s+\S*$/, '')}…` : text, titled: next?.type === nodes.heading || !!caption });
-    return false;
-  });
-  return out;
-}
-
-// Link text from an anchor's name: "before-you-start" → "before you start".
-const anchorWords = (label: string) => label.replace(/[-_.]+/g, ' ').trim();
-
-// The labels a document uses: link targets, and figures' and tables' names.
-function docLabels(doc: PMNode, into: Set<string>) {
-  doc.descendants((node) => {
-    if (node.type === nodes.target) into.add(node.attrs.label);
-    const name = node.type === nodes.md_directive ? (node.attrs.options as [string, string][]).find(([k]) => k === 'name')?.[1] : undefined;
-    if (name) into.add(name);
-  });
-}
-
-// The step naming a target: a link target before an image, a :name: for the rest.
-function nameIt(tr: Transaction, t: Target, name: string): Transaction {
-  if (t.kind === 'image') return tr.insert(t.pos, nodes.target.create({ label: name }));
-  const node = tr.doc.nodeAt(t.pos)!;
-  return tr.setNodeMarkup(t.pos, undefined, { ...node.attrs, options: [...(node.attrs.options as [string, string][]), ['name', name]] });
-}
-
-const KIND_NAMES = { figure: 'Figure', table: 'Table', image: 'Image' };
-
-export async function insertReference(ctx: EditorContext, run: (cmd: Command) => void, state?: EditorState) {
-  // Figures, tables and images: this page's, then the project's other pages'.
-  const pages = state ? [{ path: null as string | null, title: '', doc: state.doc }, ...(await ctx.otherPages())] : [];
-  const taken = new Set(ctx.suggest('ref').map((s) => s.value));
-  for (const p of pages) docLabels(p.doc, taken);
-  const targets = pages.flatMap((p) =>
-    docTargets(p.doc).map((t) => {
-      let proposed = '';
-      if (!t.label) {
-        const base = `${{ figure: 'fig', table: 'table', image: 'img' }[t.kind]}-${slug(t.description) || t.kind}`;
-        proposed = base;
-        for (let n = 2; taken.has(proposed); n++) proposed = `${base}-${n}`;
-        taken.add(proposed);
-      }
-      return { ...t, path: p.path, page: p.title, proposed };
-    }),
-  );
-  const anchors = pages.flatMap((p) => docAnchors(p.doc).map((a) => ({ ...a, page: p.path ? p.title : null })));
-  const values = await ctx.ui.editFields({
-    title: 'Insert cross-reference',
-    submit: 'Insert',
-    fields: [
-      {
-        key: 'name',
-        label: 'Refers to',
-        value: 'ref',
-        choices: [
-          { value: 'ref', label: 'A section, figure or table (by its name)' },
-          ...(targets.length ? [{ value: 'page', label: 'A figure, table or image' }] : []),
-          ...(anchors.length ? [{ value: 'anchor', label: 'An anchor (a link target)' }] : []),
-          { value: 'doc', label: 'A page' },
-          { value: 'term', label: 'A glossary term' },
-          { value: 'numref', label: ctx.config.numfig ? 'A figure or table, as “Figure 2”' : 'A figure or table, as “Figure 2” (needs numfig = True in conf.py)' },
-        ],
-      },
-      {
-        key: 'target',
-        label: 'Target',
-        value: '',
-        placeholder: 'label-name or path/to/page',
-        help: 'One without a name gets one when it’s chosen (an image, a link target before it), on whichever page it is.',
-        suggestions: (values) =>
-          values.name === 'page'
-            ? targets.map((t) => ({ value: t.label ?? t.proposed, label: `${KIND_NAMES[t.kind]}: ${t.description}${t.path ? ` — ${t.page}` : ''}${t.label ? '' : ' (gets a name)'}` }))
-            : values.name === 'anchor'
-              ? anchors.map((a) => ({ value: a.label, label: `${a.follows || '(nothing after it)'}${a.page ? ` — ${a.page}` : ''}` }))
-              : ctx.suggest(values.name),
-      },
-      {
-        key: 'title',
-        label: 'Link text',
-        value: '',
-        help: 'Optional: Sphinx shows the section’s title or the caption otherwise. An image has neither, so its description is used; an anchor before a paragraph neither, so its name, as words.',
-      },
-    ],
-  });
-  if (!values?.target) return;
-  const target = values.target.trim();
-  const chosen = values.name === 'page' ? targets.find((t) => (t.label ?? t.proposed) === target) : undefined;
-  // Without a caption (an image, a figure with none), the link needs words of its own.
-  // An anchor with no title of its own (before a paragraph, say), however it was chosen.
-  const anchor = values.name === 'ref' || values.name === 'anchor' ? anchors.find((a) => a.label === target) : undefined;
-  const title = values.title.trim() || (values.name === 'page' && !chosen?.captioned ? (chosen?.description ?? 'this') : anchor && !anchor.titled ? anchorWords(target) : '');
-  const role = values.name === 'page' || values.name === 'anchor' ? 'ref' : values.name;
-  // Named on its own page first (found again there by its place), and saved.
-  if (chosen && !chosen.label && chosen.path) {
-    const named = await ctx.editPage(chosen.path, (s) => {
-      const t = docTargets(s.doc)[chosen.index];
-      return t && t.kind === chosen.kind && !t.label ? nameIt(s.tr, t, target) : null;
-    });
-    if (!named) {
-      ctx.ui.notify(`Couldn’t give it a name on ${chosen.path}: the page is open as Markdown, or couldn’t be saved. Name it there, then refer to it.`);
-      return;
-    }
-  }
-  run((s, dispatch) => {
-    const tr = s.tr;
-    if (chosen && !chosen.label && !chosen.path) nameIt(tr, docTargets(s.doc)[chosen.index] ?? chosen, target);
-    tr.replaceSelectionWith(nodes.role.create({ name: role, value: title ? `${title} <${target}>` : target }), false);
-    dispatch?.(tr.scrollIntoView());
     return true;
   });
 }

@@ -4,7 +4,8 @@ import { useEffect, useRef, type MutableRefObject } from 'react';
 import type { EditorView } from 'prosemirror-view';
 import type { EditorContext } from '../editor/context';
 import type { Command } from 'prosemirror-state';
-import { editLink, insertDirective, insertFigure, insertReference } from '../editor/commands';
+import { editLink } from '../editor/commands';
+import { insertItem, runInsert } from '../formats/editing';
 import { startEmacs, type EmacsApp } from '../emacs';
 
 const api = window.myst;
@@ -16,6 +17,9 @@ function useKey(onKey: (e: KeyboardEvent) => void, deps: unknown[]) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 }
+
+// Ctrl+Shift with these: what's inserted (the table: its size first, on the Insert menu's grid).
+const SHIFTED_INSERTS: Record<string, string> = { k: 'reference', g: 'figure', t: 'table' };
 
 export function useShortcuts(opts: {
   emacs: boolean;
@@ -65,18 +69,18 @@ export function useShortcuts(opts: {
         view.focus();
       };
       const key = e.key.toLowerCase();
+      // What the page's format inserts for it, if it has that.
+      const insert = (id: string) => {
+        const item = insertItem(ctx, id);
+        return item && (() => runInsert(item, run, view.state));
+      };
       const action = e.altKey
         ? !e.shiftKey && key === 'n'
-          ? () => run(insertDirective(ctx, 'note'))
+          ? insert('callout-note')
           : undefined
         : !e.shiftKey
           ? { k: () => void editLink(ctx, view.state, run) }[key]
-          : {
-              k: () => void insertReference(ctx, run, view.state),
-              g: () => void insertFigure(ctx, run),
-              // The Insert menu's grid, for the table's size.
-              t: () => window.dispatchEvent(new CustomEvent('mysteditor-table-picker')),
-            }[key];
+          : SHIFTED_INSERTS[key] && insert(SHIFTED_INSERTS[key]);
       if (!action) return;
       e.preventDefault();
       action();

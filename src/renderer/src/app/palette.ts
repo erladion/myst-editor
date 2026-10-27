@@ -3,12 +3,9 @@
 import type { Command } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
 import { schema } from '../../../core/schema';
-import {
-  editLink, heading, insertCaptionedTable, insertCard, insertCodeBlock, insertDirective, insertDivider, insertFigure, insertImage, insertMath, insertReference, insertTarget,
-  paragraph, toggleCode, toggleEm, toggleList, toggleQuote, toggleStrike, toggleStrong,
-} from '../editor/commands';
+import { editLink, heading, paragraph, toggleCode, toggleEm, toggleList, toggleQuote, toggleStrike, toggleStrong } from '../editor/commands';
+import { editingFor, runInsert } from '../formats/editing';
 import type { EditorContext } from '../editor/context';
-import { ADMONITIONS, CALLOUT_CHOICES } from '../editor/directives';
 import { isInTable } from '../editor/tables';
 import { TABLE_COMMANDS } from '../editor/tableMenu';
 import { keysFor } from '../shortcuts';
@@ -43,21 +40,13 @@ export function editorCommands(ctx: EditorContext, view: EditorView | null): Pal
   cmd('Format', 'Numbered list', toggleList(schema.nodes.ordered_list));
   cmd('Format', 'Quote', toggleQuote);
 
-  for (const n of CALLOUT_CHOICES) {
-    const label = n === 'admonition' ? 'Callout with title' : `${ADMONITIONS[n].label} callout`;
-    cmd('Insert', label, insertDirective(ctx, n, n === 'admonition' ? 'Title' : ''), n === 'note' ? keysFor('Callout (note)') : '');
+  // The page's format's, those offered here.
+  for (const item of editingFor(ctx.config).inserts(ctx)) {
+    if (!item.palette) continue;
+    const keys = item.keys ? keysFor(item.keys) : '';
+    if (item.command) cmd('Insert', item.palette, item.command, keys);
+    else add('Insert', item.palette, () => runInsert(item, run, view.state), keys);
   }
-  add('Insert', 'Figure…', () => void insertFigure(ctx, run), keysFor('Figure'));
-  add('Insert', 'Image…', () => void insertImage(ctx, run), '');
-  add('Insert', 'Table…', () => window.dispatchEvent(new CustomEvent('mysteditor-table-picker')), keysFor('Table'));
-  cmd('Insert', 'Table with caption', insertCaptionedTable(ctx));
-  cmd('Insert', 'Code block', insertCodeBlock());
-  cmd('Insert', 'Equation', insertMath(ctx), '');
-  cmd('Insert', 'Dropdown', insertDirective(ctx, 'dropdown', 'Click to expand'), '');
-  cmd('Insert', 'Divider', insertDivider, '');
-  cmd('Insert', 'Table of contents', insertCard(ctx, 'toctree', '', [['maxdepth', '2']]), '');
-  add('Insert', 'Cross-reference…', () => void insertReference(ctx, run, view.state), keysFor('Cross-reference'));
-  add('Insert', 'Link target…', () => void insertTarget(ctx, view.state, run), '');
 
   if (isInTable(view.state)) for (const [label, command] of Object.values(TABLE_COMMANDS)) if (can(command)) add('Table', label, () => run(command), '');
   return out;
