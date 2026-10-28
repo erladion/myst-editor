@@ -2393,9 +2393,6 @@ button.danger-text {
   color: var(--tone-tip);
 }
 
-.cm-adoc-title {
-  font-weight: 700;
-}
 
 .advanced-preview {
   display: flex;

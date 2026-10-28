@@ -101,6 +101,10 @@ test('the source view shows the AsciiDoc', async () => {
   await page.getByRole('button', { name: 'AsciiDoc', exact: true }).click();
   const source = page.getByRole('textbox', { name: 'AsciiDoc source' });
   await expect(source).toContainText('= Installation Guide');
+  // Highlighted: the title bold, the code as code.
+  const weight = (text: string) => source.locator('span', { hasText: text }).first().evaluate((e) => getComputedStyle(e).fontWeight);
+  expect(Number(await weight('= Installation Guide'))).toBeGreaterThanOrEqual(700);
+  expect(Number(await weight('*Widget*'))).toBeGreaterThanOrEqual(700);
   await expect(page.getByRole('toolbar', { name: 'AsciiDoc view' })).toBeVisible();
 });
 
