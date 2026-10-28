@@ -1,4 +1,4 @@
-// The formats pages can be written in: MyST Markdown, for now.
+// The formats pages can be written in: MyST Markdown and AsciiDoc.
 //
 // A format has two halves. This one says which files are its pages and what a page's
 // title is; it's light, for the main process too. The other, formats.ts, reads pages
@@ -6,12 +6,14 @@
 import type { Node as PMNode } from 'prosemirror-model';
 import type { MystConfig } from './project-config.js';
 import type { SourceMap } from './sourcemap.js';
+import type { AsciidocConfig } from './asciidoc/config.js';
 import { mystPages } from './myst/pages.js';
+import { asciidocPages } from './asciidoc/pages.js';
 
-export type FormatId = 'myst';
+export type FormatId = 'myst' | 'asciidoc';
 
-// How a project's pages are read: the format and its settings. One kind for now.
-export type PageConfig = MystConfig;
+// How a project's pages are read: the format and its settings.
+export type PageConfig = MystConfig | AsciidocConfig;
 
 export interface PageFormat {
   id: FormatId;
@@ -38,7 +40,7 @@ export interface Format<C extends PageConfig = PageConfig> extends PageFormat {
 // The settings of the format `F`.
 export type ConfigOf<F extends FormatId> = Extract<PageConfig, { format: F }>;
 
-export const PAGE_FORMATS: PageFormat[] = [mystPages];
+export const PAGE_FORMATS: PageFormat[] = [mystPages, asciidocPages];
 
 // The format of the page at `path`, by its extension; null if it isn't a page.
 export function pageFormat(path: string): PageFormat | null {

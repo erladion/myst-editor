@@ -9,6 +9,7 @@ import type { EditorConfig } from '../../../core/editor-config';
 import type { EditorContext, Field } from '../editor/context';
 import type { DirectiveInfo } from '../editor/tones';
 import { mystEditing } from './myst';
+import { asciidocEditing } from './asciidoc';
 
 export type InsertGroup = 'Callouts' | 'Version notes' | 'Blocks' | 'Text' | 'Structure' | 'This project' | 'Inline';
 
@@ -127,7 +128,7 @@ export interface EditingFormat {
   cells?: 'line' | 'blocks';
 }
 
-const FORMATS: Record<PageConfig['format'], EditingFormat> = { myst: mystEditing };
+const FORMATS: Record<PageConfig['format'], EditingFormat> = { myst: mystEditing, asciidoc: asciidocEditing };
 
 export const editingFor = (config: PageConfig): EditingFormat => FORMATS[config.format];
 

@@ -1,6 +1,7 @@
 // Which Sphinx project a page belongs to.
 import { DEFAULT_CONFIG } from '../core/project-config.js';
 import { pageFormat, type PageConfig } from '../core/format.js';
+import { ASCIIDOC_CONFIG, type AsciidocConfig } from '../core/asciidoc/config.js';
 import type { ProjectInfo, Project } from './api.js';
 
 // The innermost project whose source directory contains `path` (relative to the
@@ -18,10 +19,19 @@ export function projectFor(projects: Project[], path: string): Project | null {
   return best;
 }
 
-// How to read a page: its format and the project's settings for it.
+// How to read a page: its format and the project's settings for it. AsciiDoc pages
+// are read as Asciidoctor reads them, with the folder's editor settings but for
+// conditions (theirs are written in MyST's syntax).
 export function configFor(info: ProjectInfo, path: string): PageConfig {
-  return projectFor(info.projects, path)?.config ?? info.defaultConfig ?? DEFAULT_CONFIG;
+  const myst = projectFor(info.projects, path)?.config ?? info.defaultConfig ?? DEFAULT_CONFIG;
+  if (pageFormat(path)?.id !== 'asciidoc') return myst;
+  // One for each, so that it's the same settings each time.
+  let adoc = asciidocConfigs.get(myst);
+  if (!adoc) asciidocConfigs.set(myst, (adoc = { ...ASCIIDOC_CONFIG, editor: { ...myst.editor, conditions: null } }));
+  return adoc;
 }
+
+const asciidocConfigs = new WeakMap<PageConfig, AsciidocConfig>();
 
 // A path relative to a project's source directory, from one relative to the opened folder.
 export function withinProject(project: Project, path: string): string {

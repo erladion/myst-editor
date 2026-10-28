@@ -1,0 +1,36 @@
+= Installation Guide
+:toc:
+
+This guide explains how to install *Widget*.
+It covers Linux and macOS.
+
+NOTE: The installer checks the requirements for you.
+
+[[requirements]]
+== Requirements
+
+* A supported operating system
+* At least 2 GB of _free_ disk space
+** More for the examples
+
+|===
+| System | Version
+
+| Linux | 6.0 or later
+| macOS | 14 or later
+|===
+
+CPU:: Any 64-bit processor
+Memory:: 4 GB
+
+== Installing
+
+. Download the installer.
+. Run it:
++
+[source,bash]
+----
+./install.sh
+----
+
+See <<requirements>> and xref:other.adoc[the other page].
