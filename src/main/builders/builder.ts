@@ -11,7 +11,9 @@ export interface Builder {
   // Building, or only just finished: files changing now may be its output.
   busy(): boolean;
   // Build soon (several requests make one build); `fresh`: everything again.
-  requestBuild(opts?: { fresh?: boolean }): void;
+  // `changed`: the file that changed (relative to the opened folder), for builders
+  // that work out what it affects themselves.
+  requestBuild(opts?: { fresh?: boolean; changed?: string }): void;
   getState(): BuildState;
   getLog(): string;
 }

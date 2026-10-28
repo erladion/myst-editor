@@ -68,7 +68,7 @@ export function buildFor(p: ProjectInfo, rel: string, external: boolean) {
       if (n >= 2) return;
     } else changedInBuilds.delete(rel);
   }
-  targets.forEach((b) => b.requestBuild({ fresh }));
+  targets.forEach((b) => b.requestBuild({ fresh, changed: rel }));
 }
 
 export function registerBuildIpc() {
