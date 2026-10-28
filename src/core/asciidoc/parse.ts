@@ -1,6 +1,6 @@
 // AsciiDoc source → ProseMirror document, recording the exact source of every block.
 //
-// Like the MyST reader (../parse.ts): the text is cut into blocks at lines, so that
+// Like the MyST reader (../myst/parse.ts): the text is cut into blocks at lines, so that
 // lead + block + gap + block … + trail is the text again, and each block knows the
 // text it was read from. AsciiDoc is read a line at a time: a delimited block runs to
 // its closing delimiter, a paragraph to a blank line, a list over its items. What the

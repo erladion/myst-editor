@@ -1,6 +1,6 @@
 // ProseMirror document → AsciiDoc source.
 //
-// As for MyST (../serialize.ts): blocks unchanged since reading are written as they
+// As for MyST (../myst/serialize.ts): blocks unchanged since reading are written as they
 // were, with the text that was between them; only edited ones are written anew, in
 // the style they had (their delimiter, header, markers).
 import type { Node as PMNode } from 'prosemirror-model';
