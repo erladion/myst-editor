@@ -6,7 +6,7 @@
 // with attributes...) is Unsupported: its block stays as written.
 import type { Mark, Node as PMNode } from 'prosemirror-model';
 import { schema } from '../schema.js';
-import { PREPROCESSOR, delimiterOf, isAttributeLine, isComment, isTitleLine, listItem } from './syntax.js';
+import { PREPROCESSOR, delimiterOf, isAttributeLine, isComment, isDescriptionItem, isTitleLine, listItem } from './syntax.js';
 
 export class Unsupported extends Error {}
 
@@ -325,8 +325,10 @@ function closingBracket(src: string, from: number, to: number): number {
 // where they still say the same. `inList`: in a list item, where list markers and
 // "+" at the start of a line would end its text.
 // `inCell`: in a table cell, where nothing starts a block.
-export function serializeInline(block: PMNode, opts: { was?: string; inList?: boolean; inCell?: boolean } = {}): string {
-  const write = (safe: boolean) => new InlineWriter(safe, !!opts.inList, !!opts.inCell).write(block);
+// `midLine`: written after something on its first line (a term's "::"), which then
+// doesn't start a line.
+export function serializeInline(block: PMNode, opts: { was?: string; inList?: boolean; inCell?: boolean; midLine?: boolean } = {}): string {
+  const write = (safe: boolean) => new InlineWriter(safe, !!opts.inList, !!opts.inCell, !!opts.midLine).write(block);
   let text = write(false);
   if (!sameInline(text, block)) text = write(true);
   if (opts.was !== undefined) {
@@ -348,14 +350,15 @@ function keepLines(text: string, was: string): string {
     }
   };
   const forms = old.map(form);
+  const lines = text.split('\n');
   let from = 0;
-  return text
-    .split('\n')
-    .map((line) => {
+  return lines
+    .map((line, k) => {
       if (old[from] === line) return old[from++];
       const f = form(line);
       const at = f === null ? -1 : forms.indexOf(f, from);
-      if (at < 0) return line;
+      // An edited line: indented as the one it replaced was (a list item's text).
+      if (at < 0) return lines.length === old.length && k > 0 ? /^[ \t]*/.exec(old[k])![0] + line : line;
       from = at + 1;
       return old[at];
     })
@@ -401,6 +404,7 @@ class InlineWriter {
     private safe: boolean,
     private inList: boolean,
     private inCell = false,
+    private midLine = false,
   ) {}
 
   write(block: PMNode): string {
@@ -412,7 +416,7 @@ class InlineWriter {
     // first character passed through instead.
     return this.out
       .split('\n')
-      .map((line, k) => escapeLineStart(line, k, this.inList))
+      .map((line, k) => (k === 0 && this.midLine ? line : escapeLineStart(line, k, this.inList)))
       .join('\n');
   }
 
@@ -619,7 +623,8 @@ function constrainedAfter(after: PMNode | undefined, also = ''): boolean {
 type LineTest = { test(line: string): boolean };
 const PARAGRAPH_BREAKS: LineTest[] = [{ test: (l) => delimiterOf(l) !== null }, { test: isAttributeLine }, { test: isComment }, PREPROCESSOR];
 const LIST_ITEM: LineTest = { test: (l) => listItem(l) !== null };
-const LIST_BREAKS: LineTest[] = [LIST_ITEM, /^\+[ \t]*$/];
+// (A definition list's items too: "term:: text".)
+const LIST_BREAKS: LineTest[] = [LIST_ITEM, /^\+[ \t]*$/, { test: (l) => isDescriptionItem(l) }];
 // And those that make a paragraph something else when it starts with them: breaks,
 // titles, sections, attribute entries, notes, block macros, callout lists.
 const LINE_STARTS: LineTest[] = [
@@ -640,7 +645,7 @@ const UNDERLINE = /^(=+|-+|~+|\^+|\++)[ \t]*$/;
 function escapeLineStart(line: string, k: number, inList: boolean): string {
   if (!line) return line;
   const first = k === 0;
-  if (first) {
+  if (first || inList) {
     // term:: description: its marker passed through.
     const dlist = /^(\S.*?)(:{2,4}|;;)([ \t]|$)/.exec(line);
     if (dlist && !/^[A-Za-z][\w-]*::\S*\[/.test(line)) line = `${dlist[1]}++${dlist[2]}++${line.slice(dlist[1].length + dlist[2].length)}`;

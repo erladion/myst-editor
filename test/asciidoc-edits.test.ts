@@ -201,3 +201,34 @@ describe('a table with a caption, new', () => {
     expect(edited('', () => doc)).toBe('.Regions\n|===\n| Name | Where\n\n| eu | Europe\n|===');
   });
 });
+
+describe('definition lists', () => {
+  const text = 'CPU:: Any 64-bit processor\nMemory::\n  4 GB, or more\n  for the examples.\nDisk::\nStorage:: 2 GB\n+\n----\ndf -h\n----\n\nAfter.\n';
+
+  it('are terms and descriptions, written back as they were', () => {
+    const { doc, map } = load(text);
+    const list = doc.firstChild!;
+    expect(list.type).toBe(nodes.definition_list);
+    expect(list.childCount).toBe(3);
+    expect(list.child(2).childCount).toBe(3); // two terms, a description
+    expect(list.child(2).lastChild!.lastChild!.type).toBe(nodes.code_block);
+    expect(saveDocument(doc, map, ASCIIDOC_CONFIG)).toEqual({ text, verified: true });
+  });
+
+  it('edited, change only what was edited', () => {
+    const out = edited(text, (s) => {
+      let at = 0;
+      s.doc.descendants((n, pos) => {
+        if (!at && n.type === nodes.paragraph && n.textContent.startsWith('4 GB')) at = pos + n.nodeSize - 1;
+      });
+      return s.tr.insertText(' Or 8.', at);
+    });
+    expect(out).toBe(text.replace('for the examples.', 'for the examples. Or 8.'));
+  });
+
+  it('made in the editor: term, marker, description', () => {
+    const item = (term: string, desc: string) => nodes.definition_item.create(null, [nodes.definition_term.create(null, schema.text(term)), nodes.definition_desc.create(null, nodes.paragraph.create(null, schema.text(desc)))]);
+    const doc = nodes.doc.create(null, nodes.definition_list.create(null, [item('API', 'How programs talk.'), item('SDK', 'Tools: lib:: and all.')]));
+    expect(edited('', () => doc)).toBe('API:: How programs talk.\nSDK:: Tools: lib:: and all.');
+  });
+});

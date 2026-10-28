@@ -42,8 +42,9 @@ test('shows an AsciiDoc page as formatted content, and leaves it as it is', asyn
   await expect(page.locator('.code-block .code-lang')).toHaveValue('bash');
   await expect(page.locator('.prose table th')).toHaveText(['System', 'Version']);
   await expect(page.locator('.prose table td').first()).toHaveText('Linux');
-  // A definition list, kept as written, as Asciidoctor renders it.
-  await expect(page.locator('.card-definitionList .card-rendered dt')).toHaveText(['CPU', 'Memory']);
+  // A definition list: terms and what they mean.
+  await expect(page.locator('.prose dt')).toHaveText(['CPU', 'Memory']);
+  await expect(page.locator('.prose dd')).toHaveText(['Any 64-bit processor', '4 GB']);
   await expect(page.locator('.role-ref')).toHaveCount(2);
   await expect(page.locator('.statusbar .dialect')).toHaveText('AsciiDoc');
   await expect(page.locator('.save-status')).toHaveText('All changes saved');

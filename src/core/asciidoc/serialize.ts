@@ -147,6 +147,8 @@ class Writer {
       case 'bullet_list':
       case 'ordered_list':
         return this.list(node, lists);
+      case 'definition_list':
+        return this.definitionList(node);
       case 'code_block':
         return this.code(node);
       case 'math_block':
@@ -223,6 +225,51 @@ class Writer {
 
   // ---- lists ----
 
+  // Each item: its terms (the last with its description's first paragraph after it),
+  // then the description's other blocks attached with "+".
+  private definitionList(node: PMNode): string {
+    let out = '';
+    node.forEach((item, _o, i) => {
+      // Items one under another; after one with blocks attached, a blank line between.
+      const prev = i > 0 ? node.child(i - 1) : null;
+      const plain = prev && (prev.lastChild?.type.name !== 'definition_desc' || (prev.lastChild.childCount === 1 && prev.lastChild.firstChild!.type.name === 'paragraph'));
+      if (prev) out += this.originalGap(prev, item) ?? (plain ? '\n' : '\n\n');
+      const original = this.unchanged(item);
+      if (original !== undefined) {
+        out += original;
+        return;
+      }
+      const marker: string = item.attrs.marker ?? '::';
+      // The item as written, its terms first, one a line: each term kept while it says the same.
+      const was = this.fresh ? undefined : this.map.get(item.attrs.sid)?.text;
+      // (With the spaces before them: " :name: text::" isn't an attribute entry.)
+      const wasTerms = (was ?? '').split('\n').map((l) => /^([ \t]*\S.*?)(:{2,4}|;;)(?:[ \t]|$)/.exec(l)?.[1]);
+      const terms: string[] = [];
+      const blocks: PMNode[] = [];
+      item.forEach((part) => {
+        if (part.type.name === 'definition_term') terms.push(serializeInline(part, { inList: true, was: wasTerms[terms.length] }).replace(/\n/g, ' ') || '{empty}');
+        else part.forEach((b) => blocks.push(b));
+      });
+      let text = terms.map((t) => `${t}${marker}`).join('\n');
+      // The description on the last term's line, or (as it was) on the lines under it.
+      // (Its terms are its first lines, one each.)
+      const under = !!was && /(:{2,4}|;;)[ \t]*$/.test(was.split('\n')[terms.length - 1] ?? '');
+      blocks.forEach((b, k) => {
+        if (k === 0 && b.type.name === 'paragraph') {
+          const para = this.unchanged(b) ?? serializeInline(b, { was: this.fresh ? undefined : this.map.get(b.attrs.sid)?.text, inList: true, midLine: !under });
+          text += under ? `\n${para}` : ` ${para}`;
+          return;
+        }
+        // (In a list's context: lines that would be its items are escaped.)
+        const written = this.block(b, ['::']);
+        text += (k > 0 ? this.originalGap(blocks[k - 1], b) : undefined) ?? `\n+\n`;
+        text += written;
+      });
+      out += text;
+    });
+    return out;
+  }
+
   private list(node: PMNode, lists: string[]): string {
     const ordered = node.type.name === 'ordered_list';
     const level = (m: string) => (/^\d+\.$/.test(m) ? '1.' : m);
@@ -240,7 +287,7 @@ class Writer {
     node.forEach((item, _o, i) => {
       // Items one under the other; after one ending in another kind of block (which
       // may go on over lines, like a definition list), a blank line between.
-      if (i > 0) out += this.originalGap(node.child(i - 1), item) ?? (/paragraph|_list$/.test(node.child(i - 1).lastChild?.type.name ?? '') ? '\n' : '\n\n');
+      if (i > 0) out += this.originalGap(node.child(i - 1), item) ?? (/^(paragraph|bullet_list|ordered_list)$/.test(node.child(i - 1).lastChild?.type.name ?? '') ? '\n' : '\n\n');
       const original = this.unchanged(item);
       if (original !== undefined && valid(item.attrs.marker) && level(item.attrs.marker) === level(marker)) {
         out += original;
@@ -257,7 +304,7 @@ class Writer {
           text = `${m} {empty}`;
         }
         const prev = k > 0 ? item.child(k - 1) : null;
-        const list = child.type.name.endsWith('_list');
+        const list = child.type.name === 'bullet_list' || child.type.name === 'ordered_list';
         text += (prev && this.originalGap(prev, child)) ?? (list ? '\n' : '\n+\n');
         text += list ? this.list(child, inner) : this.block(child, inner);
       });

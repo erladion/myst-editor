@@ -17,6 +17,7 @@ import {
   ATTRIBUTE_ENTRY,
   BLOCK_MACRO,
   CALLOUT_ITEM,
+  DESCRIPTION_ITEM,
   PREPROCESSOR,
   SECTION,
   anchorOf,
@@ -191,7 +192,7 @@ class Scanner {
     while (k + 1 < to) {
       const l = lines[k + 1];
       if (isBlank(l) || delimiterOf(l) || isAttributeLine(l) || isComment(l) || PREPROCESSOR.test(l)) break;
-      if (inList && (listItem(l) || l.trim() === '+')) break;
+      if (inList && (listItem(l) || isDescriptionItem(l) || l.trim() === '+')) break;
       k++;
     }
     return k;
@@ -438,6 +439,13 @@ class Reader {
       case 'list':
         return this.list(seg, scanner, all);
       case 'items':
+        if (seg.raw === 'definitionList') {
+          try {
+            return this.definitionList(seg, scanner, all, src);
+          } catch (e) {
+            if (!(e instanceof Unsupported)) throw e;
+          }
+        }
         return this.raw(seg.raw!, src);
       case 'target':
         return this.withSid('target', { label: anchorOf(first)! }, null, src);
@@ -563,6 +571,80 @@ class Reader {
   }
 
   // ---- lists ----
+
+  // Term:: description. Several terms may share one (each on its line, the
+  // description after the last); the description goes on over the lines under it,
+  // and blocks attach to it with "+". One kind of marker, not nested.
+  private definitionList(seg: Segment, scanner: Scanner, all: string[], src: string): PMNode {
+    const { entries } = scanner.items(seg.start, seg.end + 1, isDescriptionItem);
+    interface Item {
+      start: number;
+      end: number;
+      terms: { line: number; text: string }[];
+      desc: { first: number; text: string[] } | null; // its paragraph: the lines it's on, as written
+      attached: { start: number; end: number }[];
+    }
+    const items: Item[] = [];
+    let marker: string | null = null;
+    for (const e of entries) {
+      const current = items[items.length - 1];
+      if (e.type === 'item') {
+        const m = DESCRIPTION_ITEM.exec(all[e.line])!;
+        if (marker !== null && m[2] !== marker) throw new Unsupported('mixed or nested definition lists');
+        marker = m[2];
+        // A term under one without a description: the same item's.
+        const shares = current && !current.desc && !current.attached.length && current.end === e.line - 1;
+        const item = shares ? current : { start: e.line, end: e.line, terms: [], desc: null, attached: [] };
+        item.terms.push({ line: e.line, text: m[1] });
+        if (m[3] !== undefined && m[3].trim()) item.desc = { first: e.line, text: [all[e.line].slice(all[e.line].length - m[3].length)] };
+        item.end = e.line;
+        if (!shares) items.push(item);
+      } else if (e.type === 'text') {
+        if (!current || current.attached.length || listItem(all[e.line]) || /^[ \t]*\+[ \t]*$/.test(all[e.line])) throw new Unsupported('definition with other blocks');
+        if (current.desc) current.desc.text.push(all[e.line]);
+        else current.desc = { first: e.line, text: [all[e.line]] };
+        current.end = e.line;
+      } else {
+        if (!current) throw new Unsupported('attached block without a term');
+        current.attached.push(e);
+        current.end = e.end;
+      }
+    }
+    const slice = (from: number, to: number) => all.slice(from, to + 1).join('\n');
+    const between = (a: number, b: number) => '\n' + all.slice(a + 1, b).map((l) => l + '\n').join('');
+    const listLine = this.line;
+    const nodes: PMNode[] = [];
+    let prev: { sid: string; end: number } | null = null;
+    for (const item of items) {
+      this.line = listLine + item.start - seg.start;
+      const content: PMNode[] = item.terms.map((t) => schema.node('definition_term', null, parseInline(t.text.trim())));
+      const blocks: PMNode[] = [];
+      let before: { sid: string; end: number } | null = null;
+      if (item.desc) {
+        const own = item.desc.text.join('\n');
+        this.line = listLine + item.desc.first - seg.start;
+        const para = this.withSid('paragraph', {}, parseInline(own.replace(/^[ \t]+/, '').replace(/\n[ \t]+/g, '\n')), own);
+        blocks.push(para);
+        before = { sid: para.attrs.sid, end: item.desc.first + item.desc.text.length - 1 };
+      }
+      for (const a of item.attached) {
+        this.line = listLine + a.start - seg.start;
+        const { nodes: attached } = this.container(slice(a.start, a.end), this.line);
+        if (attached.length !== 1) throw new Unsupported('attached blocks');
+        if (before) this.map.link(before.sid, attached[0].attrs.sid, between(before.end, a.start));
+        blocks.push(attached[0]);
+        before = { sid: attached[0].attrs.sid, end: a.end };
+      }
+      if (blocks.length) content.push(this.withSid('definition_desc', {}, blocks, ''));
+      this.line = listLine + item.start - seg.start;
+      const node = this.withSid('definition_item', { marker }, content, slice(item.start, item.end));
+      if (prev) this.map.link(prev.sid, node.attrs.sid, between(prev.end, item.start));
+      prev = { sid: node.attrs.sid, end: item.end };
+      nodes.push(node);
+    }
+    this.line = listLine;
+    return this.withSid('definition_list', {}, nodes, src);
+  }
 
   private list(seg: Segment, scanner: Scanner, all: string[]): PMNode {
     const { entries } = scanner.items(seg.start, seg.end + 1, (l) => !!listItem(l));

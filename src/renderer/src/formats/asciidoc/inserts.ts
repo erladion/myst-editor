@@ -48,6 +48,12 @@ function insertCaptionedTable(): Command {
   return insertBlock(nodes.table.create({ header: '.Caption' }, [row(nodes.table_header, ['Column 1', 'Column 2']), row(nodes.table_cell, ['', ''])]), 4);
 }
 
+// A term and its description (Term:: What it means.), the cursor in the term.
+function insertDefinitionList(): Command {
+  const item = nodes.definition_item.create({ marker: '::' }, [nodes.definition_term.create(null, schema.text('Term')), nodes.definition_desc.create(null, nodes.paragraph.create(null, schema.text('What it means.')))]);
+  return insertBlock(nodes.definition_list.create(null, item), 3);
+}
+
 const FILE_HELP = 'Relative to this page.';
 
 export function asciidocInserts(ctx: EditorContext): InsertItem[] {
@@ -81,6 +87,7 @@ export function asciidocInserts(ctx: EditorContext): InsertItem[] {
     { id: 'example', group: 'Text', label: 'Example', command: insertContainer('example', '====') },
     { id: 'sidebar', group: 'Text', label: 'Sidebar', command: insertContainer('sidebar', '****') },
     { id: 'quote', group: 'Text', label: 'Quote', command: insertContainer('quote', '____') },
+    { id: 'definition-list', group: 'Structure', label: 'Definition list', palette: 'Definition list', command: insertDefinitionList() },
     { id: 'page-contents', group: 'Structure', label: 'Contents of this page', command: insertMacro('toc', '') },
     { id: 'include', group: 'Structure', label: 'Include a file…', ask: asking('Include a file', 'File', (v) => insertMacro('include', v), { placeholder: 'partials/common.adoc', help: FILE_HELP }) },
     {
