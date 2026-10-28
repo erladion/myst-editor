@@ -1,0 +1,8 @@
+= Widget Book
+:product: Widget
+
+Intro to {product}.
+
+include::chapters/install.adoc[leveloffset=+1]
+
+include::chapters/use.adoc[leveloffset=+1]

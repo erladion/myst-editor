@@ -6,6 +6,8 @@ import type { Resolution, Suggestion } from '../build';
 import type { Contents } from './contents';
 import { sphinxContents } from './sphinx/contents';
 import { sphinxReferences } from './sphinx/references';
+import { asciidoctorContents } from './asciidoctor/contents';
+import { asciidoctorReferences } from './asciidoctor/references';
 
 export interface References {
   // What a role (`role`, `target`) or a link written in `fromSource` points at.
@@ -23,6 +25,7 @@ export interface ProjectBuilder {
 }
 
 const SPHINX: ProjectBuilder = { contents: sphinxContents, references: sphinxReferences, fragments: true };
+const ASCIIDOCTOR: ProjectBuilder = { contents: asciidoctorContents, references: asciidoctorReferences, fragments: false };
 
 // A project's (pages outside every project: Sphinx's rules, as for a Markdown folder).
-export const builderFor = (_project: Project | null): ProjectBuilder => SPHINX;
+export const builderFor = (project: Project | null): ProjectBuilder => (project?.builder === 'asciidoctor' ? ASCIIDOCTOR : SPHINX);

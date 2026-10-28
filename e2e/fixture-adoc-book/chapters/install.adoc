@@ -1,0 +1,10 @@
+= Installing
+
+[[requirements]]
+== Requirements
+
+You need a computer.
+
+ifdef::Cloud[]
+In the cloud, you need an account.
+endif::[]

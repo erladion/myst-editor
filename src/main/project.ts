@@ -11,6 +11,7 @@ import { DEFAULT_CONFIG, readConfPy } from '../core/project-config.js';
 import { isPage, pageFormat } from '../core/format.js';
 import { loadEditorConfig, SETTINGS_FILES, type SettingsSource } from '../core/editor-config.js';
 import type { PageMatches, ProjectInfo, Project } from '../shared/api.js';
+import { asciidoctorProjects } from './asciidoctor/projects.js';
 
 // Directories whose changes never matter to the app: hidden ones (.git, .venv),
 // dependencies, build output, and Python environments whatever they're called.
@@ -57,7 +58,7 @@ const MARKERS = ['conf.py'];
 // Whether a file (relative to the opened folder) is one of those: when it changes,
 // the projects are found again.
 export const isMarker = (rel: string) => MARKERS.includes(rel.slice(rel.lastIndexOf('/') + 1));
-const FINDERS: ProjectFinder[] = [(root, scan, read) => sphinxProjects(root, scan.markers.get('conf.py') ?? [], read)];
+const FINDERS: ProjectFinder[] = [(root, scan, read) => sphinxProjects(root, scan.markers.get('conf.py') ?? [], read), asciidoctorProjects];
 
 async function findProjects(root: string, scan: FolderScan, read: Set<string>): Promise<Project[]> {
   const found = (await Promise.all(FINDERS.map((find) => find(root, scan, read)))).flat();

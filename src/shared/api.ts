@@ -8,7 +8,7 @@ import type { Branches, ConflictFile, GitInfo, GitOperation, PageVersion } from 
 import type { ValeResult } from './vale.js';
 
 // What builds a project's pages.
-export type BuilderId = 'sphinx';
+export type BuilderId = 'sphinx' | 'asciidoctor';
 
 // One project inside the opened folder: the file that makes it one (a Sphinx
 // conf.py), and the pages under it, which its builder builds.
