@@ -21,6 +21,7 @@ export interface InlineStyle {
   strong: '**' | '__';
   refs: Map<string, { label: string; title: string | null }>; // normalized URL -> reference definition
   autolinks: Set<string>; // URLs the document writes as <url>
+  hardBreak: '\\' | '  '; // how line breaks end their line: a backslash or two spaces
 }
 
 // Shared by all maps, so nodes from separate parses never collide and a map can
@@ -30,7 +31,7 @@ let counter = 0;
 export class SourceMap {
   private entries = new Map<string, SourceEntry>();
   root: ContainerEntry = { lead: '', trail: '' };
-  style: InlineStyle = { em: '*', strong: '**', refs: new Map(), autolinks: new Set() };
+  style: InlineStyle = { em: '*', strong: '**', refs: new Map(), autolinks: new Set(), hardBreak: '\\' };
 
   nextSid(): string {
     return `s${++counter}`;

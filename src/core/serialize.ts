@@ -8,6 +8,7 @@ import { MarkdownSerializerState, defaultMarkdownSerializer } from 'prosemirror-
 import { schema, type RowCondition } from './schema.js';
 import { SourceMap, type ContainerEntry, type InlineStyle } from './sourcemap.js';
 import { headerKey, renderHeader, fenceFor } from './directive.js';
+import { hardBreakStyle } from './parse.js';
 
 export interface SerializeOptions {
   // Ignore the source map and serialize everything (used to test the serializer).
@@ -80,8 +81,11 @@ class Writer {
     const inner = () => this.container(node, this.containerEntry(node));
 
     switch (node.type.name) {
-      case 'paragraph':
-        return inlineMarkdown(node, this.map.style);
+      case 'paragraph': {
+        // Line breaks written like the paragraph's own were, else like the page's.
+        const own = this.fresh ? null : hardBreakStyle(this.map.get(node.attrs.sid)?.text ?? '');
+        return inlineMarkdown(node, own ? { ...this.map.style, hardBreak: own } : this.map.style);
+      }
 
       case 'heading': {
         const text = inlineMarkdown(node, this.map.style);
@@ -274,6 +278,10 @@ class MystInlineState extends MarkdownSerializerState {
   }
 }
 
+// Where a line break ends its line, until the lines are trimmed: then the style's
+// backslash or two spaces.
+const HARD_BREAK = '\u0001';
+
 type State = MystInlineState & { atBlockStart: boolean; out: string; inAutolink?: boolean };
 type NodeFn = (state: State, node: PMNode, parent: PMNode, index: number) => void;
 
@@ -292,7 +300,7 @@ const nodes: Record<string, NodeFn> = {
   // A trailing hard break would serialize as a literal backslash.
   hard_break: (state, _node, parent, index) => {
     for (let i = index + 1; i < parent.childCount; i++) {
-      if (!['soft_break', 'hard_break'].includes(parent.child(i).type.name)) return state.write('\\\n');
+      if (!['soft_break', 'hard_break'].includes(parent.child(i).type.name)) return state.write(`${HARD_BREAK}\n`);
     }
   },
   role: (state, node) => {
@@ -383,9 +391,11 @@ function inlineMarkdown(textblock: PMNode, style: InlineStyle, inCell = false): 
   state.renderContent(para);
   // Whitespace at line edges is insignificant in Markdown, except that trailing double
   // spaces make a hard break; an empty line would split the paragraph.
+  const breakMark = inCell ? '\\' : style.hardBreak;
   return state.out
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line !== '')
+    .map((line) => (line.endsWith(HARD_BREAK) ? line.slice(0, -1).trimEnd() + breakMark : line))
     .join('\n');
 }

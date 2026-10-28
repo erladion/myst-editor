@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Fragment } from 'prosemirror-model';
+import { Fragment, Slice } from 'prosemirror-model';
 import { loadDocument, saveDocument } from '../src/core/document.js';
 import { schema } from '../src/core/schema.js';
 
@@ -45,5 +45,30 @@ describe('an image on a line of its own', () => {
     const { map } = loadDocument('');
     const doc = nodes.doc.create(null, [nodes.paragraph.create(null, nodes.image.create({ src: 'images/x.png', alt: 'An image' }))]);
     expect(saveDocument(doc, map)).toEqual({ text: '![An image](images/x.png)', verified: true });
+  });
+});
+
+describe('line breaks in an edited paragraph', () => {
+  // The paragraph's first text with a word added at its end.
+  const edited = (text: string, at = 0) => {
+    const { doc, map } = loadDocument(text);
+    const para = doc.child(at);
+    const changed = para.copy(para.content.append(Fragment.from(schema.text(' more'))));
+    return saveDocument(doc.replace(doc.resolve(0).posAtIndex(at), doc.resolve(0).posAtIndex(at + 1), new Slice(Fragment.from(changed), 0, 0)), map);
+  };
+
+  it('keep the two spaces they were written with', () => {
+    expect(edited('One  \ntwo  \nthree\n')).toEqual({ text: 'One  \ntwo  \nthree more\n', verified: true });
+  });
+
+  it('keep a backslash', () => {
+    expect(edited('One\\\ntwo\n')).toEqual({ text: 'One\\\ntwo more\n', verified: true });
+  });
+
+  it('new in a paragraph without any: like the page writes them', () => {
+    const { doc, map } = loadDocument('First  \nline.\n\nSecond.\n');
+    const para = nodes.paragraph.create(null, [schema.text('a'), nodes.hard_break.create(), schema.text('b')]);
+    const next = doc.replace(doc.child(0).nodeSize, doc.content.size, new Slice(Fragment.from(para), 0, 0));
+    expect(saveDocument(next, map)).toEqual({ text: 'First  \nline.\n\na  \nb\n', verified: true });
   });
 });

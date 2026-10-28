@@ -594,7 +594,15 @@ function inferStyle(source: string): SourceMap['style'] {
   // Whether emphasis/strong are written with underscores or asterisks.
   const em = count(/(?<![\w\\_])_(?=[^\s_])[^_\n]*?[^\s_\\]_(?![\w_])/g) > count(/(?<![\w\\*])\*(?=[^\s*])[^*\n]*?[^\s*\\]\*(?![\w*])/g);
   const strong = count(/(?<![\w\\])__(?=\S)[^\n]*?\S__(?![\w])/g) > count(/(?<![\w\\])\*\*(?=\S)[^\n]*?\S\*\*/g);
-  return { em: em ? '_' : '*', strong: strong ? '__' : '**', refs, autolinks };
+  return { em: em ? '_' : '*', strong: strong ? '__' : '**', refs, autolinks, hardBreak: hardBreakStyle(source) ?? '\\' };
+}
+
+// How `source` ends lines that break: with a backslash or two spaces, whichever it
+// does more. Null if it has neither.
+export function hardBreakStyle(source: string): '\\' | '  ' | null {
+  const backslash = source.match(/(?<!\\)\\\n(?=[ \t]*\S)/g)?.length ?? 0;
+  const spaces = source.match(/\S {2,}\n(?=[ \t]*\S)/g)?.length ?? 0;
+  return backslash || spaces ? (spaces > backslash ? '  ' : '\\') : null;
 }
 
 function textContent(value: string): PMNode[] {
