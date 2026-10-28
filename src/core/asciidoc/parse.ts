@@ -9,6 +9,7 @@ import type { Node as PMNode } from 'prosemirror-model';
 import { schema } from '../schema.js';
 import { SourceMap, type ContainerEntry } from '../sourcemap.js';
 import { parseInline, Unsupported } from './inline.js';
+import { tableRows } from './table.js';
 import {
   ADMONITION_PARAGRAPH,
   ADMONITIONS,
@@ -487,6 +488,14 @@ class Reader {
         return this.withSid('math_block', { ...common(style), label: header.attrs.id ?? '', directive: true, fence: d }, text(inner), src);
       }
       return this.raw('passthrough', src);
+    }
+    if (d === '|===') {
+      try {
+        const rows = tableRows(header, own.slice(body + 1, -1), this.map);
+        return this.withSid('table', { header: body ? own.slice(0, body).join('\n') : null }, rows, src);
+      } catch (e) {
+        if (!(e instanceof Unsupported)) throw e;
+      }
     }
     if (c === '|' || c === '!' || c === ',' || (c === ':' && d.endsWith('==='))) return this.raw('table', src);
     // Blocks of blocks: their content read as a container of its own.

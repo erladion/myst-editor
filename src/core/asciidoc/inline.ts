@@ -324,9 +324,11 @@ function closingBracket(src: string, from: number, to: number): number {
 // through as it is (++text++). `was`: the text it was read from, whose lines are kept
 // where they still say the same. `inList`: in a list item, where list markers and
 // "+" at the start of a line would end its text.
-export function serializeInline(block: PMNode, opts: { was?: string; inList?: boolean } = {}): string {
-  let text = new InlineWriter(false, !!opts.inList).write(block);
-  if (!sameInline(text, block)) text = new InlineWriter(true, !!opts.inList).write(block);
+// `inCell`: in a table cell, where nothing starts a block.
+export function serializeInline(block: PMNode, opts: { was?: string; inList?: boolean; inCell?: boolean } = {}): string {
+  const write = (safe: boolean) => new InlineWriter(safe, !!opts.inList, !!opts.inCell).write(block);
+  let text = write(false);
+  if (!sameInline(text, block)) text = write(true);
   if (opts.was !== undefined) {
     const kept = keepLines(text, opts.was);
     // (Read without the lines' indentation, like a list item's text.)
@@ -398,12 +400,14 @@ class InlineWriter {
   constructor(
     private safe: boolean,
     private inList: boolean,
+    private inCell = false,
   ) {}
 
   write(block: PMNode): string {
     const children: PMNode[] = [];
     block.forEach((n) => children.push(n));
     this.run(children, []);
+    if (this.inCell) return this.out;
     // A line that would start a block (a list item, a title...) starts with its
     // first character passed through instead.
     return this.out
@@ -569,7 +573,8 @@ class InlineWriter {
 
   private text(text: string) {
     if (!this.safe) {
-      this.out += text;
+      // What would read as an attribute reference or a cross-reference: escaped.
+      this.out += text.replace(/\{(?=[\w][\w-]*\})/g, '\\{').replace(/<<(?=[\w"#/.:{])/g, '\\<<');
       return;
     }
     // Each word that could be read as markup passed through: ++word++, or with

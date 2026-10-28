@@ -6,6 +6,7 @@
 import type { Node as PMNode } from 'prosemirror-model';
 import type { ContainerEntry, SourceMap } from '../sourcemap.js';
 import { serializeInline } from './inline.js';
+import { writeTable } from './table.js';
 import { blockKey } from './parse.js';
 import { ADMONITIONS, closes, renderAttrlist, type Attrlist } from './syntax.js';
 
@@ -154,6 +155,8 @@ class Writer {
         return node.attrs.source;
       case 'target':
         return `[[${node.attrs.label}]]`;
+      case 'table':
+        return writeTable(node, this.fresh ? null : this.map, this.fresh ? undefined : this.map.get(node.attrs.sid)?.node);
       default:
         throw new Error(`Cannot write block node ${node.type.name} as AsciiDoc`);
     }
