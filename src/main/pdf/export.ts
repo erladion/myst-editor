@@ -1,4 +1,4 @@
-// File → Export PDF: the project built as one page (see SphinxManager.buildOnePage),
+// File → Export PDF: the project built as one page by its builder (see OnePage),
 // laid out for print (layout.ts) and printed by Chromium. Printed twice: the first
 // print's outline says which page each heading is on, for the contents' numbers.
 import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell } from 'electron';
@@ -7,10 +7,10 @@ import { basename, dirname, extname, join } from 'node:path';
 import type { PdfDef } from '../../core/editor-config.js';
 import type { PdfResult, Project } from '../../shared/api.js';
 import type { BuildWarning } from '../../shared/build.js';
-import type { SphinxManager } from '../sphinx/manager.js';
+import type { Builder } from '../builders/builder.js';
 import { current, requireProject, toWindow } from '../state.js';
 import { loadSettings, updateSettings } from '../settings.js';
-import { managerOf } from '../sphinx/service.js';
+import { builderOf } from '../builders/service.js';
 import { CODE_FONTS, cssWithFileUrls, layoutScript, PRINT_CSS, TEXT_FONTS, type LayoutOptions } from './layout.js';
 import { cssString, fontFace, fontInfo } from './fonts.js';
 import { resolveForReading } from '../project.js';
@@ -108,21 +108,22 @@ async function print(htmlFile: string, layout: Omit<LayoutOptions, 'rootDoc'>, c
 
 const plain = (e: unknown) => (e instanceof Error ? e.message : String(e)).replace(/^Error: /, '');
 
-// A project's PDF: built as one page by its Sphinx, laid out with its [pdf] settings
+// A project's PDF: built as one page by its builder, laid out with its [pdf] settings
 // and printed. For File → Export PDF and the command line (cli.ts) alike. Throws what
 // went wrong; `warnings` are the one-page build's.
 export async function makePdf(
   root: string,
   project: Project,
-  manager: SphinxManager,
+  builder: Builder,
   signal: AbortSignal,
   step: (s: string) => void,
 ): Promise<{ pdf: Uint8Array; pages: number; warnings: BuildWarning[] }> {
-  step('Building the pages with Sphinx…');
+  if (!builder.onePage) throw new Error(`${builder.name} can’t make a PDF of this project.`);
+  step(`Building the pages with ${builder.name}…`);
   const settings: PdfDef = project.config.editor.pdf;
   if (settings.css && !settings.cssPath) throw new Error(`The PDF stylesheet must be in the opened folder: ${settings.css}`);
   const css = settings.cssPath ? await pdfStylesheet(root, settings.cssPath) : null;
-  const { html, variables, version, release, warnings } = await manager.buildOnePage(signal, settings.siteCss);
+  const { html, variables, version, release, warnings } = await builder.onePage(signal, { siteCss: settings.siteCss });
   if (signal.aborted) throw new Error('Cancelled');
   if (settings.logo && !settings.logoPath) throw new Error(`The logo must be in the opened folder: ${settings.logo}`);
   if (settings.coverBackground && !settings.coverBackgroundPath) throw new Error(`The cover background must be in the opened folder: ${settings.coverBackground}`);
@@ -179,9 +180,9 @@ export function registerPdfIpc() {
   ipcMain.handle('export-pdf', async (_e, projectId: string | null): Promise<PdfResult | null> => {
     const p = requireProject();
     const project = p.projects.find((x) => x.id === projectId) ?? p.projects[0];
-    if (!project) return { ok: false, message: 'There’s no Sphinx project (conf.py) in this folder to make a PDF of.' };
-    const manager = managerOf(project.id);
-    if (!manager) return { ok: false, message: 'Sphinx isn’t running for this project.' };
+    if (!project) return { ok: false, message: 'There’s no project in this folder to make a PDF of (a Sphinx project has a conf.py).' };
+    const builder = builderOf(project.id);
+    if (!builder) return { ok: false, message: 'Nothing is building this project.' };
     const saved = (await loadSettings()).pdfPaths?.[project.sourceDir];
     const chosen = await dialog.showSaveDialog(current.win!, {
       title: 'Export PDF',
@@ -195,7 +196,7 @@ export function registerPdfIpc() {
     running?.abort();
     const run = (running = new AbortController());
     try {
-      const { pdf, pages } = await makePdf(p.root, project, manager, run.signal, (s) => toWindow('pdf-progress', s));
+      const { pdf, pages } = await makePdf(p.root, project, builder, run.signal, (s) => toWindow('pdf-progress', s));
       await fs.writeFile(path, pdf);
       exported = path;
       return { ok: true, path, pages };

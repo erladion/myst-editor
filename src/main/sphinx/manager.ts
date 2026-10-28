@@ -12,7 +12,7 @@ import { planEnvironment } from './discover.js';
 import { existingEnv, findPythons, probePython } from './pythons.js';
 import { canDownload } from './network.js';
 import { run, CommandError } from './run.js';
-import type { Builder } from '../builders/builder.js';
+import type { Builder, OnePage } from '../builders/builder.js';
 
 export interface ManagerOptions {
   root: string; // the opened folder
@@ -47,6 +47,7 @@ interface SavedState {
 const BUILD_TIMEOUT_MS = 20 * 60_000;
 
 export class SphinxManager implements Builder {
+  readonly name = 'Sphinx';
   private state: BuildState = { status: { kind: 'off' }, info: null, environment: null };
   private abort = new AbortController();
   private python: string | null = null;
@@ -306,7 +307,7 @@ export class SphinxManager implements Builder {
   // The whole project as one page, with Sphinx's plain theme, for a PDF: the page's
   // file. Built apart from the preview's builds (its own folders), so neither makes
   // the other read every page again.
-  async buildOnePage(signal: AbortSignal, siteCss = true): Promise<{ html: string; variables: Record<string, string>; version: string; release: string; warnings: BuildWarning[] }> {
+  async onePage(signal: AbortSignal, { siteCss = true }: { siteCss?: boolean } = {}): Promise<OnePage> {
     if (!this.python) throw new Error('Sphinx isn’t set up for this project yet. Allow it to build first (the banner at the top).');
     const dir = join(this.opts.dataDir, 'builds', this.key, 'pdf');
     const resultFile = join(dir, 'result.json');
