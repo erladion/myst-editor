@@ -40,3 +40,23 @@ test('makes a project with a first page, as a git repository, and opens it', asy
   await dialog.getByRole('button', { name: 'Create project' }).click();
   await expect(dialog.getByRole('alert')).toContainText('There’s a folder called product-manual there already');
 });
+
+test('makes an AsciiDoc book, and opens it', async () => {
+  ctx = await launch({ noProject: true });
+  const { page } = ctx;
+  const parent = join(ctx.project, '..');
+  await page.getByRole('button', { name: 'New project…' }).click();
+  const dialog = page.getByRole('dialog', { name: 'New project' });
+  await dialog.getByLabel('Title').fill('Widget guide');
+  await dialog.getByLabel('AsciiDoc, built with Asciidoctor').check();
+  await dialog.getByLabel('Save in').fill(parent);
+  await dialog.getByLabel('Make it a git repository').uncheck();
+  await dialog.getByRole('button', { name: 'Create project' }).click();
+
+  await expect(page.locator('.prose h1')).toHaveText('Widget guide');
+  const dir = join(parent, 'widget-guide');
+  expect(readFileSync(join(dir, 'docs', 'index.adoc'), 'utf8')).toContain('include::getting-started.adoc[leveloffset=+1]');
+  // Built: the chapter in the book's contents.
+  await expect(page.locator('.chip-button', { hasText: /Built in/ })).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('.sidebar .page')).toContainText(['Widget guide', 'Getting started']);
+});

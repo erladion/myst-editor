@@ -1,16 +1,18 @@
-// File → New Project: a folder with a Sphinx project in it, ready to write in and to
-// build: docs/ with conf.py, a first page and its requirements; a README; and, if
+// File → New Project: a folder with a project in it, ready to write in and to build:
+// docs/ with a Sphinx project (conf.py, a first page and its requirements) or an
+// Asciidoctor book (its main document including a first chapter); a README; and, if
 // asked, a git repository with it all as the first commit.
 import { ipcMain } from 'electron';
 import { existsSync, promises as fs } from 'node:fs';
 import { join } from 'node:path';
-import type { NewProject, NewProjectResult } from '../shared/api.js';
+import type { BuilderId, NewProject, NewProjectResult } from '../shared/api.js';
 import { git } from './git/service.js';
 
 // A Python string (JSON's are, for what a title holds).
 const py = (s: string) => JSON.stringify(s);
 
-export function projectFiles(title: string): Record<string, string> {
+export function projectFiles(title: string, builder: BuilderId = 'sphinx'): Record<string, string> {
+  if (builder === 'asciidoctor') return asciidoctorFiles(title);
   return {
     'README.md': `# ${title}\n\nDocumentation written in MyST Markdown and built with Sphinx.\n\n    pip install -r docs/requirements.txt\n    sphinx-build docs _build/html\n`,
     '.gitignore': '_build/\n.venv/\n__pycache__/\n',
@@ -31,6 +33,16 @@ exclude_patterns = ["_build"]
   };
 }
 
+// An Asciidoctor book: docs/index.adoc, the main document, including its chapters.
+function asciidoctorFiles(title: string): Record<string, string> {
+  return {
+    'README.md': `# ${title}\n\nDocumentation written in AsciiDoc and built with Asciidoctor.\n\n    npx asciidoctor docs/index.adoc -D build\n`,
+    '.gitignore': 'build/\n',
+    'docs/index.adoc': `= ${title}\n:toc:\n\nWhat this documentation is about, and who it's for.\n\ninclude::getting-started.adoc[leveloffset=+1]\n`,
+    'docs/getting-started.adoc': '= Getting started\n\nThe first steps.\n\nTIP: Add pages with *New page* in the sidebar (Ctrl+N). They\'re included in the page you choose.\n',
+  };
+}
+
 export function registerNewProjectIpc() {
   ipcMain.handle('create-project', async (_e, p: NewProject): Promise<NewProjectResult> => {
     const title = String(p.title).trim();
@@ -40,7 +52,7 @@ export function registerNewProjectIpc() {
     const dir = join(String(p.parent), folder);
     if (existsSync(dir) && (await fs.readdir(dir)).length) return { ok: false, message: `There’s a folder called ${folder} there already, with files in it.` };
     try {
-      for (const [rel, text] of Object.entries(projectFiles(title))) {
+      for (const [rel, text] of Object.entries(projectFiles(title, p.builder === 'asciidoctor' ? 'asciidoctor' : 'sphinx'))) {
         await fs.mkdir(join(dir, rel, '..'), { recursive: true });
         await fs.writeFile(join(dir, rel), text, { flag: 'wx' });
       }

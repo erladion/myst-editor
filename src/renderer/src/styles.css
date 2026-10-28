@@ -762,6 +762,17 @@ button.toc-toggle:hover {
   margin-bottom: 12px;
 }
 
+fieldset.field {
+  border: none;
+  padding: 0;
+  min-width: 0;
+}
+
+fieldset.field legend {
+  padding: 0;
+  margin-bottom: 4px;
+}
+
 .field small {
   color: var(--fg-muted);
 }

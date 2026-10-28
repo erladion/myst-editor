@@ -105,6 +105,7 @@ export interface NewProject {
   parent: string; // the folder to make it in
   folder: string; // its own folder's name
   git: boolean;
+  builder?: BuilderId; // what it's written in and built with: Sphinx (MyST) if not said
 }
 export type NewProjectResult = { ok: true; path: string; note: string | null } | { ok: false; message: string };
 

@@ -1,4 +1,5 @@
-// File → New Project: its title, where it goes, and whether it's a git repository.
+// File → New Project: its title, what it's written in, where it goes, and whether
+// it's a git repository.
 import { useEffect, useState, type FormEvent } from 'react';
 import { pageSlug } from '../pages';
 
@@ -9,6 +10,7 @@ export function NewProjectDialog({ onCreated, onClose }: { onCreated: (folder: s
   const [folder, setFolder] = useState(''); // empty: from the title
   const [parent, setParent] = useState('');
   const [useGit, setUseGit] = useState(true);
+  const [builder, setBuilder] = useState<'sphinx' | 'asciidoctor'>('sphinx');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -23,7 +25,7 @@ export function NewProjectDialog({ onCreated, onClose }: { onCreated: (folder: s
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const result = await api.createProject({ title: title.trim(), parent, folder: name, git: useGit });
+    const result = await api.createProject({ title: title.trim(), parent, folder: name, git: useGit, builder });
     setBusy(false);
     if (result.ok) onCreated(result.path, result.note);
     else setError(result.message);
@@ -37,6 +39,17 @@ export function NewProjectDialog({ onCreated, onClose }: { onCreated: (folder: s
             <label htmlFor="project-title">Title</label>
             <input id="project-title" value={title} autoFocus placeholder="Product manual" onChange={(e) => setTitle(e.target.value)} />
           </div>
+          <fieldset className="field">
+            <legend>Written in</legend>
+            <label className="check">
+              <input type="radio" name="project-builder" checked={builder === 'sphinx'} onChange={() => setBuilder('sphinx')} />
+              MyST Markdown, built with Sphinx
+            </label>
+            <label className="check">
+              <input type="radio" name="project-builder" checked={builder === 'asciidoctor'} onChange={() => setBuilder('asciidoctor')} />
+              AsciiDoc, built with Asciidoctor
+            </label>
+          </fieldset>
           <div className="field">
             <label htmlFor="project-parent">Save in</label>
             <div className="row">
