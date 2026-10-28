@@ -6,6 +6,7 @@ import { promises as fs } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import type { Project, ProjectInfo } from '../shared/api.js';
 import type { Builder } from './builders/builder.js';
+import { AsciidoctorBuilder, asciidoctorData } from './asciidoctor/builder.js';
 import { fromProject } from '../shared/projects.js';
 import type { CliOptions } from './cli-args.js';
 import { openProject } from './project.js';
@@ -66,6 +67,7 @@ export async function runCli(opts: CliOptions): Promise<number> {
 // The project's builder, for one PDF: Sphinx sets up its environment (or uses
 // --python's), saying what it's doing.
 async function builderFor(project: Project, p: ProjectInfo, opts: CliOptions): Promise<Builder> {
+  if (project.builder === 'asciidoctor') return new AsciidoctorBuilder(project, { dataDir: asciidoctorData(managerPaths().dataDir), emit: () => {} });
   const settings = await loadSettings();
   const userEnv = settings.sphinxEnv?.[p.root] ?? {};
   let step = '';
@@ -86,11 +88,11 @@ async function builderFor(project: Project, p: ProjectInfo, opts: CliOptions): P
 // The project to export: the one --project names; else the folder's own; else the
 // only one. Otherwise what's wrong.
 function chooseProject(projects: Project[], root: string, wanted: string | null): Project | string {
-  if (!projects.length) return `there’s no Sphinx project (conf.py with a root page) in ${root}`;
+  if (!projects.length) return `there’s no project in ${root}: a Sphinx project (conf.py with a root page) or AsciiDoc pages`;
   const list = projects.map((x) => `  ${x.dir || '.'}  (${x.name})`).join('\n');
   if (wanted !== null) {
     const dir = relative(root, isAbsolute(wanted) ? wanted : resolve(root, wanted)).split(sep).join('/');
-    return projects.find((x) => x.dir === dir) ?? `there’s no Sphinx project at ${wanted}. The folder has:\n${list}`;
+    return projects.find((x) => x.dir === dir) ?? `there’s no project at ${wanted}. The folder has:\n${list}`;
   }
-  return projects.find((x) => x.dir === '') ?? (projects.length === 1 ? projects[0] : `the folder has several Sphinx projects: say which with --project.\n${list}`);
+  return projects.find((x) => x.dir === '') ?? (projects.length === 1 ? projects[0] : `the folder has several projects: say which with --project.\n${list}`);
 }

@@ -58,7 +58,7 @@ test('a folder of several projects: which one, and settings layered from the fol
   writeFileSync(join(dir, 'repo', '.mysteditor.toml'), '[pdf]\nsubtitle = "For everyone"\n');
   const none = await run(dir, '--export-pdf', 'repo');
   expect(none.code).toBe(2);
-  expect(none.err).toContain('the folder has several Sphinx projects: say which with --project.\n  admin-guide  (Admin Guide)\n  user-guide  (User Guide)');
+  expect(none.err).toContain('the folder has several projects: say which with --project.\n  admin-guide  (Admin Guide)\n  user-guide  (User Guide)');
 
   const { code, out } = await run(dir, '--export-pdf', 'repo', '--project', 'admin-guide');
   expect(code, out).toBe(0);

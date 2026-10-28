@@ -6,13 +6,12 @@ import type { ProjectInfo } from '../../shared/api.js';
 import type { BuildInfo } from '../../shared/build.js';
 import { projectFor } from '../../shared/projects.js';
 import { toWindow } from '../state.js';
-import { join } from 'node:path';
 import { managerPaths, sphinxBuilders } from '../sphinx/service.js';
-import { asciidoctorBuilders } from '../asciidoctor/builder.js';
+import { asciidoctorBuilders, asciidoctorData } from '../asciidoctor/builder.js';
 import type { Builder, BuilderFactories } from './builder.js';
 
 // (Made when asked: the builders' modules use this one too.)
-const factories = (): BuilderFactories => ({ sphinx: sphinxBuilders, asciidoctor: asciidoctorBuilders(join(managerPaths().dataDir, '..', 'asciidoctor')) });
+const factories = (): BuilderFactories => ({ sphinx: sphinxBuilders, asciidoctor: asciidoctorBuilders(asciidoctorData(managerPaths().dataDir)) });
 
 // One builder per project, by project id.
 const builders = new Map<string, Builder>();

@@ -6,25 +6,26 @@
 import { PRODUCT } from '../shared/product.js';
 
 export interface CliOptions {
-  folder: string; // the folder with conf.py, or one with Sphinx projects under it
+  folder: string; // the project's folder, or one with projects under it
   project: string | null; // which of them, relative to the folder
   output: string | null; // the PDF; default: the project's name, in the current folder
-  python: string | null; // a Python with Sphinx installed; default: as the app sets one up
+  python: string | null; // for Sphinx: a Python with it installed; default: as the app sets one up
   failOnWarning: boolean;
 }
 
 export const USAGE = `Usage: ${PRODUCT.command} --export-pdf <folder> [options]
 
-Makes a PDF of a Sphinx project, as File → Export PDF does, without a window.
-<folder> is the one with conf.py (and its ${PRODUCT.settingsFile}), or a folder with
-Sphinx projects under it, with --project to say which.
+Makes a PDF of a project, as File → Export PDF does, without a window: a Sphinx
+project, or an Asciidoctor one (AsciiDoc pages, built from their main document).
+<folder> is the project's (with its ${PRODUCT.settingsFile}), or a folder with projects
+under it, with --project to say which.
 
 Options:
-  --project <dir>     the project's folder (the one with conf.py), relative to <folder>
+  --project <dir>     the project's folder (with conf.py, or its main .adoc), relative to <folder>
   --output <file>     where the PDF goes (default: the project's name, here)
-  --python <path>     a Python with Sphinx and MyST-Parser installed (default: an
-                      environment set up from the project's requirements, as the app does)
-  --fail-on-warning   exit with 1 when Sphinx or the settings warn about anything
+  --python <path>     for Sphinx: a Python with Sphinx and MyST-Parser installed (default:
+                      an environment set up from the project's requirements, as the app does)
+  --fail-on-warning   exit with 1 when the build or the settings warn about anything
   --help              show this
 
 On Linux without a display, start it with --ozone-platform=headless first, or under xvfb-run.`;

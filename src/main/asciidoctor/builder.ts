@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import type { Project } from '../../shared/api.js';
 import type { BuildState } from '../../shared/build.js';
 import type { Builder, BuilderFactory } from '../builders/builder.js';
-import { buildAsciidoctor, type BuildCache } from './build.js';
+import { buildAsciidoctor, onePage, type BuildCache } from './build.js';
 import { withinProject } from '../../shared/projects.js';
 
 const BUILD_DELAY_MS = 400;
@@ -79,6 +79,14 @@ export class AsciidoctorBuilder implements Builder {
     return this.log;
   }
 
+  // Apart from the preview's pages: a folder of its own.
+  onePage(signal: AbortSignal, { siteCss }: { siteCss: boolean }) {
+    return onePage(this.project, join(this.opts.dataDir, 'builds', this.key, 'pdf'), siteCss).then((page) => {
+      if (signal.aborted) throw new Error('Cancelled');
+      return page;
+    });
+  }
+
   private emit(status: BuildState['status'], info = this.state.info) {
     this.state = { ...this.state, status, info };
     if (!this.disposed) this.opts.emit(this.state);
@@ -122,6 +130,9 @@ export class AsciidoctorBuilder implements Builder {
     }
   }
 }
+
+// Where Asciidoctor projects' builds go: beside Sphinx's.
+export const asciidoctorData = (sphinxData: string) => join(sphinxData, '..', 'asciidoctor');
 
 export const asciidoctorBuilders = (dataDir: string): BuilderFactory => async (_folder, projects, emit) =>
   new Map(projects.map((p) => [p.id, new AsciidoctorBuilder(p, { dataDir, emit: (state) => emit(p, state) })]));

@@ -8,7 +8,7 @@
 // BuildCache), between builds and between sessions.
 import { promises as fs } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
-import { getVersion, loadFile, LoggerManager, MemoryLogger } from '@asciidoctor/core';
+import { getVersion, load, loadFile, LoggerManager, MemoryLogger } from '@asciidoctor/core';
 import type { Project } from '../../shared/api.js';
 import type { BuildInfo, BuildPage, BuildTarget, BuildWarning } from '../../shared/build.js';
 import { fromProject } from '../../shared/projects.js';
@@ -210,4 +210,107 @@ async function build(project: Project, outputDir: string, { previous, changed = 
     variables: {},
   };
   return { info, cache: { version: 1, attributes: attributesKey, pages: results }, built };
+}
+
+// ---- the whole project as one page, for a PDF ------------------------------------
+
+// The PDF's layout reads Sphinx's one page: content in [role="main"], sections, and a
+// marker before each page's. Asciidoctor's page, made so in the window it's printed in.
+const ONE_PAGE_SCRIPT = (chapters: Record<string, string>) => `<script>
+(() => {
+  const chapters = ${JSON.stringify(chapters).replace(/</g, '\\u003c')};
+  const content = document.getElementById('content');
+  if (!content) return;
+  for (const div of [...content.querySelectorAll('div.sect1, div.sect2, div.sect3, div.sect4, div.sect5, div.sect6')].reverse()) {
+    const section = document.createElement('section');
+    section.className = div.className;
+    while (div.firstChild) section.append(div.firstChild);
+    // Its id on it, as Sphinx's sections have theirs (links to it still lead there).
+    const heading = [...section.children].find((c) => /^H[1-6]$/.test(c.tagName));
+    if (div.id) section.id = div.id;
+    else if (heading && heading.id) {
+      section.id = heading.id;
+      heading.removeAttribute('id');
+    }
+    div.replaceWith(section);
+  }
+  for (const [id, doc] of Object.entries(chapters)) {
+    const section = document.getElementById(id)?.closest('section');
+    if (section) section.before(Object.assign(document.createElement('span'), { id: 'document-' + doc }));
+  }
+  const main = document.createElement('div');
+  main.setAttribute('role', 'main');
+  const root = document.createElement('section');
+  const title = document.querySelector('#header > h1');
+  if (title) root.append(title);
+  root.append(...content.childNodes);
+  const footnotes = document.getElementById('footnotes');
+  if (footnotes) root.append(footnotes);
+  main.append(root);
+  document.body.replaceChildren(main);
+})();
+</script>`;
+
+// The project as one page: the main document with what it includes, or (without one)
+// every page in turn. `outputDir`: where the page goes, with the stylesheet if wanted.
+export function onePage(project: Project, outputDir: string, siteCss: boolean): Promise<{ html: string; variables: Record<string, string>; version: string; release: string; warnings: BuildWarning[] }> {
+  const run = queue.then(() => buildOnePage(project, outputDir, siteCss));
+  queue = run.catch(() => {});
+  return run;
+}
+
+async function buildOnePage(project: Project, outputDir: string, siteCss: boolean) {
+  const config = project.config as AsciidocConfig;
+  const pages = await pagesIn(project.sourceDir);
+  const pageSet = new Set(pages);
+  const mainText = config.main
+    ? await fs.readFile(join(project.sourceDir, config.main), 'utf8')
+    : `= ${project.name}\n\n${pages.map((p) => `include::${p}[leveloffset=+1]`).join('\n\n')}\n`;
+  const mainAttributes = headerAttributes(mainText);
+  await fs.mkdir(outputDir, { recursive: true });
+  if (siteCss) await fs.writeFile(join(outputDir, 'asciidoctor.css'), STYLESHEET);
+  const logger = MemoryLogger.create();
+  const before = LoggerManager.getLogger();
+  LoggerManager.setLogger(logger);
+  let html: string;
+  const chapters: Record<string, string> = {};
+  try {
+    const attributes = {
+      ...mainAttributes,
+      showtitle: '',
+      'attribute-missing': 'warn',
+      // Pictures in the page itself: it isn't where the pages are.
+      'data-uri': '',
+      ...(siteCss ? { linkcss: '', stylesheet: 'asciidoctor.css', stylesdir: '.' } : { 'stylesheet!': '' }),
+    };
+    const options = { safe: 'safe', sourcemap: true, base_dir: project.sourceDir, attributes };
+    const doc = config.main ? await loadFile(join(project.sourceDir, config.main), options) : await load(mainText, options);
+    // Where each included page starts: its first section of its own.
+    const mainPage = config.main ?? '';
+    for (const block of doc.getBlocks() as { getContext(): string; getId(): string; getSourceLocation?(): { getFile?(): string } | undefined }[]) {
+      if (block.getContext() !== 'section') continue;
+      const file = block.getSourceLocation?.()?.getFile?.();
+      const page = file ? relative(project.sourceDir, resolve(file)).split(sep).join('/') : null;
+      if (page && page !== mainPage && pageSet.has(page) && !Object.values(chapters).includes(stem(page))) chapters[block.getId()] = stem(page);
+    }
+    html = (await doc.convert({ standalone: true })) as string;
+  } finally {
+    LoggerManager.setLogger(before);
+  }
+  const file = join(outputDir, `${stem(config.main ?? 'index')}.html`);
+  await fs.writeFile(file, html.replace('</body>', `${ONE_PAGE_SCRIPT(chapters)}\n</body>`));
+  const warnings: BuildWarning[] = logger.getMessages().map((m) => {
+    const loc = m.getSourceLocation?.();
+    const where = loc?.getFile?.() ? relative(project.sourceDir, resolve(loc.getFile!()!)).split(sep).join('/') : null;
+    return {
+      source: where && pageSet.has(where) ? fromProject(project, where) : null,
+      line: loc?.getLineNumber?.() ?? null,
+      level: /error|fatal/i.test(String(m.getSeverity?.() ?? '')) ? 'error' : 'warning',
+      message: String(m.getText?.() ?? m),
+      type: null,
+      phase: 'read',
+    };
+  });
+  const version = mainAttributes.revnumber ?? '';
+  return { html: file, variables: mainAttributes, version, release: version, warnings };
 }
