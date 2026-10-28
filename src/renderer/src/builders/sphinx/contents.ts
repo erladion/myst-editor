@@ -1,7 +1,7 @@
 // Sphinx's tables of contents: toctree directives in the pages.
 import type { Node as PMNode } from 'prosemirror-model';
 import type { EditorState } from 'prosemirror-state';
-import type { SphinxProject } from '../../../../shared/api';
+import type { Project } from '../../../../shared/api';
 import { addTocEntry, entryFor, globIncludes, insertTocEntry, removeTocEntries, retarget, takeTocEntry } from '../../../../core/toctree';
 import { loadDocument } from '../../../../core/document';
 import { configFor } from '../../../../shared/projects';
@@ -23,7 +23,7 @@ const hasToctree = (text: string) => /^\s*(`{3,}|~{3,}|:{3,})\{toctree\}/m.test(
 
 // The page with `docname` added to the end of its first table of contents. Null if
 // a :glob: pattern there already takes it in (or there's no toctree).
-function withEntry(state: EditorState, project: SphinxProject | null, tocPage: string, docname: string) {
+function withEntry(state: EditorState, project: Project | null, tocPage: string, docname: string) {
   const fromDir = dirname(docnameOf(project, tocPage));
   const [toc] = toctrees(state.doc);
   if (!toc || globIncludes(toc.node.attrs.source, docname, fromDir)) return null;

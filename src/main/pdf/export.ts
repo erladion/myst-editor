@@ -5,8 +5,8 @@ import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell } from 'electro
 import { promises as fs } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
 import type { PdfDef } from '../../core/editor-config.js';
-import type { PdfResult, SphinxProject } from '../../shared/api.js';
-import type { SphinxWarning } from '../../shared/sphinx.js';
+import type { PdfResult, Project } from '../../shared/api.js';
+import type { BuildWarning } from '../../shared/build.js';
 import type { SphinxManager } from '../sphinx/manager.js';
 import { current, requireProject, toWindow } from '../state.js';
 import { loadSettings, updateSettings } from '../settings.js';
@@ -19,7 +19,7 @@ import { headingPages, outlineOf } from './outline.js';
 let running: AbortController | null = null;
 
 // A file name for the project's PDF: its name, without characters file systems refuse.
-export const pdfName = (project: SphinxProject) => project.name.replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'manual';
+export const pdfName = (project: Project) => project.name.replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'manual';
 // The last PDF made: the only file the window may ask to open.
 let exported: string | null = null;
 
@@ -113,11 +113,11 @@ const plain = (e: unknown) => (e instanceof Error ? e.message : String(e)).repla
 // went wrong; `warnings` are the one-page build's.
 export async function makePdf(
   root: string,
-  project: SphinxProject,
+  project: Project,
   manager: SphinxManager,
   signal: AbortSignal,
   step: (s: string) => void,
-): Promise<{ pdf: Uint8Array; pages: number; warnings: SphinxWarning[] }> {
+): Promise<{ pdf: Uint8Array; pages: number; warnings: BuildWarning[] }> {
   step('Building the pages with Sphinx…');
   const settings: PdfDef = project.config.editor.pdf;
   if (settings.css && !settings.cssPath) throw new Error(`The PDF stylesheet must be in the opened folder: ${settings.css}`);

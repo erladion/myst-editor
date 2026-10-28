@@ -3,24 +3,16 @@
 import { createHash } from 'node:crypto';
 import { createWriteStream, existsSync, mkdirSync, promises as fs, readFileSync, renameSync, rmSync, writeFileSync, type WriteStream } from 'node:fs';
 import { join } from 'node:path';
-import type { SphinxProject } from '../../shared/api.js';
+import type { Project } from '../../shared/api.js';
 import { fromProject } from '../../shared/projects.js';
-import {
-  mergeWarnings,
-  usable,
-  type BuildResult,
-  type EnvironmentChoice,
-  type PythonCandidate,
-  type SphinxInfo,
-  type SphinxState,
-  type SphinxStatus,
-  type SphinxWarning,
-} from '../../shared/sphinx.js';
+import { mergeWarnings, usable, type BuildResult, type EnvironmentChoice, type PythonCandidate } from '../../shared/sphinx.js';
+import { type BuildInfo, type BuildState, type BuildStatus, type BuildWarning } from '../../shared/build.js';
 import { ensureEnvironment, environmentIsCurrent, findUv, hasManagedPython, uvEnv, type EnvPaths } from './environment.js';
 import { planEnvironment } from './discover.js';
 import { existingEnv, findPythons, probePython } from './pythons.js';
 import { canDownload } from './network.js';
 import { run, CommandError } from './run.js';
+import type { Builder } from '../builders/builder.js';
 
 export interface ManagerOptions {
   root: string; // the opened folder
@@ -35,7 +27,7 @@ export interface ManagerOptions {
   extraEnv: () => Record<string, string>;
   // The writer's saved choice for this project; managed if none.
   environment: EnvironmentChoice | null;
-  emit: (state: SphinxState) => void;
+  emit: (state: BuildState) => void;
 }
 
 // What uv prints when it can't reach the network.
@@ -50,12 +42,12 @@ const BUSY_GRACE_MS = 2000;
 interface SavedState {
   version: 1;
   key: string; // what the results depend on: see buildKey()
-  info: SphinxInfo;
+  info: BuildInfo;
 }
 const BUILD_TIMEOUT_MS = 20 * 60_000;
 
-export class SphinxManager {
-  private state: SphinxState = { status: { kind: 'off' }, info: null, environment: null };
+export class SphinxManager implements Builder {
+  private state: BuildState = { status: { kind: 'off' }, info: null, environment: null };
   private abort = new AbortController();
   private python: string | null = null;
   private building = false;
@@ -71,7 +63,7 @@ export class SphinxManager {
   private readonly paths: EnvPaths;
 
   constructor(
-    private project: SphinxProject,
+    private project: Project,
     private opts: ManagerOptions,
   ) {
     this.key = createHash('sha256').update(project.sourceDir).digest('hex').slice(0, 16);
@@ -84,7 +76,7 @@ export class SphinxManager {
     return join(this.opts.dataDir, 'builds', this.key, 'html');
   }
 
-  getState(): SphinxState {
+  getState(): BuildState {
     return this.state;
   }
 
@@ -190,7 +182,7 @@ export class SphinxManager {
     this.logTail = (this.logTail + text).slice(-200_000);
   }
 
-  private setStatus(status: SphinxStatus) {
+  private setStatus(status: BuildStatus) {
     if (this.state.status.kind === 'setting-up' && status.kind !== 'setting-up') this.busyUntil = Date.now() + BUSY_GRACE_MS;
     this.state = { ...this.state, status };
     this.opts.emit(this.state);
@@ -314,7 +306,7 @@ export class SphinxManager {
   // The whole project as one page, with Sphinx's plain theme, for a PDF: the page's
   // file. Built apart from the preview's builds (its own folders), so neither makes
   // the other read every page again.
-  async buildOnePage(signal: AbortSignal, siteCss = true): Promise<{ html: string; variables: Record<string, string>; version: string; release: string; warnings: SphinxWarning[] }> {
+  async buildOnePage(signal: AbortSignal, siteCss = true): Promise<{ html: string; variables: Record<string, string>; version: string; release: string; warnings: BuildWarning[] }> {
     if (!this.python) throw new Error('Sphinx isn’t set up for this project yet. Allow it to build first (the banner at the top).');
     const dir = join(this.opts.dataDir, 'builds', this.key, 'pdf');
     const resultFile = join(dir, 'result.json');
@@ -345,7 +337,7 @@ export class SphinxManager {
     }
     this.fresh = false;
     const previous = fresh ? [] : (this.state.info?.warnings ?? []);
-    const info: SphinxInfo = {
+    const info: BuildInfo = {
       sphinxVersion: result.sphinx_version ?? '',
       rootDoc: result.root_doc ?? 'index',
       docs: result.docs ?? {},

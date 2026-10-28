@@ -23,10 +23,10 @@ export const mystEditing: EditingFormat = {
     },
   },
   block: directiveInfo,
-  dialect(config, confPy) {
+  dialect(config, marker) {
     const { extensions } = mystConfig(config);
-    return confPy
-      ? { label: 'Sphinx project', detail: `MyST extensions from ${confPy}: ${extensions.length ? extensions.join(', ') : 'none'}` }
+    return marker
+      ? { label: 'Sphinx project', detail: `MyST extensions from ${marker}: ${extensions.length ? extensions.join(', ') : 'none'}` }
       : { label: 'Markdown folder', detail: 'No conf.py found — all MyST extensions enabled' };
   },
   source: mystSource,

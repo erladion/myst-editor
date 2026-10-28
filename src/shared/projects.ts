@@ -1,12 +1,12 @@
 // Which Sphinx project a page belongs to.
 import { DEFAULT_CONFIG } from '../core/project-config.js';
 import type { PageConfig } from '../core/format.js';
-import type { ProjectInfo, SphinxProject } from './api.js';
+import type { ProjectInfo, Project } from './api.js';
 
 // The innermost project whose source directory contains `path` (relative to the
 // opened folder), or null for pages outside every project.
-export function projectFor(projects: SphinxProject[], path: string): SphinxProject | null {
-  let best: SphinxProject | null = null;
+export function projectFor(projects: Project[], path: string): Project | null {
+  let best: Project | null = null;
   for (const p of projects) {
     const inside = p.dir === '' || path === p.dir || path.startsWith(p.dir + '/');
     if (inside && (!best || p.dir.length > best.dir.length)) best = p;
@@ -20,11 +20,11 @@ export function configFor(info: ProjectInfo, path: string): PageConfig {
 }
 
 // A path relative to a project's source directory, from one relative to the opened folder.
-export function withinProject(project: SphinxProject, path: string): string {
+export function withinProject(project: Project, path: string): string {
   return project.dir ? path.slice(project.dir.length + 1) : path;
 }
 
 // The reverse of withinProject.
-export function fromProject(project: SphinxProject, path: string): string {
+export function fromProject(project: Project, path: string): string {
   return project.dir ? `${project.dir}/${path}` : path;
 }

@@ -8,7 +8,8 @@ import { join } from 'node:path';
 import { openProject } from '../../src/main/project.js';
 import { SphinxManager } from '../../src/main/sphinx/manager.js';
 import { findPythons } from '../../src/main/sphinx/pythons.js';
-import type { EnvironmentChoice, SphinxState } from '../../src/shared/sphinx.js';
+import type { EnvironmentChoice } from '../../src/shared/sphinx.js';
+import type { BuildState } from '../../src/shared/build.js';
 
 const repo = join(import.meta.dirname, '..', '..');
 const shared = process.env.MYSTEDITOR_TEST_DATA ?? join(tmpdir(), 'mysteditor-sphinx-data');
@@ -28,7 +29,7 @@ async function project(venvPackages?: string[]) {
 }
 
 function manager(info: Awaited<ReturnType<typeof openProject>>, dataDir: string, environment: EnvironmentChoice) {
-  const states: SphinxState[] = [];
+  const states: BuildState[] = [];
   let notify = () => {};
   const m = new SphinxManager(info.projects[0], {
     root: info.root,
@@ -46,7 +47,7 @@ function manager(info: Awaited<ReturnType<typeof openProject>>, dataDir: string,
     },
   });
   const settled = () =>
-    new Promise<SphinxState>((resolve) => {
+    new Promise<BuildState>((resolve) => {
       const check = () => {
         const last = states[states.length - 1];
         if (last && (last.status.kind === 'ready' || last.status.kind === 'error')) resolve(last);

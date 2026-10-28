@@ -38,7 +38,7 @@ function topFolder() {
 describe('a folder with two Sphinx projects and a shared .venv', () => {
   it('finds both projects, each with its own MyST settings', async () => {
     const info = await openProject(topFolder());
-    expect(info.projects.map((p) => [p.name, p.dir, p.confPy, mystConfig(p.config).extensions])).toEqual([
+    expect(info.projects.map((p) => [p.name, p.dir, p.marker, mystConfig(p.config).extensions])).toEqual([
       ['Admin Guide', 'admin-guide', 'admin-guide/conf.py', []],
       ['User Guide', 'user-guide', 'user-guide/conf.py', ['colon_fence']],
     ]);

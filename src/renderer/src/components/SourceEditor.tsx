@@ -17,7 +17,7 @@ import { forEachDiagnostic, lintGutter, openLintPanel, setDiagnostics, type Diag
 import { tags } from '@lezer/highlight';
 import { imageFiles } from '../editor/images';
 import { registerSourceView } from '../emacs';
-import type { SphinxWarning } from '../../../shared/sphinx';
+import type { BuildWarning } from '../../../shared/build';
 import type { ValeAlert } from '../../../shared/vale';
 import { columnOffset } from '../../../core/vale';
 import type { SourceSyntax } from '../formats/editing';
@@ -25,7 +25,7 @@ import type { SourceSyntax } from '../formats/editing';
 interface Props {
   text: string;
   onChange: (text: string) => void;
-  problems: SphinxWarning[];
+  problems: BuildWarning[];
   vale: ValeAlert[]; // for the text as last saved
   onAcceptWord?: (word: string) => void;
   // The line the writer is at (cursor or top of the scrolled view), for the preview.
@@ -100,7 +100,7 @@ const theme = EditorView.theme({
   '.cm-panel.cm-search label': { color: 'var(--fg)' },
 });
 
-function diagnostics(state: EditorState, problems: SphinxWarning[], vale: ValeAlert[], accept?: (word: string) => void): Diagnostic[] {
+function diagnostics(state: EditorState, problems: BuildWarning[], vale: ValeAlert[], accept?: (word: string) => void): Diagnostic[] {
   const sphinx = problems
     .filter((w) => w.line)
     .map((w): Diagnostic => {

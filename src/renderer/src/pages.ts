@@ -2,8 +2,8 @@
 // builders/contents.ts), and their references when they're renamed or moved.
 import type { Node as PMNode } from 'prosemirror-model';
 import type { EditorState } from 'prosemirror-state';
-import type { ProjectInfo, SphinxProject } from '../../shared/api';
-import type { SphinxInfo } from '../../shared/sphinx';
+import type { ProjectInfo, Project } from '../../shared/api';
+import type { BuildInfo } from '../../shared/build';
 import type { Rename } from '../../core/rename';
 import { configFor } from '../../shared/projects';
 import { isIndexPage, pageStem } from '../../core/format';
@@ -29,29 +29,29 @@ export function pageSlug(title: string): string {
 }
 
 // A page's Sphinx name: its path in the project's source directory, without its extension.
-export function docnameOf(project: SphinxProject | null, path: string): string {
+export function docnameOf(project: Project | null, path: string): string {
   const rel = project?.dir && path.startsWith(project.dir + '/') ? path.slice(project.dir.length + 1) : path;
   return pageStem(rel);
 }
 
-export function contentsPages(ws: Workspace, project: SphinxProject | null, info: SphinxInfo | null, extra: (string | null)[]): Promise<string[]> {
+export function contentsPages(ws: Workspace, project: Project | null, info: BuildInfo | null, extra: (string | null)[]): Promise<string[]> {
   return contentsFor(project).pages(ws, project, info, extra);
 }
 
-export function addToContents(ws: Workspace, project: SphinxProject | null, tocPage: string, page: string): Promise<boolean> {
+export function addToContents(ws: Workspace, project: Project | null, tocPage: string, page: string): Promise<boolean> {
   return contentsFor(project).add(ws, project, tocPage, page);
 }
 
-export function listingPages(ws: Workspace, project: SphinxProject | null, info: SphinxInfo | null, page: string): Promise<string[]> {
+export function listingPages(ws: Workspace, project: Project | null, info: BuildInfo | null, page: string): Promise<string[]> {
   return contentsFor(project).listing(ws, project, info, page);
 }
 
-export function removeFromContents(ws: Workspace, project: SphinxProject | null, pages: string[], page: string): Promise<string[]> {
+export function removeFromContents(ws: Workspace, project: Project | null, pages: string[], page: string): Promise<string[]> {
   return contentsFor(project).remove(ws, project, pages, page);
 }
 
 // Where a new page goes by default: the current page's folder.
-export function folderOf(path: string | null, project: SphinxProject | null): string {
+export function folderOf(path: string | null, project: Project | null): string {
   if (path) return dirname(path);
   return project?.dir ?? '';
 }
@@ -73,7 +73,7 @@ export function defaultContents(project: ProjectInfo, folder: string, pages: str
   }
 }
 
-export function moveInContents(ws: Workspace, project: SphinxProject | null, move: ContentsMove): Promise<string | null> {
+export function moveInContents(ws: Workspace, project: Project | null, move: ContentsMove): Promise<string | null> {
   return contentsFor(project).move(ws, project, move);
 }
 
@@ -119,7 +119,7 @@ export function retitle(state: EditorState, title: string) {
 // Every reference to a renamed or moved page, in the pages that may have one (those
 // mentioning its old file name), and the moved page's own relative references when
 // it changed folder. Returns the pages that couldn't be updated.
-export async function renameReferences(ws: Workspace, project: SphinxProject | null, oldPath: string, newPath: string): Promise<string[]> {
+export async function renameReferences(ws: Workspace, project: Project | null, oldPath: string, newPath: string): Promise<string[]> {
   const inProject = (p: string) => (project?.dir && p.startsWith(project.dir + '/') ? p.slice(project.dir.length + 1) : p);
   const docRename: Rename = { from: pageStem(inProject(oldPath)), to: pageStem(inProject(newPath)) };
   const fileRename: Rename = { from: inProject(oldPath), to: inProject(newPath) };

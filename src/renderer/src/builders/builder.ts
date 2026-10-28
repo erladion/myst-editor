@@ -1,0 +1,26 @@
+// What the editor needs from a project's builder: where its tables of contents are
+// kept, and its rules for cross-references. Sphinx's are in sphinx/.
+import type { Project } from '../../../shared/api';
+import type { BuildInfo } from '../../../shared/build';
+import type { Resolution, Suggestion } from '../build';
+import type { Contents } from './contents';
+import { sphinxContents } from './sphinx/contents';
+import { sphinxReferences } from './sphinx/references';
+
+export interface References {
+  // What a role (`role`, `target`) or a link written in `fromSource` points at.
+  role(info: BuildInfo | null, fromSource: string | null, role: string, target: string): Resolution;
+  link(info: BuildInfo | null, fromSource: string | null, href: string): Resolution;
+  // Targets for a role, for autocomplete.
+  suggest(info: BuildInfo | null, fromSource: string | null, role: string): Suggestion[];
+}
+
+export interface ProjectBuilder {
+  contents: Contents;
+  references: References;
+}
+
+const SPHINX: ProjectBuilder = { contents: sphinxContents, references: sphinxReferences };
+
+// A project's (pages outside every project: Sphinx's rules, as for a Markdown folder).
+export const builderFor = (_project: Project | null): ProjectBuilder => SPHINX;

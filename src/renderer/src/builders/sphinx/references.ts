@@ -1,15 +1,9 @@
-// Questions the UI asks of the latest Sphinx build.
-import type { SphinxInfo, SphinxObject, SphinxWarning } from '../../shared/sphinx';
-import { dirname, join } from './paths';
-
-export function docnameOf(info: SphinxInfo, source: string): string | null {
-  for (const [docname, doc] of Object.entries(info.docs)) if (doc.source === source) return docname;
-  return null;
-}
-
-export function problemsIn(info: SphinxInfo | null, source: string | null): SphinxWarning[] {
-  return info && source ? info.warnings.filter((w) => w.source === source) : [];
-}
+// Sphinx's cross-references: what roles and links point at, by Sphinx's rules, and
+// the targets a role can have, from the last build.
+import type { BuildInfo, BuildTarget } from '../../../../shared/build';
+import { dirname, join } from '../../paths';
+import { docnameOf, type Resolution, type Suggestion } from '../../build';
+import type { References } from '../builder';
 
 // A {doc} target written in `fromSource`: relative to its folder unless it starts with "/".
 function docTarget(fromDoc: string | null, target: string): string | null {
@@ -17,16 +11,11 @@ function docTarget(fromDoc: string | null, target: string): string | null {
   return clean.startsWith('/') ? join(clean) : join(dirname(fromDoc ?? ''), clean);
 }
 
-export interface Resolution {
-  title: string | null;
-  broken: boolean; // only claimed for roles whose targets the build fully knows
-}
-
 const UNKNOWN: Resolution = { title: null, broken: false };
 
 // What a cross-reference role points at, by Sphinx's rules: labels and terms are
 // case-insensitive, {doc} paths are relative to the current page.
-export function resolveRole(info: SphinxInfo | null, fromSource: string | null, role: string, target: string): Resolution {
+function resolveRole(info: BuildInfo | null, fromSource: string | null, role: string, target: string): Resolution {
   if (!info) return UNKNOWN;
   const fromDoc = fromSource ? docnameOf(info, fromSource) : null;
   const find = (type: string, name: string) => info.objects.find((o) => o.domain === 'std' && o.type === type && o.name === name);
@@ -50,7 +39,7 @@ export function resolveRole(info: SphinxInfo | null, fromSource: string | null, 
 }
 
 // `[](target)` links: MyST resolves them to a label, a page, or a URL.
-export function resolveLink(info: SphinxInfo | null, fromSource: string | null, href: string): Resolution {
+function resolveLink(info: BuildInfo | null, fromSource: string | null, href: string): Resolution {
   if (!info || /^[a-z][\w+.-]*:/i.test(href)) return UNKNOWN;
   const target = href.replace(/^#/, '');
   const label = info.objects.find((o) => o.domain === 'std' && o.type === 'label' && o.name === target.toLowerCase());
@@ -61,15 +50,10 @@ export function resolveLink(info: SphinxInfo | null, fromSource: string | null, 
   return doc ? { title: doc.title, broken: false } : { title: null, broken: true };
 }
 
-export interface Suggestion {
-  value: string;
-  label: string;
-}
-
 // Targets for a cross-reference role, for autocomplete.
-export function suggestTargets(info: SphinxInfo | null, fromSource: string | null, role: string): Suggestion[] {
+function suggestTargets(info: BuildInfo | null, fromSource: string | null, role: string): Suggestion[] {
   if (!info) return [];
-  const std = (type: string) => info.objects.filter((o: SphinxObject) => o.domain === 'std' && o.type === type);
+  const std = (type: string) => info.objects.filter((o: BuildTarget) => o.domain === 'std' && o.type === type);
   switch (role) {
     case 'ref':
     case 'numref':
@@ -92,34 +76,5 @@ export function suggestTargets(info: SphinxInfo | null, fromSource: string | nul
   }
 }
 
-export interface TocEntry {
-  docname: string;
-  source: string;
-  title: string;
-  children: TocEntry[];
-  parent: string | null; // the page whose table of contents lists it; null at the top or outside
-}
 
-// The page hierarchy from the root document's toctrees, and pages not in it.
-// `order` replaces some pages' children (a move that the next build will confirm).
-export function tocTree(info: SphinxInfo, order: Record<string, string[]> = {}): { root: TocEntry | null; orphans: TocEntry[] } {
-  const seen = new Set<string>();
-  const entry = (docname: string, parent: string | null): TocEntry | null => {
-    const doc = info.docs[docname];
-    if (!doc || seen.has(docname)) return null;
-    seen.add(docname);
-    return {
-      docname,
-      source: doc.source,
-      title: doc.title ?? docname,
-      parent,
-      children: (order[docname] ?? doc.children).map((c) => entry(c, docname)).filter((e): e is TocEntry => !!e),
-    };
-  };
-  const root = entry(info.rootDoc, null);
-  const orphans = Object.keys(info.docs)
-    .filter((d) => !seen.has(d))
-    .sort()
-    .map((d) => ({ docname: d, source: info.docs[d].source, title: info.docs[d].title ?? d, children: [], parent: null }));
-  return { root, orphans };
-}
+export const sphinxReferences: References = { role: resolveRole, link: resolveLink, suggest: suggestTargets };

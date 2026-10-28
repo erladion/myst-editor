@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openProject } from '../../src/main/project.js';
 import { SphinxManager } from '../../src/main/sphinx/manager.js';
-import type { SphinxState } from '../../src/shared/sphinx.js';
+import type { BuildState } from '../../src/shared/build.js';
 
 const repo = join(import.meta.dirname, '..', '..');
 
@@ -14,7 +14,7 @@ const repo = join(import.meta.dirname, '..', '..');
 async function setUp(work = mkdtempSync(join(tmpdir(), 'mysteditor-sphinx-')), extraEnv: Record<string, string> = {}) {
   if (!existsSync(join(work, 'project'))) cpSync(join(repo, 'e2e', 'fixture'), join(work, 'project'), { recursive: true });
   const project = await openProject(join(work, 'project'));
-  const states: SphinxState[] = [];
+  const states: BuildState[] = [];
   let notify = () => {};
   const manager = new SphinxManager(project.projects[0], {
     root: project.root,
@@ -32,8 +32,8 @@ async function setUp(work = mkdtempSync(join(tmpdir(), 'mysteditor-sphinx-')), e
       notify();
     },
   });
-  const until = (pred: (s: SphinxState) => boolean, after = 0) =>
-    new Promise<SphinxState>((resolve, reject) => {
+  const until = (pred: (s: BuildState) => boolean, after = 0) =>
+    new Promise<BuildState>((resolve, reject) => {
       const check = () => {
         const hit = states.slice(after).find(pred);
         const failed = states.slice(after).find((s) => s.status.kind === 'error');
@@ -111,7 +111,7 @@ describe('SphinxManager', () => {
 
   it('asks before running anything for an untrusted project', async () => {
     const { project } = await setUp();
-    let state: SphinxState | null = null;
+    let state: BuildState | null = null;
     const manager = new SphinxManager(project.projects[0], {
     root: project.root,
     searchDirs: project.projects.map((x) => x.sourceDir), buildInputs: () => project.buildInputs, extraEnv: () => ({}), dataDir: join(tmpdir(), 'unused'), appRoot: repo, resourcesPath: null, trusted: false, environment: null, emit: (s) => (state = s) });

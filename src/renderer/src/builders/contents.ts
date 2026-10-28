@@ -1,10 +1,10 @@
 // A project's tables of contents: which pages list which, and changing that when
 // pages are added, removed or moved. Where they're kept is the builder's business
 // (Sphinx: toctree directives in the pages), so each builder has its own.
-import type { SphinxProject } from '../../../shared/api';
-import type { SphinxInfo } from '../../../shared/sphinx';
+import type { Project } from '../../../shared/api';
+import type { BuildInfo } from '../../../shared/build';
 import type { Workspace } from '../workspace';
-import { sphinxContents } from './sphinx/contents';
+import { builderFor } from './builder';
 
 // Moving a page in the contents: out of one page's table of contents (if it was in
 // one) and into another's, before a given page or at the end. The page's file stays
@@ -19,15 +19,15 @@ export interface ContentsMove {
 export interface Contents {
   // Pages that could list a new page in their contents: from the last build, or
   // (without one) by reading the likely ones, and `extra`.
-  pages(ws: Workspace, project: SphinxProject | null, info: SphinxInfo | null, extra: (string | null)[]): Promise<string[]>;
+  pages(ws: Workspace, project: Project | null, info: BuildInfo | null, extra: (string | null)[]): Promise<string[]>;
   // `page` added to the end of `tocPage`'s contents. False if it couldn't be.
-  add(ws: Workspace, project: SphinxProject | null, tocPage: string, page: string): Promise<boolean>;
+  add(ws: Workspace, project: Project | null, tocPage: string, page: string): Promise<boolean>;
   // Pages whose contents list `page`.
-  listing(ws: Workspace, project: SphinxProject | null, info: SphinxInfo | null, page: string): Promise<string[]>;
+  listing(ws: Workspace, project: Project | null, info: BuildInfo | null, page: string): Promise<string[]>;
   // `page` taken out of the contents on `pages`; the pages that couldn't be changed.
-  remove(ws: Workspace, project: SphinxProject | null, pages: string[], page: string): Promise<string[]>;
+  remove(ws: Workspace, project: Project | null, pages: string[], page: string): Promise<string[]>;
   // Null when done, else what went wrong, for the writer.
-  move(ws: Workspace, project: SphinxProject | null, move: ContentsMove): Promise<string | null>;
+  move(ws: Workspace, project: Project | null, move: ContentsMove): Promise<string | null>;
 }
 
-export const contentsFor = (_project: SphinxProject | null): Contents => sphinxContents;
+export const contentsFor = (project: Project | null): Contents => builderFor(project).contents;

@@ -6,7 +6,7 @@
 // when a build finishes, node views are told to redraw (refreshViews).
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { ProjectInfo } from '../../../shared/api';
-import type { SphinxState } from '../../../shared/sphinx';
+import type { BuildState } from '../../../shared/build';
 import type { SourceMap } from '../../../core/sourcemap';
 import { configFor, projectFor } from '../../../shared/projects';
 import { DEFAULT_CONFIG } from '../../../core/project-config';
@@ -15,7 +15,7 @@ import type { Workspace } from '../workspace';
 import type { EditorContext } from '../editor/context';
 import type { DialogApi } from '../components/Dialogs';
 import { resolveRef } from '../paths';
-import { resolveLink, resolveRole, suggestTargets } from '../sphinx';
+import { builderFor } from '../builders/builder';
 import type { Node as PMNode } from 'prosemirror-model';
 import { loadDocument } from '../../../core/document';
 
@@ -43,7 +43,7 @@ function imageName(file: File): string {
 
 export function useEditorContext(dialogs: RefObject<DialogApi | null>, ws: Workspace | null, openPage: (path: string) => void) {
   // Build state per Sphinx project id.
-  const [buildStates, setBuildStates] = useState<Record<string, SphinxState>>({});
+  const [buildStates, setBuildStates] = useState<Record<string, BuildState>>({});
   const ctxRef = useRef({ ws, openPage, states: buildStates });
   ctxRef.current = { ws, openPage, states: buildStates };
   const listeners = useRef(new Set<() => void>());
@@ -109,9 +109,9 @@ export function useEditorContext(dialogs: RefObject<DialogApi | null>, ws: Works
         const w = current();
         if (w?.current) w.absorb(w.current, map);
       },
-      resolveRole: (role, target) => resolveRole(build(), current()?.current ?? null, role, target),
-      resolveLink: (href) => resolveLink(build(), current()?.current ?? null, href),
-      suggest: (role) => suggestTargets(build(), current()?.current ?? null, role),
+      resolveRole: (role, target) => builderFor(pageProject()).references.role(build(), current()?.current ?? null, role, target),
+      resolveLink: (href) => builderFor(pageProject()).references.link(build(), current()?.current ?? null, href),
+      suggest: (role) => builderFor(pageProject()).references.suggest(build(), current()?.current ?? null, role),
       async otherPages() {
         const w = current();
         if (!w?.current) return [];
@@ -138,19 +138,19 @@ export function useEditorContext(dialogs: RefObject<DialogApi | null>, ws: Works
 
   // Build results: keep them, and let node views refresh their cross-references.
   useEffect(() => {
-    const refresh = (states: Record<string, SphinxState>) => {
+    const refresh = (states: Record<string, BuildState>) => {
       ctxRef.current.states = states;
       setBuildStates(states);
       refreshViews();
     };
-    const off = api.onSphinxState(({ project, state }) => refresh({ ...ctxRef.current.states, [project]: state }));
-    void api.sphinxState().then(refresh);
+    const off = api.onBuildState(({ project, state }) => refresh({ ...ctxRef.current.states, [project]: state }));
+    void api.buildStates().then(refresh);
     return off;
   }, [refreshViews]);
 
   // A folder was opened: its projects' states, as they are now.
   const reloadBuildStates = useCallback(() => {
-    void api.sphinxState().then((states) => {
+    void api.buildStates().then((states) => {
       ctxRef.current.states = states;
       setBuildStates(states);
     });

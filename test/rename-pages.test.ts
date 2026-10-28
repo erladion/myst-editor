@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { Workspace } from '../src/renderer/src/workspace.js';
 import { renameReferences, retitle } from '../src/renderer/src/pages.js';
-import type { MystApi, ProjectInfo, SphinxProject } from '../src/shared/api.js';
+import type { MystApi, ProjectInfo, Project } from '../src/shared/api.js';
 import { DEFAULT_CONFIG } from '../src/core/project-config.js';
 
 function setup(files: Record<string, string>) {
@@ -14,7 +14,7 @@ function setup(files: Record<string, string>) {
     writeFile: async (p: string, text: string) => void (files[p] = text),
     setUnsaved: () => {},
   } as unknown as MystApi;
-  const project: SphinxProject = { id: 'p', name: 'Docs', dir: 'docs', sourceDir: '/x/docs', confPy: 'docs/conf.py', config: DEFAULT_CONFIG };
+  const project: Project = { id: 'p', name: 'Docs', dir: 'docs', sourceDir: '/x/docs', builder: 'sphinx', marker: 'docs/conf.py', config: DEFAULT_CONFIG };
   const info: ProjectInfo = { root: '/x', name: 'x', projects: [project], defaultConfig: DEFAULT_CONFIG, files: Object.keys(files).sort(), titles: {}, buildInputs: '' };
   return { ws: new Workspace(api, info), project, files };
 }

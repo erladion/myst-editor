@@ -1,11 +1,11 @@
 // Page tree: one section per Sphinx project in the opened folder, plus other files.
 import { memo, useEffect, useMemo, useState, type ReactElement } from 'react';
-import type { SphinxProject } from '../../../shared/api';
-import type { SphinxInfo } from '../../../shared/sphinx';
+import type { Project } from '../../../shared/api';
+import type { BuildInfo } from '../../../shared/build';
 import { projectFor } from '../../../shared/projects';
 import { isIndexPage, pageStem } from '../../../core/format';
 import { basename } from '../paths';
-import { tocTree, type TocEntry } from '../sphinx';
+import { tocTree, type TocEntry } from '../build';
 import type { ContentsMove } from '../pages';
 import { SearchPanel } from './SearchPanel';
 
@@ -13,8 +13,8 @@ interface Props {
   projectName: string;
   files: string[]; // relative to the opened folder
   titles: Record<string, string>;
-  projects: SphinxProject[];
-  builds: Record<string, SphinxInfo | null>; // by project id; when built, pages follow the toctree
+  projects: Project[];
+  builds: Record<string, BuildInfo | null>; // by project id; when built, pages follow the toctree
   current: string | null;
   unsaved: Set<string>;
   onOpen: (path: string) => void;
@@ -118,7 +118,7 @@ export const Sidebar = memo(function Sidebar({ projectName, files, titles, proje
   // Section headings only when there's more than one group of pages. Projects that
   // share a name (conf.py's `project`) are told apart by their folders.
   const headings = projects.length + (sections.other.length ? 1 : 0) > 1;
-  const heading = (p: SphinxProject) => (projects.some((q) => q !== p && q.name === p.name) ? `${p.name} (${p.dir || 'top folder'})` : p.name);
+  const heading = (p: Project) => (projects.some((q) => q !== p && q.name === p.name) ? `${p.name} (${p.dir || 'top folder'})` : p.name);
 
   const fileItem = (file: string) => (
     <li key={file}>
@@ -169,7 +169,7 @@ export const Sidebar = memo(function Sidebar({ projectName, files, titles, proje
             {projects.map((project) => (
               <section key={project.id} className="tree-section" aria-label={heading(project)}>
                 {headings && (
-                  <div className="section-name" title={project.confPy}>
+                  <div className="section-name" title={project.marker}>
                     {heading(project)}
                   </div>
                 )}
@@ -229,10 +229,10 @@ export const Sidebar = memo(function Sidebar({ projectName, files, titles, proje
 interface ProjectPagesProps {
   onPageMenu: (e: React.MouseEvent, path: string, extra?: MenuItem[]) => void;
   onMove: (move: ContentsMove) => Promise<string | null>; // an error, or null
-  project: SphinxProject;
+  project: Project;
   files: string[];
   allFiles: Set<string>;
-  info: SphinxInfo | null | undefined; // shown as contents when present
+  info: BuildInfo | null | undefined; // shown as contents when present
   current: string | null;
   unsaved: Set<string>;
   onOpen: (path: string) => void;

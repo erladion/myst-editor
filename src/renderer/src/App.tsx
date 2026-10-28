@@ -5,7 +5,8 @@ import type { EditorView } from 'prosemirror-view';
 import type { Node as PMNode } from 'prosemirror-model';
 import type { EditorState } from 'prosemirror-state';
 import type { OpenProgress } from '../../shared/api';
-import type { EnvironmentChoice, SphinxState } from '../../shared/sphinx';
+import type { EnvironmentChoice } from '../../shared/sphinx';
+import type { BuildState } from '../../shared/build';
 import type { GitInfo } from '../../shared/git';
 import { configFor, projectFor } from '../../shared/projects';
 import { Editor } from './editor/Editor';
@@ -41,7 +42,7 @@ import { HistoryDialog } from './components/History';
 import { FindBar } from './components/FindBar';
 import { loadPlaces } from './places';
 import { contentsPages, defaultContents, folderOf, pageFolders } from './pages';
-import { problemsIn } from './sphinx';
+import { problemsIn } from './build';
 import { useStoredState } from './app/storedState';
 import { useEditorContext } from './app/editorContext';
 import { landingPage, useFolder } from './app/folder';
@@ -59,7 +60,7 @@ import { useStable } from './app/stable';
 const api = window.myst;
 const noop = () => () => {};
 const zero = () => 0;
-const NO_SPHINX: SphinxState = { status: { kind: 'off' }, info: null, environment: null };
+const NO_SPHINX: BuildState = { status: { kind: 'off' }, info: null, environment: null };
 
 export function App() {
   const dialogs = useRef<DialogApi>(null);
@@ -153,7 +154,7 @@ export function App() {
 
   const showLog = useCallback(async () => {
     const status = sphinx.status;
-    const log = activeProject ? await api.sphinxLog(activeProject.id) : '';
+    const log = activeProject ? await api.buildLog(activeProject.id) : '';
     const summary = status.kind === 'error' ? `${status.message}\n\n` : '';
     await dialogs.current?.showText({ title: 'Sphinx build', text: `${summary}${log.trim() || 'Nothing logged yet.'}` });
   }, [sphinx, activeProject]);
@@ -495,7 +496,7 @@ export function App() {
         {showProblems && anyBuilt && (
           <ProblemsPanel warnings={allWarnings} titles={ws.project.titles} current={ws.current} onOpen={(path, line) => void openProblem(path, line)} onClose={() => setShowProblems(false)} />
         )}
-        <StatusBar session={session} config={configFor(ws.project, session?.path ?? '')} confPy={pageProject?.confPy ?? null}>
+        <StatusBar session={session} config={configFor(ws.project, session?.path ?? '')} marker={pageProject?.marker ?? null}>
           {settingsProblems.length > 0 && (
             <button
               type="button"

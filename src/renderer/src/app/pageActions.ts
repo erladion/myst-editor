@@ -2,7 +2,7 @@
 // contents, delete, and put an earlier version back. Each keeps the tables of contents
 // and links in step (see pages.ts), and says what it couldn't do.
 import { useCallback, type RefObject } from 'react';
-import type { SphinxState } from '../../../shared/sphinx';
+import type { BuildState } from '../../../shared/build';
 import type { PageVersion } from '../../../shared/git';
 import { projectFor } from '../../../shared/projects';
 import type { Workspace } from '../workspace';
@@ -25,7 +25,7 @@ export function usePageActions(
   ws: Workspace | null,
   dialogs: RefObject<DialogApi | null>,
   openPage: (path: string) => Promise<boolean>,
-  buildStates: Record<string, SphinxState>,
+  buildStates: Record<string, BuildState>,
   close: Closers,
 ) {
   // Delete a page: to the trash, and out of the tables of contents that list it.

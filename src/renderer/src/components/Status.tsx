@@ -8,7 +8,7 @@ import type { Session } from '../workspace';
 interface StatusProps {
   session: Session | undefined;
   config: PageConfig;
-  confPy: string | null;
+  marker: string | null;
   children?: ReactNode; // build status
 }
 
@@ -31,7 +31,7 @@ function useWordCount(path: string | undefined, doc: PMNode | undefined) {
   return words;
 }
 
-export function StatusBar({ session, config, confPy, children }: StatusProps) {
+export function StatusBar({ session, config, marker, children }: StatusProps) {
   const words = useWordCount(session?.path, session?.state.doc);
   const status = session?.status;
   const label =
@@ -42,7 +42,7 @@ export function StatusBar({ session, config, confPy, children }: StatusProps) {
     status.kind === 'unsafe' ? 'Not saved' :
     status.kind === 'conflict' ? 'Changed on disk' :
     'Save failed';
-  const dialect = editingFor(config).dialect(config, confPy);
+  const dialect = editingFor(config).dialect(config, marker);
   return (
     <footer className="statusbar">
       <span className={`save-status ${status?.kind ?? ''}`} role="status" aria-live="polite">

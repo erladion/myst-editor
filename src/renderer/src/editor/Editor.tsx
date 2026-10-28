@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type MutableRefObject } from 'react';
 import { TextSelection, type EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
-import type { SphinxWarning } from '../../../shared/sphinx';
+import type { BuildWarning } from '../../../shared/build';
 import type { EditorContext } from './context';
 import { nodeViews } from './nodeviews';
 import { imageInput } from './images';
@@ -23,7 +23,7 @@ interface Props {
   viewRef: MutableRefObject<EditorView | null>;
   onView: (view: EditorView | null) => void;
   // Sphinx warnings for this page, located via the text as last saved.
-  problems: SphinxWarning[];
+  problems: BuildWarning[];
   savedText: string;
   // A source line to move the cursor to (e.g. from the problems list).
   reveal: number | null;

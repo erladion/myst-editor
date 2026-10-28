@@ -2,7 +2,7 @@
 import type { PageConfig } from '../../../core/format';
 import type { ConditionsDef, OptionDef } from '../../../core/editor-config';
 import type { SourceMap } from '../../../core/sourcemap';
-import type { Resolution, Suggestion } from '../sphinx';
+import type { Resolution, Suggestion } from '../build';
 import type { Node as PMNode } from 'prosemirror-model';
 import type { EditorState, Transaction } from 'prosemirror-state';
 

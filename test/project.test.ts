@@ -24,7 +24,7 @@ describe('openProject', () => {
     const root = project();
     const p = await openProject(root);
     expect(p.projects).toHaveLength(1);
-    expect(p.projects[0]).toMatchObject({ dir: 'docs', sourceDir: join(p.root, 'docs'), confPy: 'docs/conf.py', config: { extensions: ['colon_fence'] } });
+    expect(p.projects[0]).toMatchObject({ dir: 'docs', sourceDir: join(p.root, 'docs'), builder: 'sphinx', marker: 'docs/conf.py', config: { extensions: ['colon_fence'] } });
     expect(p.files).toEqual(['docs/guide/a.md', 'docs/index.md', 'outside/secret.md']);
     expect(p.titles).toEqual({ 'docs/index.md': 'Home page', 'docs/guide/a.md': 'Setext title' }); // secret.md has no heading
   });
@@ -32,8 +32,8 @@ describe('openProject', () => {
   it('reports progress while opening', async () => {
     const steps: string[] = [];
     await openProject(project(), (step, detail) => steps.push(detail ? `${step}: ${detail}` : step));
-    expect(steps[0]).toBe('Looking for pages and Sphinx projects');
-    expect(steps).toContain('Looking for pages and Sphinx projects: 3 pages found');
+    expect(steps[0]).toBe('Looking for pages and projects');
+    expect(steps).toContain('Looking for pages and projects: 3 pages found');
     expect(steps.at(-1)).toBe('Reading page titles: 3 of 3');
   });
 

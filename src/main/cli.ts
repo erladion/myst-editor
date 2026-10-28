@@ -4,7 +4,7 @@
 // (or warned, with --fail-on-warning), 2 for a mistake in the options.
 import { promises as fs } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
-import type { SphinxProject } from '../shared/api.js';
+import type { Project } from '../shared/api.js';
 import { fromProject } from '../shared/projects.js';
 import type { CliOptions } from './cli-args.js';
 import { openProject } from './project.js';
@@ -32,7 +32,7 @@ export async function runCli(opts: CliOptions): Promise<number> {
     return 2;
   }
   const project = chosen;
-  say(`Making a PDF of ${project.name} (${project.confPy})`);
+  say(`Making a PDF of ${project.name} (${project.marker})`);
 
   // Problems in the settings files, as the app shows them.
   const problems = project.config.editor.problems;
@@ -77,7 +77,7 @@ export async function runCli(opts: CliOptions): Promise<number> {
 
 // The project to export: the one --project names; else the folder's own; else the
 // only one. Otherwise what's wrong.
-function chooseProject(projects: SphinxProject[], root: string, wanted: string | null): SphinxProject | string {
+function chooseProject(projects: Project[], root: string, wanted: string | null): Project | string {
   if (!projects.length) return `there’s no Sphinx project (conf.py with a root page) in ${root}`;
   const list = projects.map((x) => `  ${x.dir || '.'}  (${x.name})`).join('\n');
   if (wanted !== null) {

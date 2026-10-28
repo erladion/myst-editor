@@ -23,7 +23,8 @@ import { registerPdfIpc } from './pdf/export.js';
 import { registerNewProjectIpc } from './new-project.js';
 import { registerGitIpc } from './git/ipc.js';
 import { startAskPass, stopAskPass } from './git/service.js';
-import { registerSphinxIpc, stopSphinx } from './sphinx/service.js';
+import { registerSphinxIpc } from './sphinx/service.js';
+import { registerBuildIpc, stopBuilders } from './builders/service.js';
 
 // Lets tests (and portable setups) keep settings out of the real profile.
 if (process.env.MYSTEDITOR_USER_DATA) app.setPath('userData', process.env.MYSTEDITOR_USER_DATA);
@@ -55,6 +56,7 @@ function startApp() {
     registerNewProjectIpc();
     registerGitIpc();
     registerSphinxIpc();
+    registerBuildIpc();
     registerWindowIpc();
     registerMenuIpc();
     registerProtocols();
@@ -69,7 +71,7 @@ function startApp() {
   app.on('window-all-closed', () => {
     stopAskPass();
     stopWatching();
-    stopSphinx();
+    stopBuilders();
     app.quit();
   });
 }

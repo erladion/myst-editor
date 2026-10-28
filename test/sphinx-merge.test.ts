@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { mergeWarnings, type BuildResult, type SphinxWarning } from '../src/shared/sphinx.js';
+import { mergeWarnings, type BuildResult } from '../src/shared/sphinx.js';
+import type { BuildWarning } from '../src/shared/build.js';
 
 const docs = {
   index: { source: 'index.md', title: 'Home', uri: 'index.html', children: ['a', 'b'] },
@@ -7,7 +8,7 @@ const docs = {
   b: { source: 'b.md', title: 'B', uri: 'b.html', children: [] },
 };
 
-const w = (source: string | null, phase: SphinxWarning['phase'], message = `${phase} in ${source}`): SphinxWarning => ({
+const w = (source: string | null, phase: BuildWarning['phase'], message = `${phase} in ${source}`): BuildWarning => ({
   source,
   line: 1,
   level: 'warning',

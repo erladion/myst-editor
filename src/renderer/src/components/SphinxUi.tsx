@@ -1,10 +1,11 @@
 // Sphinx in the UI: the permission banner, the status chip, the problems list and
 // the preview pane.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { usable, type EnvironmentChoice, type PythonCandidate, type SphinxState, type SphinxWarning } from '../../../shared/sphinx';
+import { usable, type EnvironmentChoice, type PythonCandidate } from '../../../shared/sphinx';
+import { type BuildState, type BuildWarning } from '../../../shared/build';
 
 interface TrustProps {
-  state: SphinxState;
+  state: BuildState;
   onUse: (choice: EnvironmentChoice) => void;
   onChooseOther: () => void;
   onDecline: () => void;
@@ -54,7 +55,7 @@ export function TrustBanner({ state, onUse, onChooseOther, onDecline }: TrustPro
 }
 
 interface EnvironmentDialogProps {
-  state: SphinxState;
+  state: BuildState;
   projects: number; // how many projects the choice applies to
   onUse: (choice: EnvironmentChoice) => void;
   onClose: () => void;
@@ -145,7 +146,7 @@ export function EnvironmentDialog({ state, projects, onUse, onClose }: Environme
 }
 
 interface SphinxDialogProps {
-  state: SphinxState;
+  state: BuildState;
   project?: string; // named when the folder has several projects
   projectId: string | null;
   onChangeEnvironment: () => void;
@@ -321,7 +322,7 @@ function EnvVars({ projectId, editing, onEditing }: { projectId: string; editing
 }
 
 interface ChipProps {
-  state: SphinxState;
+  state: BuildState;
   project?: string; // named when the folder has several projects
   problems: number;
   onShowProblems: () => void;
@@ -376,7 +377,7 @@ export function SphinxChip({ state, project, problems, onShowProblems, onShowDet
 }
 
 interface ProblemsProps {
-  warnings: SphinxWarning[];
+  warnings: BuildWarning[];
   titles: Record<string, string>;
   current: string | null;
   onOpen: (source: string, line: number | null) => void;
@@ -386,7 +387,7 @@ interface ProblemsProps {
 export function ProblemsPanel({ warnings, titles, current, onOpen, onClose }: ProblemsProps) {
   // The open page first, then by file and line.
   const groups = useMemo(() => {
-    const by = new Map<string, SphinxWarning[]>();
+    const by = new Map<string, BuildWarning[]>();
     for (const w of warnings) {
       const key = w.source ?? '';
       by.set(key, [...(by.get(key) ?? []), w]);

@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { ASSET_SCHEME, BUILD_SCHEME } from '../shared/api.js';
 import { resolveForReading, resolveInside } from './project.js';
 import { current } from './state.js';
-import { outputDirOf } from './sphinx/service.js';
+import { outputDirOf } from './builders/service.js';
 import { fragmentPage } from './sphinx/fragments.js';
 import { builtPage } from './sphinx/preview.js';
 

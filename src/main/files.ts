@@ -11,7 +11,7 @@ import { accept as acceptWithVale, lint as lintWithVale } from './vale.js';
 import type { PageVersion } from '../shared/git.js';
 import { current, requireProject, toWindow } from './state.js';
 import { builtPages, fingerprints, fingerprintText, pagesChanged } from './workspace.js';
-import { buildFor } from './sphinx/service.js';
+import { buildFor } from './builders/service.js';
 import { git, refreshGit } from './git/service.js';
 
 const notAPage = `Pages are files ending in ${pageExtensions().join(' or ')}`;

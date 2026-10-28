@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { buildInputsOf, isBuildInput, listDocuments, openProject, readTitle, resolveInside, UNWATCHED_DIRS, unwatchedDir } from './project.js';
 import { FolderWatcher } from './watch.js';
 import type { ProjectInfo } from '../shared/api.js';
-import type { SphinxInfo } from '../shared/sphinx.js';
+import type { BuildInfo } from '../shared/build.js';
 import { SETTINGS_FILE } from '../core/editor-config.js';
 import { isPage } from '../core/format.js';
 import { current, requireProject, toWindow } from './state.js';
@@ -15,7 +15,7 @@ import { loadSettings, updateSettings } from './settings.js';
 import { setRecentFolders } from './menu.js';
 import { setWindowTitle } from './window.js';
 import { checkServer, refreshGit, resetGit } from './git/service.js';
-import { buildFor, forgetChangesInBuilds, rebuildFresh, startSphinx } from './sphinx/service.js';
+import { buildFor, forgetChangesInBuilds, rebuildFresh, startBuilders } from './builders/service.js';
 
 let watcher: FolderWatcher | null = null;
 
@@ -57,7 +57,7 @@ async function useProject(folder: string): Promise<ProjectInfo> {
   const root = project.root;
   await updateSettings((s) => ({ ...s, lastProject: root, recent: [root, ...(s.recent ?? []).filter((r) => r !== root)].slice(0, 10) }));
   setRecentFolders((await loadSettings()).recent ?? []);
-  await startSphinx(project, (p, info) => void addBuiltPages(p, info));
+  await startBuilders(project, (p, info) => void addBuiltPages(p, info));
   refreshGit();
   return project;
 }
@@ -65,7 +65,7 @@ async function useProject(folder: string): Promise<ProjectInfo> {
 // Pages Sphinx built that the folder scan didn't list (in a folder skipped by its name,
 // say): they're pages all the same, so add them and keep them when the list is re-read.
 export const builtPages = new Set<string>();
-async function addBuiltPages(p: ProjectInfo, info: SphinxInfo) {
+async function addBuiltPages(p: ProjectInfo, info: BuildInfo) {
   const listed = new Set(p.files);
   const missing = [...new Set(Object.values(info.docs).map((d) => d.source))].filter((s) => isPage(s) && !listed.has(s));
   const found: string[] = [];
@@ -126,7 +126,7 @@ export async function refreshProject(p: ProjectInfo) {
   const envChanged = next.projects.filter((x) => JSON.stringify(x.config.editor.sphinxEnv) !== JSON.stringify(p.projects.find((y) => y.id === x.id)?.config.editor.sphinxEnv));
   Object.assign(p, { projects: next.projects, defaultConfig: next.defaultConfig, buildInputs: next.buildInputs });
   toWindow('project-changed', { project: p });
-  if (restart) await startSphinx(p, (q, info) => void addBuiltPages(q, info));
+  if (restart) await startBuilders(p, (q, info) => void addBuiltPages(q, info));
   else rebuildFresh(envChanged.map((x) => x.id));
 }
 

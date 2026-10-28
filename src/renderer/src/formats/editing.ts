@@ -71,8 +71,8 @@ export interface EditingFormat {
   // How a block is presented: the project's settings first, then the format's own.
   block(name: string, editor?: EditorConfig): DirectiveInfo;
   // What the status bar says the page is (`label`), and how it's read (`detail`).
-  // `confPy`: the project's conf.py, if it has one.
-  dialect(config: PageConfig, confPy: string | null): { label: string; detail: string };
+  // `marker`: the file that makes the page's project one (its conf.py), if it has one.
+  dialect(config: PageConfig, marker: string | null): { label: string; detail: string };
   source: SourceSyntax;
   cards: Cards;
   roles: Roles;

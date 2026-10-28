@@ -2,18 +2,18 @@
 // single blocks with, and where the preview should be while the formatted view scrolls.
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject, type RefObject } from 'react';
 import type { EditorView } from 'prosemirror-view';
-import type { SphinxInfo } from '../../../shared/sphinx';
+import type { BuildInfo } from '../../../shared/build';
 import { configFor } from '../../../shared/projects';
 import type { Session, Workspace } from '../workspace';
 import type { PreviewBuild } from '../editor/previews';
 import type { PreviewLine } from '../components/SphinxUi';
 import { blockLines, lineAtTop } from '../editor/scrollsync';
-import { docnameOf } from '../sphinx';
+import { docnameOf } from '../build';
 
 const api = window.myst;
 
 // Stable while the page and build are the same, so cards don't reload their previews.
-export function usePreviewBuild(project: string | null, info: SphinxInfo | null, session: Session | undefined): PreviewBuild | null {
+export function usePreviewBuild(project: string | null, info: BuildInfo | null, session: Session | undefined): PreviewBuild | null {
   const docname = info && session ? docnameOf(info, session.path) : null;
   const builtAt = info?.builtAt ?? null;
   return useMemo(() => {
@@ -24,7 +24,7 @@ export function usePreviewBuild(project: string | null, info: SphinxInfo | null,
 }
 
 // The open page as built, for the preview pane.
-export function previewUrlOf(project: string | null, info: SphinxInfo | null, session: Session | undefined): string | null {
+export function previewUrlOf(project: string | null, info: BuildInfo | null, session: Session | undefined): string | null {
   const docname = info && session ? docnameOf(info, session.path) : null;
   const uri = docname ? info?.docs[docname]?.uri : null;
   return uri && info && project ? `${api.buildUrl(project, uri)}?built=${info.builtAt}` : null;

@@ -1,4 +1,4 @@
-// Sphinx project discovery and sandboxed file access for the main process.
+// Project discovery and sandboxed file access for the main process.
 //
 // Real paths come from realpathSync.native, like fs.promises.realpath: on Windows the
 // non-native one keeps 8.3 short names (C:\Users\RUNNER~1\…), so paths that are the
@@ -10,7 +10,7 @@ import { Buffer } from 'node:buffer';
 import { DEFAULT_CONFIG, readConfPy } from '../core/project-config.js';
 import { isPage, pageFormat } from '../core/format.js';
 import { loadEditorConfig, SETTINGS_FILE, type SettingsSource } from '../core/editor-config.js';
-import type { PageMatches, ProjectInfo, SphinxProject } from '../shared/api.js';
+import type { PageMatches, ProjectInfo, Project } from '../shared/api.js';
 
 // Directories whose changes never matter to the app: hidden ones (.git, .venv),
 // dependencies, build output, and Python environments whatever they're called.
@@ -39,14 +39,34 @@ async function skipDir(dir: string, name: string): Promise<boolean> {
   return name === '_static' || name === '_templates' || (await unwatchedDir(dir, name));
 }
 
-const MAX_DEPTH = 6; // how deep conf.py files are looked for
+const MAX_DEPTH = 6; // how deep marker files (conf.py) are looked for
+
+// One walk of the opened folder, for finding its projects: its pages, and the
+// folders holding each marker file (by name).
+export interface FolderScan {
+  files: string[];
+  markers: Map<string, string[]>;
+}
+
+// Finds the projects of one kind (Sphinx's) in a scan; records the settings files
+// it reads in `read`.
+type ProjectFinder = (root: string, scan: FolderScan, read: Set<string>) => Promise<Project[]>;
+
+// The files that make a folder a project, and the finders, a kind each.
+const MARKERS = ['conf.py'];
+const FINDERS: ProjectFinder[] = [(root, scan, read) => sphinxProjects(root, scan.markers.get('conf.py') ?? [], read)];
+
+async function findProjects(root: string, scan: FolderScan, read: Set<string>): Promise<Project[]> {
+  const found = (await Promise.all(FINDERS.map((find) => find(root, scan, read)))).flat();
+  return found.sort((a, b) => a.dir.localeCompare(b.dir));
+}
 
 // Reports what opening a folder is doing: a step, and how far along it is.
 export type OpenProgress = (step: string, detail?: string) => void;
 
 export async function openProject(folder: string, progress: OpenProgress = () => {}): Promise<ProjectInfo> {
   const root = realpathSync.native(resolve(folder));
-  const finding = 'Looking for pages and Sphinx projects';
+  const finding = 'Looking for pages and projects';
   progress(finding);
   const { files, projects, defaultConfig, buildInputs } = await inspect(root, (n) => progress(finding, `${n} page${n === 1 ? '' : 's'} found`));
   const titles = await readTitles(root, files, (done) => progress('Reading page titles', `${done} of ${files.length}`));
@@ -59,10 +79,10 @@ export async function buildInputsOf(root: string): Promise<string> {
 }
 
 async function inspect(root: string, found?: (pages: number) => void) {
-  const { files, confDirs, inputs } = await scanFolder(root, found);
+  const { files, markers, inputs } = await scanFolder(root, found);
   // Capabilities files the settings name are build inputs too (an extension reads them).
   const read = new Set<string>();
-  const projects = await sphinxProjects(root, confDirs, read);
+  const projects = await findProjects(root, { files, markers }, read);
   // Pages outside every project still get the folder's own editor settings.
   const defaultConfig = { ...DEFAULT_CONFIG, editor: loadEditorConfig(settingsSources(root, root, read)) };
   return { files, projects, defaultConfig, buildInputs: await fingerprintOf(root, [...new Set([...inputs, ...read])]) };
@@ -82,10 +102,11 @@ async function fingerprintOf(root: string, files: string[]): Promise<string> {
 }
 
 // One walk of the folder: its pages (sorted POSIX paths relative to it), the
-// directories holding a conf.py, and its Python files (extensions a build may load).
-async function scanFolder(root: string, found: (pages: number) => void = () => {}): Promise<{ files: string[]; confDirs: string[]; inputs: string[] }> {
+// directories holding each marker file, and its Python files (extensions a build may
+// load).
+async function scanFolder(root: string, found: (pages: number) => void = () => {}): Promise<FolderScan & { inputs: string[] }> {
   const files: string[] = [];
-  const confDirs: string[] = [];
+  const markers = new Map<string, string[]>();
   const inputs: string[] = [];
   // Symlinked pages and folders count when they lead somewhere inside the folder: a
   // shared section linked into two guides is a page of each, under each one's path.
@@ -118,7 +139,7 @@ async function scanFolder(root: string, found: (pages: number) => void = () => {
           files.push(relative(root, join(dir, e.name)).split(sep).join('/'));
           if (files.length % 100 === 0) found(files.length);
         } else {
-          if (e.name === 'conf.py' && depth <= MAX_DEPTH) confDirs.push(dir);
+          if (MARKERS.includes(e.name) && depth <= MAX_DEPTH) markers.set(e.name, [...(markers.get(e.name) ?? []), dir]);
           if (e.name.endsWith('.py')) inputs.push(relative(root, join(dir, e.name)).split(sep).join('/'));
         }
       } else if (e.isDirectory() && !(await skipDir(dir, e.name))) subdirs.push(join(dir, e.name));
@@ -129,7 +150,7 @@ async function scanFolder(root: string, found: (pages: number) => void = () => {
   };
   await walk(root, 0);
   found(files.length);
-  return { files: files.sort((a, b) => a.localeCompare(b)), confDirs, inputs };
+  return { files: files.sort((a, b) => a.localeCompare(b)), markers, inputs };
 }
 
 // Files a Sphinx build may depend on without Sphinx noticing when they change: the
@@ -169,14 +190,14 @@ export function settingsSources(root: string, dir: string, read?: Set<string>): 
 // Every Sphinx project under `root`. A conf.py counts if it looks like Sphinx
 // configuration and has a root document next to it, so a Python package's own
 // conf.py module isn't mistaken for documentation.
-export async function findSphinxProjects(root: string): Promise<SphinxProject[]> {
-  return sphinxProjects(root, (await scanFolder(root)).confDirs);
+export async function findSphinxProjects(root: string): Promise<Project[]> {
+  return sphinxProjects(root, (await scanFolder(root)).markers.get('conf.py') ?? []);
 }
 
-async function sphinxProjects(root: string, confDirs: string[], read?: Set<string>): Promise<SphinxProject[]> {
+async function sphinxProjects(root: string, confDirs: string[], read?: Set<string>): Promise<Project[]> {
   const found: string[] = [];
   for (const dir of confDirs) if (await looksLikeSphinx(dir)) found.push(dir);
-  const projects: SphinxProject[] = [];
+  const projects: Project[] = [];
   for (const sourceDir of found.sort()) {
     const confText = await fs.readFile(join(sourceDir, 'conf.py'), 'utf8');
     const dir = relative(root, sourceDir).split(sep).join('/');
@@ -185,7 +206,8 @@ async function sphinxProjects(root: string, confDirs: string[], read?: Set<strin
       name: /^\s*project\s*=\s*(["'])(.+?)\1/m.exec(confText)?.[2] ?? (dir ? basename(sourceDir) : basename(root)),
       dir,
       sourceDir,
-      confPy: dir ? `${dir}/conf.py` : 'conf.py',
+      builder: 'sphinx',
+      marker: dir ? `${dir}/conf.py` : 'conf.py',
       config: { ...readConfPy(confText), editor: loadEditorConfig(settingsSources(root, sourceDir, read)) },
     });
   }
