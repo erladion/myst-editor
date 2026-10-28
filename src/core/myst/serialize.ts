@@ -395,6 +395,8 @@ const marksFor = (style: InlineStyle): Record<string, MarkSerializerSpec> => ({
     mixable: true,
   },
   code: defaultMarkdownSerializer.marks.code,
+  // Not MyST's (it has no such styles): its text, as it is.
+  span: { open: '', close: '', mixable: true },
 });
 
 const inlineOptions = {

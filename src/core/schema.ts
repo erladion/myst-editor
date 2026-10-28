@@ -365,14 +365,16 @@ const nodes: Record<string, NodeSpec> = {
     group: 'inline',
     inline: true,
     atom: true,
-    attrs: { src: { default: '' }, alt: { default: '' }, title: { default: null } },
+    // `extra`: what the format writes with it beyond its alt text (AsciiDoc's width,
+    // say), kept as written; not taken along when pasted.
+    attrs: { src: { default: '' }, alt: { default: '' }, title: { default: null }, extra: { default: null as string | null } },
     parseDOM: [
       {
         tag: 'img[src]',
         getAttrs: (dom) => {
           const el = dom as HTMLElement;
           return el.hasAttribute(DATA)
-            ? fromData(el)
+            ? { ...fromData(el), extra: null }
             : { src: el.getAttribute('src'), alt: el.getAttribute('alt') ?? '', title: el.getAttribute('title') };
         },
       },
@@ -381,9 +383,16 @@ const nodes: Record<string, NodeSpec> = {
   },
 };
 
+// A mark's role: a style of the format's own on it (AsciiDoc's [.path]_file_), shown as
+// a class. Not taken along when pasted, like `extra` (what a format writes with a link
+// beyond its text: AsciiDoc's ^ for a new window).
+const role = { role: { default: null as string | null } };
+const withRole = (tag: string, mark: { attrs: Record<string, unknown> }, more: Record<string, string> = {}) =>
+  [tag, mark.attrs.role ? { ...more, class: `text-role role-${mark.attrs.role}`, title: String(mark.attrs.role) } : more, 0] as [string, Record<string, string>, 0];
+
 const marks: Record<string, MarkSpec> = {
   link: {
-    attrs: { href: {}, title: { default: null } },
+    attrs: { href: {}, title: { default: null }, extra: { default: null as string | null } },
     inclusive: false,
     parseDOM: [
       {
@@ -393,19 +402,23 @@ const marks: Record<string, MarkSpec> = {
     ],
     toDOM: (mark) => ['a', { href: mark.attrs.href, title: mark.attrs.title }, 0],
   },
-  em: { parseDOM: [{ tag: 'em' }, { tag: 'i' }, { style: 'font-style=italic' }], toDOM: () => ['em', 0] },
+  em: { attrs: role, parseDOM: [{ tag: 'em' }, { tag: 'i' }, { style: 'font-style=italic' }], toDOM: (mark) => withRole('em', mark) },
   strong: {
+    attrs: role,
     parseDOM: [
       { tag: 'strong' },
       // Google Docs wraps everything in <b style="font-weight:normal">.
       { tag: 'b', getAttrs: (dom) => (dom as HTMLElement).style.fontWeight !== 'normal' && null },
       { style: 'font-weight', getAttrs: (value) => /^(bold(er)?|[5-9]\d{2,})$/.test(value as string) && null },
     ],
-    toDOM: () => ['strong', 0],
+    toDOM: (mark) => withRole('strong', mark),
   },
   strike: { parseDOM: [{ tag: 's' }, { tag: 'del' }, { tag: 'strike' }], toDOM: () => ['s', 0] },
   // Not spellchecked: commands, file names and identifiers aren't words.
-  code: { parseDOM: [{ tag: 'code' }], toDOM: () => ['code', { spellcheck: 'false' }, 0] },
+  code: { attrs: role, parseDOM: [{ tag: 'code' }], toDOM: (mark) => withRole('code', mark, { spellcheck: 'false' }) },
+  // Text with a style of the format's own and nothing else (AsciiDoc's [.role]#text#),
+  // or highlighted (#text#). Never pasted: not every format can write it.
+  span: { attrs: role, toDOM: (mark) => (mark.attrs.role ? withRole('span', mark) : ['mark', 0]) },
 };
 
 function withoutFence<T extends Record<string, unknown>>(attrs: T): Omit<T, 'fence'> {

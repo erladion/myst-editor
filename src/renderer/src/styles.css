@@ -1319,6 +1319,18 @@ button.toc-toggle:hover {
   padding: 0 0.3em;
 }
 
+/* Text with a role of the format's own (AsciiDoc's [.path]_file_): marked lightly. */
+.prose .text-role {
+  text-decoration: underline dotted var(--fg-muted);
+  text-underline-offset: 0.2em;
+}
+
+.prose mark {
+  background: color-mix(in srgb, var(--tone-warning) 25%, transparent);
+  color: inherit;
+  border-radius: 2px;
+}
+
 /* A value the format fills in (an attribute's): underlined lightly, to tell it from text. */
 .role-value {
   border-bottom: 1px dotted var(--fg-muted);
