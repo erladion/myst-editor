@@ -1,4 +1,5 @@
 // The editor's side of MyST Markdown (see formats/editing.ts).
+import { mystConfig } from '../../../../core/project-config';
 import type { EditingFormat } from '../editing';
 import { ADMONITIONS, CALLOUT_CHOICES, directiveInfo } from './directives';
 import { mystInserts } from './inserts';
@@ -20,4 +21,10 @@ export const mystEditing: EditingFormat = {
     },
   },
   block: directiveInfo,
+  dialect(config, confPy) {
+    const { extensions } = mystConfig(config);
+    return confPy
+      ? { label: 'Sphinx project', detail: `MyST extensions from ${confPy}: ${extensions.length ? extensions.join(', ') : 'none'}` }
+      : { label: 'Markdown folder', detail: 'No conf.py found — all MyST extensions enabled' };
+  },
 };

@@ -1,12 +1,13 @@
 // Save status: the status bar line and the banner for problems that need a decision.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Node as PMNode } from 'prosemirror-model';
-import type { MystConfig } from '../../../core/project-config';
+import type { PageConfig } from '../../../core/format';
+import { editingFor } from '../formats/editing';
 import type { Session } from '../workspace';
 
 interface StatusProps {
   session: Session | undefined;
-  config: MystConfig;
+  config: PageConfig;
   confPy: string | null;
   children?: ReactNode; // build status
 }
@@ -41,9 +42,7 @@ export function StatusBar({ session, config, confPy, children }: StatusProps) {
     status.kind === 'unsafe' ? 'Not saved' :
     status.kind === 'conflict' ? 'Changed on disk' :
     'Save failed';
-  const dialect = confPy
-    ? `MyST extensions from ${confPy}: ${config.extensions.length ? config.extensions.join(', ') : 'none'}`
-    : 'No conf.py found — all MyST extensions enabled';
+  const dialect = editingFor(config).dialect(config, confPy);
   return (
     <footer className="statusbar">
       <span className={`save-status ${status?.kind ?? ''}`} role="status" aria-live="polite">
@@ -53,8 +52,8 @@ export function StatusBar({ session, config, confPy, children }: StatusProps) {
       <span className="spacer" />
       {children}
       {session && <span className="muted">{words.toLocaleString()} words</span>}
-      <span className="muted dialect" title={dialect}>
-        {confPy ? 'Sphinx project' : 'Markdown folder'}
+      <span className="muted dialect" title={dialect.detail}>
+        {dialect.label}
       </span>
     </footer>
   );

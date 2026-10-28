@@ -2,10 +2,10 @@
 import type { Format } from '../format.js';
 import { parseMyst } from '../parse.js';
 import { serializeMyst } from '../serialize.js';
-import { parserExtensions } from '../project-config.js';
+import { parserExtensions, type MystConfig } from '../project-config.js';
 import { mystPages } from './pages.js';
 
-export const myst: Format = {
+export const myst: Format<MystConfig> = {
   ...mystPages,
   load(text, config) {
     const { directives, conditions, tables } = config.editor;

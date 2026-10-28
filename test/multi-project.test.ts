@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { openProject } from '../src/main/project.js';
 import { findPythons } from '../src/main/sphinx/pythons.js';
 import { configFor, projectFor } from '../src/shared/projects.js';
+import { mystConfig } from '../src/core/project-config.js';
 
 function write(root: string, path: string, text: string) {
   mkdirSync(join(root, path, '..'), { recursive: true });
@@ -37,7 +38,7 @@ function topFolder() {
 describe('a folder with two Sphinx projects and a shared .venv', () => {
   it('finds both projects, each with its own MyST settings', async () => {
     const info = await openProject(topFolder());
-    expect(info.projects.map((p) => [p.name, p.dir, p.confPy, p.config.extensions])).toEqual([
+    expect(info.projects.map((p) => [p.name, p.dir, p.confPy, mystConfig(p.config).extensions])).toEqual([
       ['Admin Guide', 'admin-guide', 'admin-guide/conf.py', []],
       ['User Guide', 'user-guide', 'user-guide/conf.py', ['colon_fence']],
     ]);
@@ -45,8 +46,8 @@ describe('a folder with two Sphinx projects and a shared .venv', () => {
     expect(projectFor(info.projects, 'user-guide/start.md')?.name).toBe('User Guide');
     expect(projectFor(info.projects, 'README.md')).toBeNull();
     // Without colon_fence, ":::" stays text in the admin guide, as in its Sphinx build.
-    expect(configFor(info, 'admin-guide/index.md').extensions).toEqual([]);
-    expect(configFor(info, 'user-guide/index.md').extensions).toEqual(['colon_fence']);
+    expect(mystConfig(configFor(info, 'admin-guide/index.md')).extensions).toEqual([]);
+    expect(mystConfig(configFor(info, 'user-guide/index.md')).extensions).toEqual(['colon_fence']);
   });
 
   // The stand-in interpreters are shell scripts, which Windows can't run as python.exe.

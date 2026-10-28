@@ -27,11 +27,14 @@ export interface LoadedDocument {
 }
 
 // Reading a page into the editor's document, and writing it back: blocks that are
-// unchanged since reading as they were written.
-export interface Format extends PageFormat {
-  load(text: string, config: PageConfig): LoadedDocument;
-  save(doc: PMNode, map: SourceMap, config: PageConfig): string;
+// unchanged since reading as they were written. `C`: the settings of its format.
+export interface Format<C extends PageConfig = PageConfig> extends PageFormat {
+  load(text: string, config: C): LoadedDocument;
+  save(doc: PMNode, map: SourceMap, config: C): string;
 }
+
+// The settings of the format `F`.
+export type ConfigOf<F extends FormatId> = Extract<PageConfig, { format: F }>;
 
 export const PAGE_FORMATS: PageFormat[] = [mystPages];
 

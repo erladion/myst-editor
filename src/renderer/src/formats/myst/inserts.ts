@@ -1,7 +1,7 @@
 // What can be inserted in a MyST page, and the directives that does it with.
 import type { Command } from 'prosemirror-state';
 import { schema } from '../../../../core/schema';
-import { newDirectiveFence } from '../../../../core/project-config';
+import { mystConfig, newDirectiveFence } from '../../../../core/project-config';
 import { renderHeader } from '../../../../core/directive';
 import type { DirectiveDef } from '../../../../core/editor-config';
 import type { EditorContext } from '../../editor/context';
@@ -55,7 +55,8 @@ export function insertCaptionedTable(ctx: EditorContext): Command {
 }
 
 export function insertMath(ctx: EditorContext): Command {
-  const dollar = ctx.config.extensions.includes('dollarmath') || ctx.config.extensions.includes('amsmath');
+  const { extensions } = mystConfig(ctx.config);
+  const dollar = extensions.includes('dollarmath') || extensions.includes('amsmath');
   const attrs = dollar ? {} : { directive: true, name: 'math', fence: newDirectiveFence(ctx.config) };
   return insertBlock(nodes.math_block.create(attrs, schema.text('E = mc^2')));
 }

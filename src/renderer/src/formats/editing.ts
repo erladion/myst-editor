@@ -46,6 +46,9 @@ export interface EditingFormat {
   callouts: Callouts;
   // How a block is presented: the project's settings first, then the format's own.
   block(name: string, editor?: EditorConfig): DirectiveInfo;
+  // What the status bar says the page is (`label`), and how it's read (`detail`).
+  // `confPy`: the project's conf.py, if it has one.
+  dialect(config: PageConfig, confPy: string | null): { label: string; detail: string };
 }
 
 const FORMATS: Record<PageConfig['format'], EditingFormat> = { myst: mystEditing };

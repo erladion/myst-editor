@@ -3,6 +3,7 @@
 import type { Node as PMNode } from 'prosemirror-model';
 import type { Command, EditorState, Transaction } from 'prosemirror-state';
 import { schema } from '../../../../core/schema';
+import { mystConfig } from '../../../../core/project-config';
 import type { EditorContext } from '../../editor/context';
 import { targetLabel } from '../../editor/commands';
 
@@ -121,7 +122,7 @@ export async function insertReference(ctx: EditorContext, run: (cmd: Command) =>
           ...(anchors.length ? [{ value: 'anchor', label: 'An anchor (a link target)' }] : []),
           { value: 'doc', label: 'A page' },
           { value: 'term', label: 'A glossary term' },
-          { value: 'numref', label: ctx.config.numfig ? 'A figure or table, as “Figure 2”' : 'A figure or table, as “Figure 2” (needs numfig = True in conf.py)' },
+          { value: 'numref', label: mystConfig(ctx.config).numfig ? 'A figure or table, as “Figure 2”' : 'A figure or table, as “Figure 2” (needs numfig = True in conf.py)' },
         ],
       },
       {

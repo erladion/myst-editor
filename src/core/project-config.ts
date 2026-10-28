@@ -6,6 +6,7 @@
 // Sphinx itself once it runs in the background (phase 3).
 
 import { EMPTY_EDITOR_CONFIG, type EditorConfig } from './editor-config.js';
+import type { PageConfig } from './format.js';
 
 export interface MystConfig {
   format: 'myst';
@@ -47,6 +48,12 @@ export function readConfPy(source: string): MystConfig {
   return { format: 'myst', extensions: [...extensions], fromConfPy: true, numfig: /^\s*numfig\s*=\s*True\b/m.test(source), editor: EMPTY_EDITOR_CONFIG };
 }
 
+// A page's settings, known to be MyST's: for MyST's own code.
+export function mystConfig(config: PageConfig): MystConfig {
+  if (config.format !== 'myst') throw new Error(`MyST settings wanted, ${config.format} given`);
+  return config;
+}
+
 // Flags for myst-parser matching the project's enabled extensions.
 export function parserExtensions(config: MystConfig): Record<string, boolean> {
   const flags: Record<string, boolean> = {};
@@ -57,6 +64,6 @@ export function parserExtensions(config: MystConfig): Record<string, boolean> {
 }
 
 // The fence for directives the writer inserts: colon fences need the extension.
-export function newDirectiveFence(config: MystConfig): string {
-  return config.extensions.includes('colon_fence') ? ':::' : '```';
+export function newDirectiveFence(config: PageConfig): string {
+  return mystConfig(config).extensions.includes('colon_fence') ? ':::' : '```';
 }
