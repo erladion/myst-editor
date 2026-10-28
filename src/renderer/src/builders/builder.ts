@@ -25,7 +25,7 @@ export interface ProjectBuilder {
 }
 
 const SPHINX: ProjectBuilder = { contents: sphinxContents, references: sphinxReferences, fragments: true };
-const ASCIIDOCTOR: ProjectBuilder = { contents: asciidoctorContents, references: asciidoctorReferences, fragments: false };
+const ASCIIDOCTOR: ProjectBuilder = { contents: asciidoctorContents, references: asciidoctorReferences, fragments: true };
 
 // A project's (pages outside every project: Sphinx's rules, as for a Markdown folder).
 export const builderFor = (project: Project | null): ProjectBuilder => (project?.builder === 'asciidoctor' ? ASCIIDOCTOR : SPHINX);

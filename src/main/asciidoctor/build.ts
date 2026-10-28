@@ -75,6 +75,38 @@ function includesOf(page: string, text: string): string[] {
   return [...text.matchAll(/^include::([^\s[]+)\[/gm)].map((m) => join(dirname(page), m[1]).split(sep).join('/'));
 }
 
+// What's used of Asciidoctor's blocks here.
+interface Node {
+  getBlocks(): unknown[];
+  getContext(): string;
+  getLineNumber?(): number | undefined;
+  getSourceLocation?(): { getFile?(): string } | undefined;
+  addRole?(name: string): boolean;
+  convert(): Promise<string>;
+}
+
+// Each block written in the page gets its line as a class (mysteditor-line-N), as
+// Sphinx's do, for the preview to follow the editor; and the page's blocks (those of
+// its sections) their HTML, for cards: what blocks start on which lines.
+function markLines(doc: Node, own: (file: string | undefined) => boolean): { block: Node; line: number }[] {
+  const fragments: { block: Node; line: number }[] = [];
+  const visit = (parent: Node, outer: boolean) => {
+    for (const child of parent.getBlocks()) {
+      if (!child || typeof child !== 'object' || !('getContext' in child)) continue;
+      const block = child as Node;
+      const line = block.getLineNumber?.();
+      if (line && own(block.getSourceLocation?.()?.getFile?.())) {
+        block.addRole?.(`mysteditor-line-${line}`);
+        if (outer && block.getContext() !== 'section' && block.getContext() !== 'preamble') fragments.push({ block, line });
+      }
+      const context = block.getContext();
+      visit(block, outer && (context === 'section' || context === 'preamble'));
+    }
+  };
+  visit(doc, true);
+  return fragments;
+}
+
 export function buildAsciidoctor(project: Project, outputDir: string, request: BuildRequest = {}): Promise<BuildOutcome> {
   const run = queue.then(() => build(project, outputDir, request));
   queue = run.catch(() => {});
@@ -146,9 +178,17 @@ async function build(project: Project, outputDir: string, { previous, changed = 
       const out = join(outputDir, `${stem(page)}.html`);
       const stylesdir = relative(dirname(out), outputDir).split(sep).join('/') || '.';
       const doc = await loadFile(file, { safe: 'safe', sourcemap: true, base_dir: project.sourceDir, attributes: { ...attributes, outfilesuffix: '.html', linkcss: '', stylesheet: 'asciidoctor.css', stylesdir } });
+      const blocks = markLines(doc as unknown as Node, (f) => pageOf(f) === page);
       const html = (await doc.convert({ standalone: true })) as string;
+      // (After the page: converting a block on its own first would count its footnotes twice.)
+      const fragments = [];
+      for (const b of blocks) fragments.push({ line: b.line, html: await b.block.convert() });
       await fs.mkdir(dirname(out), { recursive: true });
       await fs.writeFile(out, html);
+      // Its blocks one by one, for cards' previews (see sphinx/fragments.ts).
+      const fragmentFile = join(outputDir, '_mysteditor', 'fragments', `${stem(page)}.json`);
+      await fs.mkdir(dirname(fragmentFile), { recursive: true });
+      await fs.writeFile(fragmentFile, JSON.stringify({ uri: `${stem(page)}.html`, fragments }));
       const objects: BuildTarget[] = [];
       // Its own anchors (an included page's are its own build's).
       for (const [id, node] of Object.entries(doc.getRefs() as Record<string, { getTitle?(): string; getContext?(): string; getSourceLocation?(): { getFile?(): string } | undefined }>)) {

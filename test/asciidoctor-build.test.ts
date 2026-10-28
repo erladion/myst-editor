@@ -64,6 +64,11 @@ describe('an Asciidoctor project', () => {
     expect(readFileSync(join(out, 'chapters/one.html'), 'utf8')).toContain('About Widget');
     expect(readFileSync(join(out, 'chapters/one.html'), 'utf8')).toContain('href="../asciidoctor.css"');
     expect(existsSync(join(out, 'asciidoctor.css'))).toBe(true);
+    // Blocks know their lines (the preview follows the editor), and cards get them one by one.
+    expect(readFileSync(join(out, 'chapters/one.html'), 'utf8')).toMatch(/class="[^"]*mysteditor-line-6/);
+    const fragments = JSON.parse(readFileSync(join(out, '_mysteditor/fragments/chapters/one.json'), 'utf8'));
+    expect(fragments.uri).toBe('chapters/one.html');
+    expect(fragments.fragments).toContainEqual({ line: 6, html: expect.stringContaining('About Widget') });
   });
 
   it('builds again only what a change affects', async () => {
