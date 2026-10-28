@@ -1,6 +1,6 @@
 // A renamed or moved page's references in an AsciiDoc page: cross-references to it,
-// links to its file, and (on the moved page itself) its relative paths: images,
-// includes.
+// includes of it, links to its file, and (on the moved page itself) its relative
+// paths: images, includes.
 import type { EditorState, Transaction } from 'prosemirror-state';
 import { rewriteRef, rewriteTitled } from '../../../../core/rename';
 import type { ReferenceRename } from '../editing';
@@ -20,8 +20,10 @@ export function renameAsciidocReferences(state: EditorState, { folder, file, mov
     } else if (node.type.name === 'image' && moved) {
       const src = rewriteRef(attrs.src, folder, null);
       if (src !== null) tr.setNodeMarkup(pos, null, { ...attrs, src });
-    } else if (node.type.name === 'opaque_directive' && moved && PATH_MACROS.has(attrs.name) && attrs.args) {
-      const args = rewriteRef(attrs.args, folder, null);
+    } else if (node.type.name === 'opaque_directive' && PATH_MACROS.has(attrs.name) && attrs.args) {
+      // An include of the renamed page (a chapter in the book), or, on the moved page,
+      // any path relative to it.
+      const args = rewriteRef(attrs.args, folder, attrs.name === 'include' ? file : null);
       if (args !== null) {
         const source = (attrs.source as string).replace(/^([A-Za-z][\w-]*::)\S*?(\[)/m, `$1${args}$2`);
         tr.setNodeMarkup(pos, null, { ...attrs, args, source });
