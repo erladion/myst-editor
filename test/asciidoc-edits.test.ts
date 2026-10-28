@@ -232,3 +232,29 @@ describe('definition lists', () => {
     expect(edited('', () => doc)).toBe('API:: How programs talk.\nSDK:: Tools: lib:: and all.');
   });
 });
+
+describe('pictures in an AsciiDoc page', async () => {
+  const { asciidocEditing } = await import('../src/renderer/src/formats/asciidoc/index.js');
+  const images = asciidocEditing.images!;
+  const book = { ...ASCIIDOC_CONFIG, main: 'index.adoc', base: 'book', attributes: { imagesdir: 'images' } };
+
+  it('are found under :imagesdir:, from the main document’s folder in a book', () => {
+    expect(images.fromPage('diagram.png', book, 'book/chapters/one.adoc')).toBe('../images/diagram.png');
+    expect(images.toRef('../images/sub/x.png', book, 'book/chapters/one.adoc')).toBe('sub/x.png');
+    // A page standing on its own: from its folder.
+    expect(images.fromPage('x.png', ASCIIDOC_CONFIG, 'notes/a.adoc')).toBe('x.png');
+    expect(images.fromPage('https://example.org/x.png', book, 'book/index.adoc')).toBe('https://example.org/x.png');
+  });
+
+  it('have widths: read, and changed', () => {
+    expect(images.width({ extra: '300' })).toBe('300');
+    expect(images.width({ extra: 'role=r,width=50%' })).toBe('50%');
+    expect(images.width({ extra: null })).toBeNull();
+    expect(images.withWidth({ extra: '300,200' }, '400')).toMatchObject({ extra: '400,200' });
+    expect(images.withWidth({ extra: '300' }, null)).toMatchObject({ extra: null });
+    expect(images.withWidth({ extra: 'role=r' }, '120')).toMatchObject({ extra: '120,role=r' });
+    // And written so: image:a.png[A,120,role=r].
+    const para = nodes.paragraph.create(null, nodes.image.create({ src: 'a.png', alt: 'A', extra: '120,role=r' }));
+    expect(edited('', () => nodes.doc.create(null, para))).toBe('image:a.png[A,120,role=r]');
+  });
+});

@@ -11,9 +11,12 @@ export interface AsciidocConfig {
   main: string | null;
   // Attributes the main document's header sets (:name: value), for every page.
   attributes: Record<string, string>;
+  // The folder (from the opened folder) the main document is in: in a book, what its
+  // chapters' pictures are found from (with :imagesdir:). Null: each page's own.
+  base: string | null;
 }
 
-export const ASCIIDOC_CONFIG: AsciidocConfig = { format: 'asciidoc', editor: EMPTY_EDITOR_CONFIG, main: null, attributes: {} };
+export const ASCIIDOC_CONFIG: AsciidocConfig = { format: 'asciidoc', editor: EMPTY_EDITOR_CONFIG, main: null, attributes: {}, base: null };
 
 // Editor settings for AsciiDoc pages: conditions are written as ifdef::[] there.
 export function asciidocEditor(editor: EditorConfig): EditorConfig {

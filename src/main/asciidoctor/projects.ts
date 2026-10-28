@@ -52,6 +52,7 @@ export async function asciidoctorProjects(root: string, scan: FolderScan, read: 
       editor: asciidocEditor(loadEditorConfig(settingsSources(root, sourceDir, read))),
       main: main ? (dir ? main.slice(dir.length + 1) : main) : null,
       attributes: headerAttributes(text),
+      base: main ? dirOf(main) : null,
     };
     projects.push({
       id: `a${createHash('sha256').update(sourceDir).digest('hex').slice(0, 12)}`,

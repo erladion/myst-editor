@@ -68,6 +68,13 @@ export async function pagesIn(dir: string, base = dir): Promise<string[]> {
 }
 
 const stem = (page: string) => page.replace(/\.adoc$/, '');
+
+// A book's :imagesdir: (from its main document's folder) as seen from `page`.
+function imagesFrom(page: string, main: string, imagesdir: string | undefined): string | null {
+  if (imagesdir && /^([a-z][\w+.-]*:|\/)/i.test(imagesdir)) return null;
+  const target = join(dirname(main), imagesdir ?? '');
+  return relative(dirname(page), target).split(sep).join('/') || '.';
+}
 const titleOf = (title: unknown) => (title === undefined || title === null || title === '' ? null : String(title));
 
 // The files a page includes, relative to the project, in order.
@@ -177,7 +184,10 @@ async function build(project: Project, outputDir: string, { previous, changed = 
       const from = logger.getMessages().length;
       const out = join(outputDir, `${stem(page)}.html`);
       const stylesdir = relative(dirname(out), outputDir).split(sep).join('/') || '.';
-      const doc = await loadFile(file, { safe: 'safe', sourcemap: true, base_dir: project.sourceDir, attributes: { ...attributes, outfilesuffix: '.html', linkcss: '', stylesheet: 'asciidoctor.css', stylesdir } });
+      // In a book, pictures are found from the main document's folder, also when a
+      // chapter is built on its own.
+      const imagesdir = config.main ? imagesFrom(page, config.main, mainAttributes.imagesdir) : null;
+      const doc = await loadFile(file, { safe: 'safe', sourcemap: true, base_dir: project.sourceDir, attributes: { ...attributes, ...(imagesdir !== null ? { imagesdir } : {}), outfilesuffix: '.html', linkcss: '', stylesheet: 'asciidoctor.css', stylesdir } });
       const blocks = markLines(doc as unknown as Node, (f) => pageOf(f) === page);
       const html = (await doc.convert({ standalone: true })) as string;
       // (After the page: converting a block on its own first would count its footnotes twice.)
