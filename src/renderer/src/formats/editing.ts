@@ -1,11 +1,12 @@
 // What the editor offers for a page's format (see core/format.ts): what can be
 // inserted, the callouts, and how its blocks are presented. MyST's are in myst/.
 import type { Command, EditorState, Transaction } from 'prosemirror-state';
+import type { Node as PMNode } from 'prosemirror-model';
 import type { Extension } from '@codemirror/state';
 import type { Rename } from '../../../core/rename';
 import type { PageConfig } from '../../../core/format';
 import type { EditorConfig } from '../../../core/editor-config';
-import type { EditorContext } from '../editor/context';
+import type { EditorContext, Field } from '../editor/context';
 import type { DirectiveInfo } from '../editor/tones';
 import { mystEditing } from './myst';
 
@@ -54,6 +55,9 @@ export interface Cards {
   comment(source: string): string; // a comment's text, without its markers
   // How a block of this kind looks, if the format can show it (now, or once it's made).
   preview(kind: string, source: string, assetUrl: (src: string) => string): DocumentFragment | Promise<DocumentFragment> | null;
+  // A form to edit a block of this kind with, in place of its source: its fields,
+  // and the source they make.
+  form?(kind: string, source: string): { title: string; fields: Field[]; source(values: Record<string, string>): string } | null;
 }
 
 // Inline roles that refer to something else.
@@ -62,7 +66,19 @@ export interface Roles {
   split(value: string): { title: string | null; target: string }; // "Title <target>"
   page(name: string, target: string): string | null; // the page Ctrl+click opens, if any
   // What a role of the format's own shows (and says when pointed at), if not the usual.
-  shown?(name: string, value: string, config: PageConfig): { text: string; title: string; missing?: boolean } | null;
+  // `where`: the page, and where in it (a value set above, say).
+  shown?(name: string, value: string, config: PageConfig, where: { doc: PMNode; pos: number }): { text: string; title: string; missing?: boolean } | null;
+}
+
+// Pictures, where the format has more to say about them than a path from the page.
+export interface Images {
+  // Where a picture written as `ref` is, from the page (AsciiDoc's are under :imagesdir:).
+  fromPage(ref: string, config: PageConfig): string;
+  // How a picture at `path` (from the page) is written in it.
+  toRef(path: string, config: PageConfig): string;
+  // An image's width as written ("300", "50%"), and its attributes with another.
+  width(attrs: Record<string, unknown>): string | null;
+  withWidth(attrs: Record<string, unknown>, width: string | null): Record<string, unknown>;
 }
 
 export interface EditingFormat {
@@ -78,6 +94,9 @@ export interface EditingFormat {
   source: SourceSyntax;
   cards: Cards;
   roles: Roles;
+  images?: Images;
+  // The option that names a figure or a table, for cross-references: "name" if not said.
+  nameOption?: string;
 }
 
 const FORMATS: Record<PageConfig['format'], EditingFormat> = { myst: mystEditing };

@@ -173,7 +173,8 @@ class DirectiveView implements NodeView {
   }
 
   private nameButton(kind: string): HTMLButtonElement {
-    const current = (this.node.attrs.options as [string, string][]).find(([k]) => k === 'name')?.[1] ?? '';
+    const key = editingFor(this.ctx.config).nameOption ?? 'name';
+    const current = (this.node.attrs.options as [string, string][]).find(([k]) => k === key)?.[1] ?? '';
     const what = kind === 'figure' ? 'figure' : 'table';
     const b = button(current ? `#${current}` : '# Name', current ? `Other places refer to this ${what} as ${current}` : `Give this ${what} a name, to refer to it from other places`, async () => {
       const values = await this.ctx.ui.editFields({
@@ -183,8 +184,8 @@ class DirectiveView implements NodeView {
       });
       if (!values) return;
       const value = values.name.trim();
-      const rest = (this.node.attrs.options as [string, string][]).filter(([k]) => k !== 'name');
-      setAttrs(this.view, this.getPos, this.node, { options: value ? [...rest, ['name', value]] : rest });
+      const rest = (this.node.attrs.options as [string, string][]).filter(([k]) => k !== key);
+      setAttrs(this.view, this.getPos, this.node, { options: value ? [...rest, [key, value]] : rest });
     });
     b.classList.add('directive-name');
     return b;
@@ -196,8 +197,11 @@ class DirectiveView implements NodeView {
       const alt = options.find(([k]: [string, string]) => k === 'alt')?.[1] ?? '';
       const current = this.preview.querySelector('img');
       const src = this.ctx.assetUrl(args);
+      const width = cssWidth(options.find(([k]: [string, string]) => k === 'width')?.[1]);
+      if (current && current.style.width !== width) current.style.width = width;
       if (current?.getAttribute('src') !== src) {
         const img = el('img', { src, alt, draggable: 'false' });
+        if (width) img.style.width = width;
         img.addEventListener('error', () => this.preview.replaceChildren(el('div', { class: 'missing' }, `Image not found: ${args}`)));
         this.preview.replaceChildren(img);
       }
@@ -484,6 +488,13 @@ class RawBlockView extends CardView {
 
   protected async edit() {
     const settings = this.ctx.config.editor.conditions;
+    // A form the format has for blocks of this kind.
+    const form = editingFor(this.ctx.config).cards.form?.(this.node.attrs.kind, this.node.attrs.source);
+    if (form && !/^condition-/.test(this.node.attrs.kind)) {
+      const values = await this.ctx.ui.editFields({ title: form.title, fields: form.fields, submit: 'Save' });
+      if (values) replaceWithSource(this.view, this.getPos, this.node, form.source(values), this.ctx);
+      return;
+    }
     if (!settings || !/^condition-/.test(this.node.attrs.kind)) return super.edit();
     const marker = markersOf(settings).block.read(this.node.attrs.source);
     if (marker?.kind !== 'start') return;
@@ -761,7 +772,7 @@ class RoleView extends InlineView {
       d.replaceChildren(el('span', { class: 'role-arrow' }, resolved.broken ? '⚠' : '↗'), shown);
       return;
     }
-    const own = roles.shown?.(name, value, this.ctx.config);
+    const own = roles.shown?.(name, value, this.ctx.config, { doc: this.view.state.doc, pos: this.getPos() ?? 0 });
     if (own) {
       d.classList.add('role-value');
       d.classList.toggle('role-broken', !!own.missing);
@@ -934,9 +945,15 @@ class HtmlInlineView extends InlineView {
   }
 }
 
+// A width as written ("300", "50%", "300px") as CSS.
+const cssWidth = (w: string | null | undefined) => (!w ? '' : /^\d+(\.\d+)?$/.test(w) ? `${w}px` : /^\d+(\.\d+)?(px|%|em|rem)$/.test(w) ? w : '');
+
 class ImageView extends InlineView {
   protected render() {
     const img = el('img', { src: this.ctx.assetUrl(this.node.attrs.src), alt: this.node.attrs.alt, draggable: 'false' });
+    // At its width, when its format gives it one.
+    const width = cssWidth(editingFor(this.ctx.config).images?.width(this.node.attrs));
+    if (width) img.style.width = width;
     img.title = this.node.attrs.title ?? (this.node.attrs.alt ? `${this.node.attrs.alt} (double-click to change)` : 'Double-click to describe this image or change it');
     // Added, not set: a check's mark (a decoration's class) stays.
     this.dom.classList.add('inline-image');
@@ -944,14 +961,19 @@ class ImageView extends InlineView {
   }
 
   protected async edit() {
+    const images = editingFor(this.ctx.config).images;
     const next = await this.ctx.ui.editFields({
       title: 'Image',
       fields: [
         { key: 'src', label: 'Image file', value: this.node.attrs.src, browse: () => this.ctx.chooseImage() },
         { key: 'alt', label: 'Description', value: this.node.attrs.alt, help: 'Read aloud by screen readers' },
+        ...(images ? [{ key: 'width', label: 'Width', value: images.width(this.node.attrs) ?? '', placeholder: '300 or 50%', help: 'Empty: its own width' }] : []),
       ],
     });
-    if (next) setAttrs(this.view, this.getPos, this.node, next);
+    if (!next) return;
+    const { width, ...rest } = next;
+    const attrs = { ...this.node.attrs, ...rest };
+    setAttrs(this.view, this.getPos, this.node, images ? images.withWidth(attrs, width.trim() || null) : attrs);
   }
 }
 

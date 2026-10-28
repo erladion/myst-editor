@@ -205,7 +205,8 @@ export async function editLink(ctx: EditorContext, state: EditorState, run: (cmd
         });
       }
       tr = tr.removeMark(start, end, marks.link);
-      if (values.href) tr = tr.addMark(start, end, marks.link.create({ href: values.href }));
+      // What else the link had (its title, a format's ^ for a new window) stays.
+      if (values.href) tr = tr.addMark(start, end, marks.link.create({ ...existing?.attrs, href: values.href }));
     }
     dispatch?.(tr.scrollIntoView());
     return true;

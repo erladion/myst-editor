@@ -16,6 +16,7 @@ import type { EditorContext } from '../editor/context';
 import type { DialogApi } from '../components/Dialogs';
 import { resolveRef } from '../paths';
 import { builderFor } from '../builders/builder';
+import { editingFor } from '../formats/editing';
 import type { Node as PMNode } from 'prosemirror-model';
 import { loadDocument } from '../../../core/document';
 
@@ -60,6 +61,12 @@ export function useEditorContext(dialogs: RefObject<DialogApi | null>, ws: Works
       const p = pageProject();
       return (p && ctxRef.current.states[p.id]?.info) || null;
     };
+    const imageRef = (path: string) => {
+      const w = current();
+      if (!w?.current) return path;
+      const config = configFor(w.project, w.current);
+      return editingFor(config).images?.toRef(path, config) ?? path;
+    };
     return {
       ui: {
         editSource: (o) => dialogs.current!.editSource(o),
@@ -75,9 +82,11 @@ export function useEditorContext(dialogs: RefObject<DialogApi | null>, ws: Works
       get filePath() {
         return current()?.current ?? null;
       },
-      chooseImage() {
+      // Paths from the page, written as the page's format writes them (see Images).
+      async chooseImage() {
         const page = current()?.current;
-        return page ? api.chooseImage(page) : Promise.resolve(null);
+        const path = page ? await api.chooseImage(page) : null;
+        return path && imageRef(path);
       },
       async addImage(file: File) {
         const page = current()?.current;
@@ -85,12 +94,13 @@ export function useEditorContext(dialogs: RefObject<DialogApi | null>, ws: Works
         // A file from disk is referenced (or copied in); a picture from the clipboard
         // has no file, so it's saved under a dated name.
         const path = api.filePath(file);
-        if (path) return api.addImageFile(page, path);
-        return api.addImageData(page, imageName(file), new Uint8Array(await file.arrayBuffer()));
+        if (path) return imageRef(await api.addImageFile(page, path));
+        return imageRef(await api.addImageData(page, imageName(file), new Uint8Array(await file.arrayBuffer())));
       },
-      assetUrl(ref: string) {
+      assetUrl(written: string) {
         const w = current();
-        if (!w || /^(https?:|data:)/.test(ref)) return ref;
+        if (!w || /^(https?:|data:)/.test(written)) return written;
+        const ref = w.current ? (editingFor(configFor(w.project, w.current)).images?.fromPage(written, configFor(w.project, w.current)) ?? written) : written;
         const rel = resolveRef(w.current, ref, pageProject()?.dir ?? '');
         return rel === null ? '' : api.assetUrl(rel);
       },
