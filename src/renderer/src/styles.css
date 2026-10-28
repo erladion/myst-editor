@@ -1212,6 +1212,10 @@ fieldset.field legend {
   color: var(--fg-muted);
 }
 
+.card-condition {
+  font-style: italic;
+}
+
 .card-rendered {
   padding: 0 12px 12px;
   font: 15px/1.6 var(--font-doc);

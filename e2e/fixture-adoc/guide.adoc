@@ -39,3 +39,7 @@ Run [.cmd]`install.sh` with #care#, see https://example.org[the site^].
 
 .The parts
 image::images/diagram.svg[]
+
+ifeval::[{sectnumlevels} == 3]
+Three levels.
+endif::[]

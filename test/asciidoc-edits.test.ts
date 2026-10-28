@@ -290,7 +290,7 @@ describe('attribute values', async () => {
   const shown = asciidocEditing.roles.shown!;
   it('are where they are set: the main document’s, then the page’s, above them', () => {
     const config = { ...ASCIIDOC_CONFIG, attributes: { product: 'Widget', edition: '1' } };
-    const { doc } = load('= Chapter\n:edition: 2\n\nFirst {edition}.\n\n:product: Gadget\n\nThen {product}.\n\n:edition!:\n\nNow {edition}.\n', config);
+    const { doc } = loadDocument('= Chapter\n:edition: 2\n\nFirst {edition}.\n\n:product: Gadget\n\nThen {product}.\n\n:edition!:\n\nNow {edition}.\n', config);
     const at = (text: string) => {
       let pos = 0;
       doc.descendants((n, p) => {

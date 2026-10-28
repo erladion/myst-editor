@@ -109,3 +109,16 @@ test('Ctrl+click on a cross-reference opens the page', async () => {
   await page.locator('.role-ref', { hasText: 'the other page' }).click({ modifiers: ['Control'] });
   await expect(page.locator('.prose h1')).toHaveText('Other Page');
 });
+
+test('a condition Asciidoctor evaluates is shown readably, and edited in a form', async () => {
+  const { page } = ctx;
+  const card = page.locator('.card', { hasText: 'Only when {sectnumlevels} == 3' });
+  await expect(card).toBeVisible();
+  await expect(page.locator('.card', { hasText: 'End of the condition' })).toBeVisible();
+  await card.dblclick();
+  const dialog = page.getByRole('dialog', { name: 'Condition' });
+  await dialog.getByLabel('Expression').fill('{sectnumlevels} >= 2');
+  await dialog.getByRole('button', { name: 'Save' }).click();
+  await waitForSave(page);
+  expect(changes('guide.adoc')).toEqual({ removed: ['ifeval::[{sectnumlevels} == 3]'], added: ['ifeval::[{sectnumlevels} >= 2]'] });
+});
