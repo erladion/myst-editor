@@ -40,6 +40,11 @@ export class AsciidoctorBuilder implements Builder {
     return join(this.opts.dataDir, 'builds', this.key, 'html');
   }
 
+  // Pictures aren't copied: the built pages are where their pages are.
+  get assetsDir(): string {
+    return this.project.sourceDir;
+  }
+
   private get cacheFile(): string {
     return join(this.opts.dataDir, 'builds', this.key, 'pages.json');
   }

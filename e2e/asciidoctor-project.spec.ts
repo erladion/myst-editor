@@ -41,7 +41,10 @@ test('builds the book: its contents, references and preview', async () => {
   await expect(page.locator('.role-ref', { hasText: 'a missing anchor' })).toHaveClass(/role-broken/);
   // The chapter as Asciidoctor built it.
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
-  await expect(page.frameLocator('iframe.preview-frame, .preview iframe').first().locator('h1')).toHaveText('Using');
+  const preview = page.frameLocator('iframe.preview-frame, .preview iframe').first();
+  await expect(preview.locator('h1')).toHaveText('Using');
+  // Its picture, from the book's folder (it isn't copied into the build).
+  await expect.poll(() => preview.locator('img').evaluate((i: HTMLImageElement) => i.naturalWidth)).toBeGreaterThan(0);
 });
 
 test('a new chapter goes into the book', async () => {

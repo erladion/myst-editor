@@ -1,3 +1,5 @@
 = Using
 
 See <<requirements>> and xref:install.adoc#nowhere[a missing anchor].
+
+image::images/gear.svg[Gear]
