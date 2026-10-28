@@ -1303,6 +1303,11 @@ button.toc-toggle:hover {
   padding: 0 0.3em;
 }
 
+/* A value the format fills in (an attribute's): underlined lightly, to tell it from text. */
+.role-value {
+  border-bottom: 1px dotted var(--fg-muted);
+}
+
 .role-name {
   font: 0.75em var(--font-ui);
   color: var(--fg-muted);

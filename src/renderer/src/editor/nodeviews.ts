@@ -761,6 +761,13 @@ class RoleView extends InlineView {
       d.replaceChildren(el('span', { class: 'role-arrow' }, resolved.broken ? '⚠' : '↗'), shown);
       return;
     }
+    const own = roles.shown?.(name, value, this.ctx.config);
+    if (own) {
+      d.classList.add('role-value');
+      d.classList.toggle('role-broken', !!own.missing);
+      d.title = own.title;
+      return d.replaceChildren(own.text);
+    }
     d.classList.add('role-unknown');
     d.title = `{${name}} role`;
     d.replaceChildren(el('span', { class: 'role-name' }, name), value);

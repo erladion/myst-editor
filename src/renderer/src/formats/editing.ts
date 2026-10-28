@@ -61,6 +61,8 @@ export interface Roles {
   references: Record<string, string>; // which roles do, and what to call what they refer to
   split(value: string): { title: string | null; target: string }; // "Title <target>"
   page(name: string, target: string): string | null; // the page Ctrl+click opens, if any
+  // What a role of the format's own shows (and says when pointed at), if not the usual.
+  shown?(name: string, value: string, config: PageConfig): { text: string; title: string; missing?: boolean } | null;
 }
 
 export interface EditingFormat {
