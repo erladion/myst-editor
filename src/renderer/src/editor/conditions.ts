@@ -5,7 +5,7 @@ import { Plugin, PluginKey, type Command, type EditorState, type Transaction } f
 import { Decoration, DecorationSet } from 'prosemirror-view';
 import { AddMarkStep, RemoveMarkStep, ReplaceStep } from 'prosemirror-transform';
 import { CONDITION_PALETTE, type ConditionsDef } from '../../../core/editor-config';
-import { endMarker, evaluate, parseCondition, readMarker, startMarker, unknownNames, withExpression, type Expr, type ParseResult } from '../../../core/conditions';
+import { evaluate, markersOf, parseCondition, unknownNames, type Expr, type ParseResult } from '../../../core/conditions';
 import { isInTable, selectedRect } from 'prosemirror-tables';
 import { schema, type RowCondition } from '../../../core/schema';
 
@@ -32,6 +32,7 @@ export interface ConditionScan {
 // Every marker in document order, paired by nesting. Inline pairs must be in the same
 // paragraph; block pairs may span container boundaries (e.g. list items).
 export function scanConditions(doc: PMNode, settings: ConditionsDef): ConditionScan {
+  const markers = markersOf(settings);
   const regions: Region[] = [];
   const unmatched: MarkerAt[] = [];
   const blockStack: MarkerAt[] = [];
@@ -43,7 +44,7 @@ export function scanConditions(doc: PMNode, settings: ConditionsDef): ConditionS
   };
   doc.descendants((node, pos) => {
     if (node.type.name === 'raw_block' && /^condition-/.test(node.attrs.kind)) {
-      const marker = readMarker(node.attrs.source, settings.block);
+      const marker = markers.block.read(node.attrs.source);
       if (marker) pair(blockStack, { pos, node, kind: marker.kind, expr: marker.kind === 'start' ? marker.expr : '', inline: false });
       return false;
     }
@@ -51,7 +52,7 @@ export function scanConditions(doc: PMNode, settings: ConditionsDef): ConditionS
       const inlineStack: MarkerAt[] = [];
       node.forEach((child, offset) => {
         if (child.type.name !== 'html_inline') return;
-        const marker = readMarker(child.attrs.value, settings.inline);
+        const marker = markers.inline?.read(child.attrs.value) ?? null;
         if (marker) pair(inlineStack, { pos: pos + 1 + offset, node: child, kind: marker.kind, expr: marker.kind === 'start' ? marker.expr : '', inline: true });
       });
       unmatched.push(...inlineStack);
@@ -218,7 +219,7 @@ function decorateRows(doc: PMNode, settings: ConditionsDef, viewAs: string[] | n
       const at = pos + 1 + offset;
       if (conds.length) {
         const exprs = conds.map((c) => {
-          const m = readMarker(c.start, settings.block);
+          const m = markersOf(settings).block.read(c.start);
           return m?.kind === 'start' ? m.expr : '';
         });
         const parsed = exprs.map((e) => parseCondition(e));
@@ -280,11 +281,12 @@ function atLineStart(state: EditorState, pos: number): boolean {
 export type MakeConditional = { inline: true; ok: boolean; reason?: string } | { inline: false };
 
 // Whether the selection would become an inline or a block condition.
-export function conditionKind(state: EditorState): MakeConditional {
+export function conditionKind(state: EditorState, settings: ConditionsDef): MakeConditional {
   const { $from, $to, empty } = state.selection;
   const sameBlock = $from.sameParent($to) && $from.parent.isTextblock;
   const whole = $from.parentOffset === 0 && $to.parentOffset === $to.parent.content.size;
   if (empty || !sameBlock || whole) return { inline: false };
+  if (!markersOf(settings).inline) return { inline: true, ok: false, reason: 'Conditions here are for whole blocks: select whole paragraphs, or put the cursor in one.' };
   if (atLineStart(state, $from.pos)) {
     return { inline: true, ok: false, reason: 'An inline condition can’t start at the beginning of a line. Select from a later word, or the whole paragraph.' };
   }
@@ -294,13 +296,14 @@ export function conditionKind(state: EditorState): MakeConditional {
 // Wrap the selection (or the block the cursor is in) in a condition.
 export function makeConditional(settings: ConditionsDef, expr: string): Command {
   return (state, dispatch) => {
-    const kind = conditionKind(state);
+    const kind = conditionKind(state, settings);
+    const markers = markersOf(settings);
     const { $from, $to, from, to } = state.selection;
     let tr = state.tr;
     if (kind.inline) {
-      if (!kind.ok) return false;
-      const start = schema.nodes.html_inline.create({ value: startMarker(settings.inline[0], expr) });
-      const end = schema.nodes.html_inline.create({ value: endMarker(settings.inline[1]) });
+      if (!kind.ok || !markers.inline) return false;
+      const start = schema.nodes.html_inline.create({ value: markers.inline.start(expr) });
+      const end = schema.nodes.html_inline.create({ value: markers.inline.end() });
       // Spaces at the edges of the selection stay outside, so the text reads the same
       // either way (double-clicking a word on Windows also selects the space after it).
       const text = state.doc.textBetween(from, to, '\ufffc', '\ufffc');
@@ -311,7 +314,7 @@ export function makeConditional(settings: ConditionsDef, expr: string): Command 
     } else {
       const range = $from.blockRange($to);
       if (!range) return false;
-      tr = tr.insert(range.end, marker(endMarker(settings.block[1]), 'end')).insert(range.start, marker(startMarker(settings.block[0], expr), 'start'));
+      tr = tr.insert(range.end, marker(markers.block.end(), 'end')).insert(range.start, marker(markers.block.start(expr), 'start'));
     }
     dispatch?.(tr.scrollIntoView());
     return true;
@@ -357,7 +360,7 @@ export function rowCondition(state: EditorState, settings: ConditionsDef): { id:
   const inner = t?.selected.map((r) => (r.node.attrs.conds as RowCondition[]).at(-1));
   const first = inner?.[0];
   if (!first || inner!.some((c) => c?.id !== first.id)) return null;
-  const m = readMarker(first.start, settings.block);
+  const m = markersOf(settings).block.read(first.start);
   return { id: first.id, expr: m?.kind === 'start' ? m.expr : '' };
 }
 
@@ -371,11 +374,12 @@ export function setRowCondition(settings: ConditionsDef, expr: string): Command 
     if (!t) return false;
     if (!dispatch) return true;
     const shared = rowCondition(state, settings);
-    const group: RowCondition = { id: `r${++rowGroup}`, start: startMarker(settings.block[0], expr), end: endMarker(settings.block[1]) };
+    const { block } = markersOf(settings);
+    const group: RowCondition = { id: `r${++rowGroup}`, start: block.start(expr), end: block.end() };
     const tr = state.tr;
     for (const row of shared ? t.rows : t.selected) {
       const conds: RowCondition[] = row.node.attrs.conds;
-      const next = shared ? conds.map((c) => (c.id === shared.id ? { ...c, start: withExpression(c.start, expr) } : c)) : [...conds, group];
+      const next = shared ? conds.map((c) => (c.id === shared.id ? { ...c, start: block.withExpression(c.start, expr) } : c)) : [...conds, group];
       if (next !== conds) tr.setNodeMarkup(row.pos, null, { ...row.node.attrs, conds: next });
     }
     dispatch(tr);

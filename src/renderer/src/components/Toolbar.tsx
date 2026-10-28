@@ -31,7 +31,7 @@ async function editRowCondition(ctx: EditorContext, view: EditorView) {
 async function makeConditionalInteractive(ctx: EditorContext, view: EditorView) {
   const settings = ctx.config.editor.conditions;
   if (!settings) return;
-  const kind = conditionKind(view.state);
+  const kind = conditionKind(view.state, settings);
   if (kind.inline && !kind.ok) return ctx.ui.notify(kind.reason!);
   const result = await ctx.ui.editCondition({ expr: '', settings, allowRemove: false });
   if (!result || 'remove' in result) return;

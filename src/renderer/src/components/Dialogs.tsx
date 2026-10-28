@@ -2,7 +2,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type FormEvent } from 'react';
 import type { EditorUi, Field } from '../editor/context';
 import { isCapabilityName, type ConditionsDef, type OptionDef } from '../../../core/editor-config';
-import { describe, parseCondition, unknownNames } from '../../../core/conditions';
+import { describe, parseCondition, parseFor, unknownNames } from '../../../core/conditions';
 
 type Request =
   | { kind: 'source'; title: string; source: string; help?: string; resolve: (v: string | null) => void }
@@ -324,7 +324,8 @@ function ConditionForm({ request, cancel }: { request: Extract<Request, { kind: 
   const settings = { ...request.settings, capabilities: [...request.settings.capabilities, ...added] };
   const file = settings.capabilitiesFile;
   const canAdd = !!settings.capabilitiesPath;
-  const parsed = parseCondition(expr);
+  // (And one the page's markers can write.)
+  const parsed = parseFor(settings, expr);
   const unknown = parsed.ok ? unknownNames(parsed.names, settings) : [];
   const selected = orList(expr);
   const toggle = (name: string) => {

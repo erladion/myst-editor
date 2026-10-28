@@ -124,6 +124,51 @@ export function readMarker(source: string, keywords: [string, string]): Marker |
   return null;
 }
 
+// How a page writes conditions' markers, for block conditions and inline ones (null:
+// its format has none).
+export interface MarkerSyntax {
+  read(source: string): Marker | null;
+  start(expr: string): string;
+  end(): string;
+  // An existing start marker with another expression, written as it was otherwise.
+  withExpression(source: string, expr: string): string;
+}
+
+export interface ConditionMarkers {
+  block: MarkerSyntax;
+  inline: MarkerSyntax | null;
+  // Why a condition can't be written with these markers; null if it can.
+  refuse(expr: Expr): string | null;
+}
+
+// HTML comments with the project's keywords: `<!-- if: X -->` … `<!-- endif -->`.
+export function commentMarkers(settings: ConditionsDef): ConditionMarkers {
+  const syntax = (keywords: [string, string]): MarkerSyntax => ({
+    read: (source) => readMarker(source, keywords),
+    start: (expr) => startMarker(keywords[0], expr),
+    end: () => endMarker(keywords[1]),
+    withExpression,
+  });
+  return { block: syntax(settings.block), inline: syntax(settings.inline), refuse: () => null };
+}
+
+const SYNTAXES: Record<NonNullable<ConditionsDef['markers']>, (settings: ConditionsDef) => ConditionMarkers> = { comments: commentMarkers };
+const made = new WeakMap<ConditionsDef, ConditionMarkers>();
+
+// The markers the settings say pages write.
+export function markersOf(settings: ConditionsDef): ConditionMarkers {
+  let markers = made.get(settings);
+  if (!markers) made.set(settings, (markers = SYNTAXES[settings.markers ?? 'comments'](settings)));
+  return markers;
+}
+
+// A condition parsed, and refused if the markers can't write it.
+export function parseFor(settings: ConditionsDef, input: string): ParseResult {
+  const parsed = parseCondition(input);
+  const refused = parsed.ok ? markersOf(settings).refuse(parsed.expr) : null;
+  return refused ? { ok: false, error: refused } : parsed;
+}
+
 export function startMarker(keyword: string, expr: string): string {
   return `<!-- ${keyword}: ${expr.trim()} -->`;
 }

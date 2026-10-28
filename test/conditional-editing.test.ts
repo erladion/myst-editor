@@ -102,7 +102,7 @@ describe('making content conditional', () => {
     const { state, map } = load();
     const at = textPos(state.doc, 'Everyone');
     const s = state.apply(state.tr.setSelection(TextSelection.create(state.doc, at)));
-    expect(conditionKind(s)).toEqual({ inline: false });
+    expect(conditionKind(s, settings)).toEqual({ inline: false });
     let next = s;
     makeConditional(settings, 'CapabilityY')(s, (tr) => (next = s.apply(tr)));
     const r = saveDocument(next.doc, map, config);
@@ -114,7 +114,7 @@ describe('making content conditional', () => {
     const { state, map } = load();
     const from = textPos(state.doc, 'sees');
     const s = state.apply(state.tr.setSelection(TextSelection.create(state.doc, from, from + 4)));
-    expect(conditionKind(s)).toEqual({ inline: true, ok: true });
+    expect(conditionKind(s, settings)).toEqual({ inline: true, ok: true });
     let next = s;
     makeConditional(settings, 'CapabilityZ')(s, (tr) => (next = s.apply(tr)));
     const r = saveDocument(next.doc, map, config);
@@ -136,7 +136,7 @@ describe('making content conditional', () => {
     const { state } = load();
     const from = textPos(state.doc, 'Everyone');
     const s = state.apply(state.tr.setSelection(TextSelection.create(state.doc, from, from + 8)));
-    expect(conditionKind(s)).toMatchObject({ inline: true, ok: false });
+    expect(conditionKind(s, settings)).toMatchObject({ inline: true, ok: false });
     expect(makeConditional(settings, 'X')(s)).toBe(false);
   });
 

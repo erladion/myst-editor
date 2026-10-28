@@ -89,9 +89,13 @@ export interface RoleDef {
   url?: string; // "{value}" is replaced with the role's content
 }
 
+// How pages write conditions' markers: MyST's HTML comments (see conditions.ts).
+export type MarkerKind = 'comments';
+
 export interface ConditionsDef {
   block: [string, string];
   inline: [string, string];
+  markers?: MarkerKind; // 'comments' if not said
   caseSensitive: boolean;
   capabilities: string[]; // known capability names, from the JSON file
   capabilitiesFile: string | null; // as written in the settings

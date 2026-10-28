@@ -9,7 +9,7 @@ import { ICONS } from './tones';
 import { splitRoleValue } from '../formats/myst/directives';
 import { editingFor } from '../formats/editing';
 import { renderMath } from './math';
-import { describe, parseCondition, readMarker, unknownNames, withExpression } from '../../../core/conditions';
+import { describe, markersOf, parseCondition, unknownNames } from '../../../core/conditions';
 import { condStripes, conditionColor, conditionsKey, exprVisible, removeCondition, tocConditionsOf } from './conditions';
 import { FORMATTING, LINE_BREAKS, inlineTag, lineTagOf, safeHtml } from './html';
 
@@ -399,7 +399,7 @@ class OpaqueDirectiveView extends CardView {
     let conditional = false;
     for (const line of body.split('\n').map((l) => l.trim())) {
       if (!line || line.startsWith(':')) continue;
-      const marker = settings && readMarker(line, settings.block);
+      const marker = settings && markersOf(settings).block.read(line);
       if (settings && marker) {
         conditional = true;
         if (marker.kind === 'end') {
@@ -485,20 +485,20 @@ class RawBlockView extends CardView {
   protected async edit() {
     const settings = this.ctx.config.editor.conditions;
     if (!settings || !/^condition-/.test(this.node.attrs.kind)) return super.edit();
-    const marker = readMarker(this.node.attrs.source, settings.block);
+    const marker = markersOf(settings).block.read(this.node.attrs.source);
     if (marker?.kind !== 'start') return;
     const result = await this.ctx.ui.editCondition({ expr: marker.expr, settings, allowRemove: true });
     if (!result) return;
     const pos = this.getPos();
     if (pos === undefined) return;
     if ('remove' in result) removeCondition(settings, pos)(this.view.state, this.view.dispatch);
-    else setAttrs(this.view, this.getPos, this.node, { source: withExpression(this.node.attrs.source, result.expr) });
+    else setAttrs(this.view, this.getPos, this.node, { source: markersOf(settings).block.withExpression(this.node.attrs.source, result.expr) });
     this.view.focus();
   }
 
   private renderCondition(kind: string, source: string) {
     const settings = this.ctx.config.editor.conditions;
-    const marker = settings && readMarker(source, settings.block);
+    const marker = settings && markersOf(settings).block.read(source);
     if (kind === 'condition-end' || marker?.kind !== 'start') {
       setOwnClass(this.dom, 'cond-end-line');
       this.dom.title = 'End of the condition';
@@ -852,7 +852,7 @@ class FootnoteRefView extends InlineView {
 class HtmlInlineView extends InlineView {
   private marker() {
     const settings = this.ctx.config.editor.conditions;
-    return settings ? readMarker(this.node.attrs.value, settings.inline) : null;
+    return settings ? (markersOf(settings).inline?.read(this.node.attrs.value) ?? null) : null;
   }
 
   protected render() {
@@ -918,7 +918,7 @@ class HtmlInlineView extends InlineView {
       const pos = this.getPos();
       if (!result || pos === undefined) return;
       if ('remove' in result) removeCondition(settings, pos)(this.view.state, this.view.dispatch);
-      else setAttrs(this.view, this.getPos, this.node, { value: withExpression(this.node.attrs.value, result.expr) });
+      else setAttrs(this.view, this.getPos, this.node, { value: markersOf(settings).inline!.withExpression(this.node.attrs.value, result.expr) });
       return;
     }
     if (marker) return;
