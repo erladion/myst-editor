@@ -1,0 +1,111 @@
+= Installation Guide
+Jane Writer <jane@example.org>
+v2.1, 2026-03-01
+:toc: left
+:icons: font
+:experimental:
+
+This guide explains how to install *Widget* on your machine.
+It covers Linux, macOS and Windows.
+
+// A comment for the writers only.
+
+[[requirements]]
+== Requirements
+
+Before you start, make sure you have:
+
+* A supported operating system
+* At least 2 GB of _free_ disk space
+** More if you install the examples
+* An internet connection
++
+Without one, use the offline installer.
+
+NOTE: The installer checks these for you.
+
+.Supported versions
+[options="header"]
+|===
+| System | Version
+| Linux | 6.0 or later
+| macOS | 14 or later
+|===
+
+== Installing
+
+. Download the installer from https://example.org/download[the download page].
+. Run it:
++
+[source,bash]
+----
+./install.sh --prefix /opt/widget
+----
+. Check that it worked with `widget --version`.
+
+[TIP]
+====
+You can also install with your package manager.
+
+See <<requirements>> for what it needs.
+====
+
+[WARNING]
+.Older systems
+Don't use version 1.x installers on new systems.
+
+=== From source
+
+Building from source needs a compiler and kbd:[Ctrl+C] stops the build.
+
+[source,python]
+.setup.py
+----
+from setuptools import setup
+
+setup(name="widget")
+----
+
+  This is a literal paragraph.
+  It keeps its line breaks.
+
+....
+Literal block
+  with indentation
+....
+
+____
+A quote without attribution.
+____
+
+[quote, Ada Lovelace, Notes]
+____
+The engine might compose elaborate pieces of music.
+____
+
+****
+A sidebar with *bold* text.
+****
+
+.A titled sidebar
+****
+Content of the sidebar.
+****
+
+image::images/diagram.png[Architecture diagram,600]
+
+include::partials/footer.adoc[]
+
+'''
+
+Text after a break, with a footnote:[See the release notes.] and an
+image:icons/info.png[Info] inline.
+
+<<<
+
+== Reference
+
+Term one:: The first term.
+Term two:: The second term.
+
+Last paragraph with xref:other.adoc#start[another page] and a link:files/report.pdf[report].

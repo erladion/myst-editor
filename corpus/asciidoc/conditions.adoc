@@ -1,0 +1,15 @@
+= Conditions
+
+Shown everywhere.
+
+ifdef::backend-html5[]
+Only in HTML.
+endif::[]
+
+ifndef::env-github[]
+* Not on GitHub
+endif::[]
+
+ifeval::[{sectnumlevels} == 3]
+Three levels.
+endif::[]

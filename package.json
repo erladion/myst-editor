@@ -24,6 +24,7 @@
     "dist:appimage": "node scripts/fetch-uv.mjs && electron-vite build && electron-builder --linux AppImage --publish never"
   },
   "devDependencies": {
+    "@asciidoctor/core": "4.1.1",
     "@codemirror/commands": "6.11.1",
     "@codemirror/lang-markdown": "6.5.2",
     "@codemirror/language": "6.13.1",

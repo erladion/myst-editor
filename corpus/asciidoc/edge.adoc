@@ -1,0 +1,82 @@
+Setext title
+============
+
+Section two
+-----------
+
+A paragraph
+over three
+lines with a line break +
+here.
+
+[.lead]
+A paragraph with a role.
+
+[#intro.special]
+Intro paragraph.
+
+NOTE: A one-line note
+that goes on.
+
+[CAUTION]
+Careful now.
+
+- dash item
+* star item under it
+- dash again
+
+. one
+.. one a
+.. one b
+. two
+
+1. numbered
+2. numbered again
+
+* item with continuation
+
+* item after a blank line
++
+----
+attached code
+----
+
+[source]
+puts "styled paragraph as code"
+
+[example]
+An example paragraph.
+
+====
+An example block.
+====
+
+--
+An open block.
+--
+
+[latexmath]
+++++
+E = mc^2
+++++
+
+++++
+<div>raw html</div>
+++++
+
+////
+A block comment.
+////
+
+```ruby
+puts "fenced"
+```
+
+Paragraph with #highlight# stays as written.
+
+======
+Nested example
+====
+inner
+====
+======
