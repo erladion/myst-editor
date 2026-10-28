@@ -15,6 +15,7 @@ describe('adding a capability', () => {
     expect(addCapability(file, null, 'C')).toBe('{\n  "name": "Product",\n  "capabilities": ["A", "B", "C"],\n  "other": [1, 2]\n}\n');
     // An empty list.
     expect(addCapability('{"capabilities": []}', null, 'A')).toBe('{"capabilities": ["A"]}');
+    expect(addCapability('{\n  "capabilities": []\n}\n', null, 'A')).toBe('{\n  "capabilities": [\n    "A"\n  ]\n}\n');
     // A list of objects: one more, named like the others, written like them.
     expect(addCapability('[{"id": "A", "label": "Alpha"}]', null, 'B')).toBe('[{"id": "A", "label": "Alpha"}, {"id": "B"}]');
     expect(addCapability('[{"name":"A"}]', null, 'B')).toBe('[{"name":"A"},{"name":"B"}]');

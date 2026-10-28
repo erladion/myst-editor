@@ -90,7 +90,8 @@ export function appendToJson(text: string, path: string[], entry: (style: JsonSt
   const unit = /\n([ \t]+)\S/.exec(text)?.[1] ?? '  ';
   if (!items.length) {
     const inner = text.slice(node.start + 1, node.end - 1);
-    if (!inner.includes('\n')) return text.slice(0, node.start + 1) + entry({ colon, indent: '', unit, first: '' }) + text.slice(node.end - 1);
+    // On one line in a file on one line; in one over lines, over lines of its own.
+    if (!inner.includes('\n') && !text.trim().includes('\n')) return text.slice(0, node.start + 1) + entry({ colon, indent: '', unit, first: '' }) + text.slice(node.end - 1);
     const outer = indentAt(text, node.start);
     return text.slice(0, node.start + 1) + `\n${outer}${unit}` + entry({ colon, indent: outer + unit, unit, first: '' }) + `\n${outer}` + text.slice(node.end - 1);
   }
