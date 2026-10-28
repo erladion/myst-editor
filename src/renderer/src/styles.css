@@ -1458,11 +1458,30 @@ button.toc-toggle:hover {
 }
 
 .problems {
+  position: relative;
   border-top: 1px solid var(--border);
   max-height: 34vh;
+  flex: none;
   display: flex;
   flex-direction: column;
   background: var(--bg);
+}
+
+/* Along the panel's top edge: drag it up to make the panel taller. */
+.panel-resize {
+  position: absolute;
+  top: -4px;
+  left: 0;
+  right: 0;
+  height: 8px;
+  cursor: row-resize;
+  z-index: 3;
+}
+
+.panel-resize:hover,
+.panel-resize:focus-visible {
+  outline: none;
+  background: linear-gradient(transparent 3px, var(--accent) 3px, var(--accent) 5px, transparent 5px);
 }
 
 .problems header {
@@ -1476,6 +1495,8 @@ button.toc-toggle:hover {
 
 .problems-list {
   overflow: auto;
+  flex: 1 1 auto;
+  min-height: 0;
   padding: 4px 0 8px;
 }
 

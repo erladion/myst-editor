@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usable, type EnvironmentChoice, type PythonCandidate } from '../../../shared/sphinx';
 import { type BuildState, type BuildWarning } from '../../../shared/build';
+import { usePanelHeight } from './PanelResize';
 
 interface TrustProps {
   state: BuildState;
@@ -396,9 +397,11 @@ export function ProblemsPanel({ warnings, titles, current, onOpen, onClose }: Pr
       .map(([source, list]) => [source, list.sort((a, b) => (a.line ?? 0) - (b.line ?? 0))] as const)
       .sort(([a], [b]) => Number(b === current) - Number(a === current) || (a === '' ? 1 : b === '' ? -1 : a.localeCompare(b)));
   }, [warnings, current]);
+  const panel = usePanelHeight();
 
   return (
-    <section className="problems" aria-label="Problems">
+    <section className="problems" aria-label="Problems" ref={panel.ref} style={panel.style}>
+      {panel.handle}
       <header>
         <strong>Problems</strong>
         <span className="muted">{warnings.length ? `${warnings.length} from the last build` : 'None — the last build was clean'}</span>

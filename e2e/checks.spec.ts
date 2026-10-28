@@ -43,3 +43,31 @@ test('finds mistakes in the page, and fixes them', async () => {
   await panel.getByRole('button', { name: 'Check all pages' }).click();
   await expect(panel.getByLabel('All pages')).toContainText('All pages:');
 });
+
+test('the panel is made taller with its handle, and stays so', async () => {
+  ctx = await launch({ prepare: (dir) => writeFileSync(join(dir, 'docs', 'index.md'), '# Guide\n\nRead [here](guide/install.md) first.\n') });
+  const { page } = ctx;
+  await page.getByRole('button', { name: 'Not now' }).click();
+  await page.getByRole('button', { name: '1 to check' }).click();
+  const panel = page.getByRole('region', { name: 'Checks' });
+  const scroll = page.locator('.scroll').first();
+  const before = { panel: (await panel.boundingBox())!.height, page: (await scroll.boundingBox())!.height };
+  const handle = panel.getByRole('separator', { name: 'Resize the panel' });
+  const box = (await handle.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2, box.y - 150, { steps: 5 });
+  await page.mouse.up();
+  const after = { panel: (await panel.boundingBox())!.height, page: (await scroll.boundingBox())!.height };
+  expect(after.panel).toBeGreaterThan(before.panel + 120);
+  // The page above gave the room.
+  expect(after.page).toBeLessThan(before.page - 120);
+  // The arrow keys too.
+  await handle.focus();
+  await page.keyboard.press('ArrowDown');
+  expect((await panel.boundingBox())!.height).toBeCloseTo(after.panel - 20, -1);
+  // Kept: open again, as tall.
+  await panel.getByRole('button', { name: 'Close' }).click();
+  await page.getByRole('button', { name: '1 to check' }).click();
+  expect((await panel.boundingBox())!.height).toBeCloseTo(after.panel - 20, -1);
+});

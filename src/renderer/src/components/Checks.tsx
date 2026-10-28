@@ -2,6 +2,7 @@
 // go to or to fix; and the same for every page of the folder, when asked.
 import { useState } from 'react';
 import type { Finding } from '../../../core/checks';
+import { usePanelHeight } from './PanelResize';
 
 export interface PageFindings {
   path: string;
@@ -37,8 +38,10 @@ export function ChecksPanel({ findings, onShow, onFix, checkAll, onOpen, onClose
   const [all, setAll] = useState<PageFindings[] | null>(null);
   const [busy, setBusy] = useState(false);
   const total = all?.reduce((n, p) => n + p.findings.length, 0) ?? 0;
+  const panel = usePanelHeight();
   return (
-    <section className="problems checks" aria-label="Checks">
+    <section className="problems checks" aria-label="Checks" ref={panel.ref} style={panel.style}>
+      {panel.handle}
       <header>
         <strong>Checks</strong>
         <span className="muted">{findings.length ? `${findings.length} on this page` : 'Nothing to check on this page'}</span>
