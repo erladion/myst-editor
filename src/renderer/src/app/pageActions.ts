@@ -1,6 +1,7 @@
 // What the writer does with pages as a whole: create, rename or move, move in the
 // contents, delete, and put an earlier version back. Each keeps the tables of contents
 // and links in step (see pages.ts), and says what it couldn't do.
+import { pageFormat } from '../../../core/format';
 import { useCallback, type RefObject } from 'react';
 import type { BuildState } from '../../../shared/build';
 import type { PageVersion } from '../../../shared/git';
@@ -129,7 +130,7 @@ export function usePageActions(
   const createPage = useCallback(
     async ({ title, path, contents }: NewPage) => {
       if (!ws) return;
-      await api.createPage(path, `# ${title}\n`);
+      await api.createPage(path, pageFormat(path)?.newPage(title) ?? `# ${title}\n`);
       const project = projectFor(ws.project.projects, path);
       close.newPage();
       if (contents && !(await addToContents(ws, project, contents, path))) {

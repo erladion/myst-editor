@@ -1,13 +1,17 @@
 // Which Sphinx project a page belongs to.
 import { DEFAULT_CONFIG } from '../core/project-config.js';
-import type { PageConfig } from '../core/format.js';
+import { pageFormat, type PageConfig } from '../core/format.js';
 import type { ProjectInfo, Project } from './api.js';
 
 // The innermost project whose source directory contains `path` (relative to the
-// opened folder), or null for pages outside every project.
+// opened folder), or null for pages outside every project. A page belongs to a
+// project of its own format: a Markdown page in an AsciiDoc project isn't one of its
+// pages, say.
 export function projectFor(projects: Project[], path: string): Project | null {
+  const format = pageFormat(path)?.id;
   let best: Project | null = null;
   for (const p of projects) {
+    if (format && p.config.format !== format) continue;
     const inside = p.dir === '' || path === p.dir || path.startsWith(p.dir + '/');
     if (inside && (!best || p.dir.length > best.dir.length)) best = p;
   }

@@ -6,6 +6,7 @@ export const mystPages: PageFormat = {
   name: 'MyST Markdown',
   extension: '.md',
   title: firstHeading,
+  newPage: (title) => `# ${title}\n`,
 };
 
 export function firstHeading(text: string): string | null {

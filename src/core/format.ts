@@ -19,6 +19,8 @@ export interface PageFormat {
   extension: string; // of its pages (and new ones), e.g. ".md"
   // A page's title: its first heading, as plain text.
   title(text: string): string | null;
+  // A new page's text, with its title.
+  newPage(title: string): string;
 }
 
 export interface LoadedDocument {
