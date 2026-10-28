@@ -1,22 +1,16 @@
-// The advanced view's Markdown editor (CodeMirror), with MyST syntax picked out and
-// Sphinx warnings on their lines.
+// The advanced view's source editor (CodeMirror), with the format's syntax picked out
+// and Sphinx warnings on their lines.
 import { useEffect, useRef } from 'react';
 import { EditorState } from '@codemirror/state';
 import {
-  Decoration,
   EditorView,
-  MatchDecorator,
-  ViewPlugin,
   drawSelection,
   highlightActiveLine,
   highlightActiveLineGutter,
   keymap,
   lineNumbers,
-  type DecorationSet,
-  type ViewUpdate,
 } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
-import { markdown } from '@codemirror/lang-markdown';
 import { HighlightStyle, bracketMatching, syntaxHighlighting } from '@codemirror/language';
 import { highlightSelectionMatches, search, searchKeymap } from '@codemirror/search';
 import { forEachDiagnostic, lintGutter, openLintPanel, setDiagnostics, type Diagnostic } from '@codemirror/lint';
@@ -26,6 +20,7 @@ import { registerSourceView } from '../emacs';
 import type { SphinxWarning } from '../../../shared/sphinx';
 import type { ValeAlert } from '../../../shared/vale';
 import { columnOffset } from '../../../core/vale';
+import type { SourceSyntax } from '../formats/editing';
 
 interface Props {
   text: string;
@@ -38,27 +33,10 @@ interface Props {
   // Move the cursor to a line (from the preview or the problems list).
   goto: number | null;
   onGotoDone: () => void;
-  // A picture pasted or dropped in: saved, and its path for `![](path)`.
+  // A picture pasted or dropped in: saved, and its path (see SourceSyntax.image).
   onImage: (file: File) => Promise<string>;
   onImageError: (message: string) => void;
-}
-
-// MyST syntax CommonMark highlighting doesn't know: {roles} and {directive} names,
-// directive :options:, and (label)= targets.
-function mystMarks(regexp: RegExp, cls: string) {
-  const decorator = new MatchDecorator({ regexp, decoration: Decoration.mark({ class: cls }) });
-  return ViewPlugin.fromClass(
-    class {
-      decorations: DecorationSet;
-      constructor(view: EditorView) {
-        this.decorations = decorator.createDeco(view);
-      }
-      update(u: ViewUpdate) {
-        this.decorations = decorator.updateDeco(u, this.decorations);
-      }
-    },
-    { decorations: (v) => v.decorations },
-  );
+  syntax: SourceSyntax; // the page's format's
 }
 
 const highlight = HighlightStyle.define([
@@ -177,17 +155,17 @@ export function nextValeRemark(): boolean {
   return true;
 }
 
-export function SourceEditor({ text, onChange, problems, vale, onAcceptWord, onLine, goto, onGotoDone, onImage, onImageError }: Props) {
+export function SourceEditor({ text, onChange, problems, vale, onAcceptWord, onLine, goto, onGotoDone, onImage, onImageError, syntax }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const callbacks = useRef({ onChange, onLine, onImage, onImageError });
   callbacks.current = { onChange, onLine, onImage, onImageError };
-  // Pictures become ![](path) at `pos`, once saved.
+  // Pictures go in at `pos`, once saved.
   const addImages = async (view: EditorView, files: File[], pos: number) => {
     const refs: string[] = [];
     for (const file of files) {
       try {
-        refs.push(`![](${await callbacks.current.onImage(file)})`);
+        refs.push(syntax.image(await callbacks.current.onImage(file)));
       } catch (e) {
         callbacks.current.onImageError(`Couldn’t add ${file.name || 'the image'}: ${String(e instanceof Error ? e.message : e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')}`);
       }
@@ -210,17 +188,14 @@ export function SourceEditor({ text, onChange, problems, vale, onAcceptWord, onL
           bracketMatching(),
           search({ top: true }),
           highlightSelectionMatches(),
-          markdown(),
+          ...syntax.extensions(),
           syntaxHighlighting(highlight),
-          mystMarks(/\{[\w:.-]+\}/g, 'cm-myst-name'),
-          mystMarks(/^\s*:[\w.-]+:/g, 'cm-myst-option'),
-          mystMarks(/^\([^()\s]+\)=\s*$/g, 'cm-myst-target'),
           lintGutter(),
           EditorView.lineWrapping,
           // Ctrl+/ switches views in this app; CodeMirror would toggle a comment.
           keymap.of([...defaultKeymap.filter((k) => k.key !== 'Mod-/'), ...historyKeymap, ...searchKeymap, indentWithTab]),
           theme,
-          EditorView.contentAttributes.of({ 'aria-label': 'Markdown source', spellcheck: 'true' }),
+          EditorView.contentAttributes.of({ 'aria-label': `${syntax.label} source`, spellcheck: 'true' }),
           EditorView.domEventHandlers({
             paste(event, view) {
               const files = imageFiles(event.clipboardData);

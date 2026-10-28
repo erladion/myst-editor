@@ -2,12 +2,11 @@
 import type { Node as PMNode } from 'prosemirror-model';
 import { TextSelection } from 'prosemirror-state';
 import type { Decoration, EditorView, NodeView, NodeViewConstructor, ViewMutationRecord } from 'prosemirror-view';
-import { createTokenizer } from 'myst-parser';
 import { splitDirective } from '../../../core/directive';
 import { loadDocument } from '../../../core/document';
 import type { EditorContext } from './context';
 import { ICONS } from './tones';
-import { REFERENCE_ROLES, splitRoleValue } from '../formats/myst/directives';
+import { splitRoleValue } from '../formats/myst/directives';
 import { editingFor } from '../formats/editing';
 import { renderMath } from './math';
 import { describe, parseCondition, readMarker, unknownNames, withExpression } from '../../../core/conditions';
@@ -88,18 +87,6 @@ function replaceWithSource(view: EditorView, getPos: GetPos, node: PMNode, sourc
 }
 
 const optionCount = (options: [string, string][]) => (options.length ? `Options (${options.length})` : 'Options');
-
-let tokenizer: ReturnType<typeof createTokenizer> | null = null;
-// A Markdown block (a table, say) rendered for a card, with the HTML in it shown
-// as it looks (see html.ts for what's allowed).
-function markdownPreview(source: string, assetUrl: (src: string) => string): DocumentFragment {
-  tokenizer ??= createTokenizer({ markdownit: { html: true } });
-  try {
-    return safeHtml(tokenizer.render(source), assetUrl);
-  } catch {
-    return document.createDocumentFragment();
-  }
-}
 
 // ---- block directives with Markdown bodies --------------------------------------
 
@@ -295,7 +282,7 @@ abstract class CardView implements NodeView {
     const source = await this.ctx.ui.editSource({
       title: this.editTitle(),
       source: this.node.attrs.source,
-      help: 'This is the Markdown source of the block. It is saved exactly as written.',
+      help: `This is the ${editingFor(this.ctx.config).source.label} source of the block. It is saved exactly as written.`,
     });
     if (source !== null && source !== this.node.attrs.source) replaceWithSource(this.view, this.getPos, this.node, source, this.ctx);
   }
@@ -387,7 +374,7 @@ class OpaqueDirectiveView extends CardView {
   }
 
   protected editTitle() {
-    return `Edit {${this.node.attrs.name}} block`;
+    return editingFor(this.ctx.config).cards.editTitle(this.node.attrs.name);
   }
 
   update(node: PMNode, decorations: readonly Decoration[]) {
@@ -490,19 +477,9 @@ class OpaqueDirectiveView extends CardView {
   }
 }
 
-const RAW_LABELS: Record<string, string> = {
-  frontmatter: 'Page settings',
-  table: 'Table',
-  definitionList: 'Definition list',
-  footnote: 'Footnote',
-  html: 'HTML',
-  comment: 'Comment',
-  'block-break': 'Cell break',
-};
-
 class RawBlockView extends CardView {
   protected editTitle() {
-    return `Edit ${(RAW_LABELS[this.node.attrs.kind] ?? 'Markdown').toLowerCase()}`;
+    return `Edit ${editingFor(this.ctx.config).cards.label(this.node.attrs.kind).toLowerCase()}`;
   }
 
   protected async edit() {
@@ -546,16 +523,23 @@ class RawBlockView extends CardView {
   protected render() {
     const { kind, source } = this.node.attrs;
     if (/^condition-/.test(kind)) return this.renderCondition(kind, source);
-    const label = el('span', { class: 'card-label' }, RAW_LABELS[kind] ?? 'Markdown');
+    const cards = editingFor(this.ctx.config).cards;
+    const label = el('span', { class: 'card-label' }, cards.label(kind));
     if (kind === 'comment') {
-      return this.card('card-comment', [label], [el('div', { class: 'comment-text' }, source.replace(/^%\s?/gm, ''))]);
+      return this.card('card-comment', [label], [el('div', { class: 'comment-text' }, cards.comment(source))]);
     }
     if (kind === 'frontmatter') {
       const keys = [...source.matchAll(/^([\w-]+):/gm)].map((m) => m[1]);
       return this.card('card-frontmatter', [label, el('span', { class: 'muted' }, keys.join(', '))], []);
     }
-    if (kind === 'table' || kind === 'definitionList' || kind === 'footnote') {
-      const preview = el('div', { class: 'card-rendered' }, markdownPreview(source, (src) => this.ctx.assetUrl(src)));
+    // What the format can show of it, now or once it's made.
+    const shown = cards.preview(kind, source, (src) => this.ctx.assetUrl(src));
+    if (shown) {
+      const preview = el('div', { class: 'card-rendered' });
+      if (shown instanceof Promise) {
+        preview.append(el('pre', { class: 'card-source' }, source));
+        void shown.then((fragment) => this.node.attrs.source === source && preview.replaceChildren(fragment)).catch(() => {});
+      } else preview.append(shown);
       return this.card(`card-${kind}`, [label], [preview]);
     }
     // An HTML block shows what it looks like; one that shows nothing (a comment, say)
@@ -760,17 +744,20 @@ class RoleView extends InlineView {
       d.title = declared.url ? `${declared.label ?? name} (Ctrl+click to open)` : (declared.label ?? `{${name}} role`);
       return d.replaceChildren(el('span', { class: 'role-name' }, declared.label ?? name), value);
     }
-    const { title, target } = splitRoleValue(value);
-    if (REFERENCE_ROLES[name] || /:/.test(name)) {
+    const roles = editingFor(this.ctx.config).roles;
+    const references = roles.references;
+    const { title, target } = roles.split(value);
+    if (references[name] || /:/.test(name)) {
       // Cross-references and domain roles such as {py:func}.
       d.classList.add('role-ref');
-      if (/:/.test(name) && !REFERENCE_ROLES[name]) d.classList.add('role-code');
+      if (/:/.test(name) && !references[name]) d.classList.add('role-code');
       const resolved = this.ctx.resolveRole(name, target);
       d.classList.toggle('role-broken', resolved.broken);
       d.title = resolved.broken
-        ? `${REFERENCE_ROLES[name] ?? name} not found: ${target}`
-        : `${REFERENCE_ROLES[name] ?? name}: ${target}${name === 'doc' ? ' (Ctrl+click to open)' : ''}`;
-      const shown = title ?? resolved.title ?? (name === 'doc' ? this.ctx.pageTitle(target) : null) ?? target;
+        ? `${references[name] ?? name} not found: ${target}`
+        : `${references[name] ?? name}: ${target}${roles.page(name, target) ? ' (Ctrl+click to open)' : ''}`;
+      const page = roles.page(name, target);
+      const shown = title ?? resolved.title ?? (page ? this.ctx.pageTitle(page) : null) ?? target;
       d.replaceChildren(el('span', { class: 'role-arrow' }, resolved.broken ? '⚠' : '↗'), shown);
       return;
     }
@@ -805,9 +792,12 @@ class RoleView extends InlineView {
       if (url) {
         e.preventDefault();
         window.open(url.replaceAll('{value}', encodeURIComponent(value)), '_blank');
-      } else if (name === 'doc') {
+      } else {
+        const roles = editingFor(this.ctx.config).roles;
+        const page = roles.page(name, roles.split(value).target);
+        if (!page) return;
         e.preventDefault();
-        this.ctx.openDocument(splitRoleValue(value).target);
+        this.ctx.openDocument(page);
       }
     });
   }

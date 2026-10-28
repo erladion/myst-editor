@@ -11,20 +11,21 @@ interface Props {
   viewAs: string[] | null;
   onViewAs: (v: string[] | null) => void;
   onHistory: () => void; // the page's earlier versions
+  source: string; // what the page is written in: "Markdown"
 }
 
-export function AdvancedBar({ preview, onPreview, built, onRich, conditions, viewAs, onViewAs, onHistory }: Props) {
+export function AdvancedBar({ preview, onPreview, built, onRich, conditions, viewAs, onViewAs, onHistory, source }: Props) {
   const option = (value: Props['preview'], label: string, title: string, disabled = false) => (
     <button type="button" aria-pressed={preview === value} title={title} disabled={disabled} onClick={() => onPreview(value)}>
       {label}
     </button>
   );
   return (
-    <div className="advanced-bar" role="toolbar" aria-label="Markdown view">
+    <div className="advanced-bar" role="toolbar" aria-label={`${source} view`}>
       <button type="button" className="tb wide" onClick={onRich} title="Edit the page as formatted content (Ctrl+/)">
         ← Formatted editing
       </button>
-      <span className="label">Markdown — saved exactly as typed. Find with Ctrl+F.</span>
+      <span className="label">{source} — saved exactly as typed. Find with Ctrl+F.</span>
       <span className="spacer" />
       {conditions && <ViewAsMenu settings={conditions} viewAs={viewAs} onViewAs={onViewAs} />}
       <span className="label">Preview</span>

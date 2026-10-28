@@ -90,7 +90,7 @@ export function ViewAsMenu({ settings, viewAs, onViewAs }: { settings: Condition
 interface Props {
   view: EditorView | null;
   ctx: EditorContext;
-  onMarkdown: () => void; // switch to the Markdown view
+  onMarkdown: () => void; // switch to the Markdown (source) view
   previewAvailable: boolean;
   previewOpen: boolean;
   onTogglePreview: () => void;
@@ -219,8 +219,8 @@ export function Toolbar({ view, ctx, onMarkdown, previewAvailable, previewOpen, 
       >
         Preview
       </button>
-      <button type="button" className="tb wide" title="Edit the Markdown beside a live preview (Ctrl+/)" onClick={onMarkdown}>
-        Markdown
+      <button type="button" className="tb wide" title={`Edit the ${editingFor(ctx.config).source.label} beside a live preview (Ctrl+/)`} onClick={onMarkdown}>
+        {editingFor(ctx.config).source.label}
       </button>
       <span className="tb-sep" />
       <button

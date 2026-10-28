@@ -1,7 +1,9 @@
 // The editor's side of MyST Markdown (see formats/editing.ts).
 import { mystConfig } from '../../../../core/project-config';
 import type { EditingFormat } from '../editing';
-import { ADMONITIONS, CALLOUT_CHOICES, directiveInfo } from './directives';
+import { ADMONITIONS, CALLOUT_CHOICES, REFERENCE_ROLES, directiveInfo, splitRoleValue } from './directives';
+import { mystCards } from './cards';
+import { mystSource } from './source';
 import { mystInserts } from './inserts';
 import { renameMystReferences } from './rename';
 
@@ -26,5 +28,12 @@ export const mystEditing: EditingFormat = {
     return confPy
       ? { label: 'Sphinx project', detail: `MyST extensions from ${confPy}: ${extensions.length ? extensions.join(', ') : 'none'}` }
       : { label: 'Markdown folder', detail: 'No conf.py found — all MyST extensions enabled' };
+  },
+  source: mystSource,
+  cards: mystCards,
+  roles: {
+    references: REFERENCE_ROLES,
+    split: splitRoleValue,
+    page: (name, target) => (name === 'doc' ? target : null),
   },
 };

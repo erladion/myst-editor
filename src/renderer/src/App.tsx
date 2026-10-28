@@ -29,6 +29,7 @@ import { ChecksChip, ChecksPanel, type PageFindings } from './components/Checks'
 import { checksOf, fixFinding, showFinding } from './editor/checks';
 import { checkDoc } from '../../core/checks';
 import { loadDocument } from '../../core/document';
+import { editingFor } from './formats/editing';
 import { pagesOf } from '../../core/format';
 import { editorCommands, type PaletteCommand } from './app/palette';
 import { ValeChip } from './components/ValeChip';
@@ -383,6 +384,7 @@ export function App() {
       <main className="main">
         {mode === 'markdown' ? (
           <AdvancedBar
+            source={editingFor(configFor(ws.project, ws.current ?? '')).source.label}
             preview={advancedPreview}
             onPreview={setAdvancedPreview}
             built={!!info}
@@ -423,6 +425,7 @@ export function App() {
               key={session.path}
               text={session.text}
               onChange={(text) => ws.setText(session.path, text)}
+              syntax={editingFor(configFor(ws.project, session.path)).source}
               problems={pageProblems}
               vale={vale.alerts?.alerts ?? NO_ALERTS}
               onAcceptWord={vale.alerts ? vale.acceptWord : undefined}

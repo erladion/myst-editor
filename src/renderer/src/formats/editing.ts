@@ -1,6 +1,7 @@
 // What the editor offers for a page's format (see core/format.ts): what can be
 // inserted, the callouts, and how its blocks are presented. MyST's are in myst/.
 import type { Command, EditorState, Transaction } from 'prosemirror-state';
+import type { Extension } from '@codemirror/state';
 import type { Rename } from '../../../core/rename';
 import type { PageConfig } from '../../../core/format';
 import type { EditorConfig } from '../../../core/editor-config';
@@ -39,6 +40,29 @@ export interface ReferenceRename {
   moved: boolean; // the referring page is the one renamed: its own relative paths follow it
 }
 
+// The page's source in the Markdown view.
+export interface SourceSyntax {
+  label: string; // what it's called: "Markdown"
+  extensions(): Extension[]; // its highlighting
+  image(path: string): string; // a picture added there
+}
+
+// Blocks kept as written, shown as cards.
+export interface Cards {
+  label(kind: string): string; // a kind of block kept as written, for the writer
+  editTitle(name: string): string; // the edit dialog's, for a block the editor doesn't know
+  comment(source: string): string; // a comment's text, without its markers
+  // How a block of this kind looks, if the format can show it (now, or once it's made).
+  preview(kind: string, source: string, assetUrl: (src: string) => string): DocumentFragment | Promise<DocumentFragment> | null;
+}
+
+// Inline roles that refer to something else.
+export interface Roles {
+  references: Record<string, string>; // which roles do, and what to call what they refer to
+  split(value: string): { title: string | null; target: string }; // "Title <target>"
+  page(name: string, target: string): string | null; // the page Ctrl+click opens, if any
+}
+
 export interface EditingFormat {
   inserts(ctx: EditorContext): InsertItem[];
   // A page's references to a renamed or moved page, changed to match.
@@ -49,6 +73,9 @@ export interface EditingFormat {
   // What the status bar says the page is (`label`), and how it's read (`detail`).
   // `confPy`: the project's conf.py, if it has one.
   dialect(config: PageConfig, confPy: string | null): { label: string; detail: string };
+  source: SourceSyntax;
+  cards: Cards;
+  roles: Roles;
 }
 
 const FORMATS: Record<PageConfig['format'], EditingFormat> = { myst: mystEditing };
