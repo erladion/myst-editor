@@ -41,6 +41,13 @@ async function insertFigure(ctx: EditorContext, run: (cmd: Command) => void) {
   run(insertBlock(nodes.opaque_directive.create({ name: 'image', args: values.src.trim(), options: alt ? [['alt', alt]] : [], source })));
 }
 
+// A table with its caption written above it (.Caption).
+function insertCaptionedTable(): Command {
+  const cell = (type: typeof nodes.table_cell, text = '') => type.create(null, nodes.paragraph.create(null, text ? schema.text(text) : undefined));
+  const row = (type: typeof nodes.table_cell, texts: string[]) => nodes.table_row.create(null, texts.map((t) => cell(type, t)));
+  return insertBlock(nodes.table.create({ header: '.Caption' }, [row(nodes.table_header, ['Column 1', 'Column 2']), row(nodes.table_cell, ['', ''])]), 4);
+}
+
 const FILE_HELP = 'Relative to this page.';
 
 export function asciidocInserts(ctx: EditorContext): InsertItem[] {
@@ -57,6 +64,9 @@ export function asciidocInserts(ctx: EditorContext): InsertItem[] {
     })),
     { id: 'image', group: 'Blocks', label: 'Image…', palette: 'Image…', ask: (run) => void insertImage(ctx, run) },
     { id: 'figure', group: 'Blocks', label: 'Figure…', palette: 'Figure…', keys: 'Figure', ask: (run) => void insertFigure(ctx, run) },
+    // The Insert menu's grid, for the table's size.
+    { id: 'table', group: 'Blocks', label: 'Table…', palette: 'Table…', keys: 'Table', ask: () => window.dispatchEvent(new CustomEvent('mysteditor-table-picker')) },
+    { id: 'captioned-table', group: 'Blocks', label: 'Table with caption', palette: 'Table with caption', command: insertCaptionedTable() },
     { id: 'code-block', group: 'Blocks', label: 'Code block', palette: 'Code block', keys: 'Code block', command: insertBlock(nodes.code_block.create({ name: 'source', lang: '', fence: '----' })) },
     {
       id: 'equation',

@@ -182,3 +182,22 @@ describe('conditions', () => {
     expect(saved.text).toBe('|===\n| Name | Where\n\nifdef::Cloud[]\n| a | everywhere\n| b | cloud\nendif::[]\n|===\n');
   });
 });
+
+describe('a renamed chapter', () => {
+  it('is included, and referred to, under its new name', async () => {
+    const { renameAsciidocReferences } = await import('../src/renderer/src/formats/asciidoc/rename.js');
+    const text = '= Book\n\ninclude::chapters/one.adoc[leveloffset=+1]\n\nSee xref:chapters/one.adoc#intro[the intro].\n';
+    const { doc, map } = load(text);
+    const state = EditorState.create({ doc, schema });
+    const tr = renameAsciidocReferences(state, { folder: { before: '', after: '' }, page: { from: 'chapters/one', to: 'chapters/first' }, file: { from: 'chapters/one.adoc', to: 'chapters/first.adoc' }, moved: false, config: ASCIIDOC_CONFIG });
+    expect(saveDocument(tr.doc, map, ASCIIDOC_CONFIG).text).toBe('= Book\n\ninclude::chapters/first.adoc[leveloffset=+1]\n\nSee xref:chapters/first.adoc#intro[the intro].\n');
+  });
+});
+
+describe('a table with a caption, new', () => {
+  it('is written with its caption above it', () => {
+    const cell = (type: typeof nodes.table_cell, text = '') => type.create(null, nodes.paragraph.create(null, text ? schema.text(text) : undefined));
+    const doc = nodes.doc.create(null, [nodes.table.create({ header: '.Regions' }, [nodes.table_row.create(null, [cell(nodes.table_header, 'Name'), cell(nodes.table_header, 'Where')]), nodes.table_row.create(null, [cell(nodes.table_cell, 'eu'), cell(nodes.table_cell, 'Europe')])])]);
+    expect(edited('', () => doc)).toBe('.Regions\n|===\n| Name | Where\n\n| eu | Europe\n|===');
+  });
+});
