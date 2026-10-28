@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { ASSET_SCHEME, BUILD_SCHEME } from '../shared/api.js';
 import { resolveForReading, resolveInside } from './project.js';
 import { current } from './state.js';
-import { outputDirOf } from './builders/service.js';
+import { assetsDirOf, outputDirOf } from './builders/service.js';
 import { fragmentPage } from './sphinx/fragments.js';
 import { builtPage } from './sphinx/preview.js';
 
@@ -45,8 +45,10 @@ export function registerProtocols() {
   });
   // myst-build://<project id>/<path in its HTML output>: the Sphinx preview, one
   // origin per project; _mysteditor/fragment.html previews a single block. Pages get
-  // a script that follows the editor's scrolling.
+  // a script that follows the editor’s scrolling. What they link to that isn’t in the
+  // output is from the builder’s assetsDir, if it has one.
   const files = serveFrom((url) => outputDirOf(url.hostname));
+  const linked = serveFrom((url) => assetsDirOf(url.hostname));
   protocol.handle(BUILD_SCHEME, async (request) => {
     const url = new URL(request.url);
     const outputDir = outputDirOf(url.hostname);
@@ -60,6 +62,7 @@ export function registerProtocols() {
       const page = await builtPage(outputDir, rel);
       if (page) return page;
     }
-    return files(request);
+    const response = await files(request);
+    return response.ok || !assetsDirOf(url.hostname) ? response : linked(request);
   });
 }

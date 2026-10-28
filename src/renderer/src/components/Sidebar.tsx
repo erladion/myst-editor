@@ -289,7 +289,7 @@ function ProjectPages({ onPageMenu, onMove, project, files, allFiles, info, curr
     next[parentName] = placed;
     const before = placed[index + 1];
     return {
-      move: { page: moved.source, from: moved.parent ? byName.get(moved.parent)!.source : null, to: parent.source, before: before ? byName.get(before)!.source : null },
+      move: { page: moved.source, from: moved.parent ? byName.get(moved.parent)!.source : null, to: parent.source, before: before ? byName.get(before)!.source : null, entries: { from: moved.parent, to: parentName } },
       order: next,
       parent: parentName,
     };

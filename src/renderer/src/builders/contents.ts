@@ -14,6 +14,9 @@ export interface ContentsMove {
   from: string | null; // the page whose contents list it; null if none does
   to: string; // the page whose contents get it
   before: string | null; // the page it goes in front of; null: at the end
+  // The entries it moves out of and into, by their names in the build, for contents
+  // whose entries aren't all pages (a heading over some pages, say).
+  entries?: { from: string | null; to: string };
 }
 
 export interface Contents {
@@ -28,6 +31,9 @@ export interface Contents {
   remove(ws: Workspace, project: Project | null, pages: string[], page: string): Promise<string[]>;
   // Null when done, else what went wrong, for the writer.
   move(ws: Workspace, project: Project | null, move: ContentsMove): Promise<string | null>;
+  // Of `pages`, the one a new page in `folder` most likely goes in, when it isn't the
+  // nearest index page (see pages.ts).
+  likely?(project: Project | null, folder: string, pages: string[]): string | null;
 }
 
 export const contentsFor = (project: Project | null): Contents => builderFor(project).contents;

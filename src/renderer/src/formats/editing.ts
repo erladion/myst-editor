@@ -39,6 +39,7 @@ export interface ReferenceRename {
   page: Rename; // the page's name (its path without the extension), in its project
   file: Rename; // its file's path, in its project
   moved: boolean; // the referring page is the one renamed: its own relative paths follow it
+  config: PageConfig; // the referring page's
 }
 
 // The page's source in the Markdown view.

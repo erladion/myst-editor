@@ -628,7 +628,7 @@ export function App() {
           files={new Set(ws.project.files)}
           titles={ws.project.titles}
           contentsPages={newPageContents}
-          contentsDefault={(folder, pages) => defaultContents(ws.project, folder, pages)}
+          contentsDefault={(folder, pages) => defaultContents(ws.project, folder, pages, pageProject)}
           extension={(folder) => pagesOf(configFor(ws.project, folder ? `${folder}/page` : 'page')).extension}
           onCreate={createPage}
           onClose={() => setNewPage(null)}

@@ -63,9 +63,11 @@ export function pageFolders(project: ProjectInfo): string[] {
   return [...folders].sort((a, b) => a.localeCompare(b));
 }
 
-// The table of contents a page in `folder` most likely belongs in: the nearest
-// index page at or above it that has one.
-export function defaultContents(project: ProjectInfo, folder: string, pages: string[]): string | null {
+// The table of contents a page in `folder` most likely belongs in: the one its
+// project's builder says, else the nearest index page at or above it that has one.
+export function defaultContents(project: ProjectInfo, folder: string, pages: string[], own: Project | null = null): string | null {
+  const likely = contentsFor(own).likely;
+  if (likely) return likely(own, folder, pages);
   for (let d = folder; ; d = dirname(d)) {
     const index = pages.find((p) => dirname(p) === d && isIndexPage(p));
     if (index) return index;
@@ -132,7 +134,7 @@ export async function renameReferences(ws: Workspace, project: Project | null, o
   for (const page of pages) {
     const moved = page === newPath;
     const folder = moved ? { before: dirname(inProject(oldPath)), after: dirname(inProject(newPath)) } : { before: dirname(inProject(page)), after: dirname(inProject(page)) };
-    const ok = await ws.edit(page, (state) => editingFor(configFor(ws.project, page)).renameReferences(state, { folder, page: docRename, file: fileRename, moved }));
+    const ok = await ws.edit(page, (state) => editingFor(configFor(ws.project, page)).renameReferences(state, { folder, page: docRename, file: fileRename, moved, config: configFor(ws.project, page) }));
     if (!ok) failed.push(page);
   }
   return failed;

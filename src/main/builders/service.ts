@@ -20,6 +20,7 @@ export const allBuilders = () => [...builders.values()];
 
 // Where a project's built pages are, for the preview (see protocols.ts).
 export const outputDirOf = (id: string) => builders.get(id)?.outputDir ?? null;
+export const assetsDirOf = (id: string) => builders.get(id)?.assetsDir ?? null;
 
 // `onBuilt` hears about every finished build.
 export async function startBuilders(p: ProjectInfo, onBuilt: (p: ProjectInfo, info: BuildInfo) => void) {

@@ -19,6 +19,9 @@ export interface OnePage {
 export interface Builder {
   readonly name: string; // what builds, for the writer: "Sphinx"
   readonly outputDir: string; // the built pages, for the preview
+  // Where what the built pages link to is, when it isn't in outputDir (pictures
+  // beside the pages they're in, for a builder that doesn't copy them).
+  readonly assetsDir?: string;
   start(): void;
   dispose(): void;
   // Building, or only just finished: files changing now may be its output.
