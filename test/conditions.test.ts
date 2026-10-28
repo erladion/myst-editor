@@ -125,7 +125,7 @@ describe('loadEditorConfig', () => {
       source('guide/.mysteditor.toml', 'this is not toml'),
     ]);
     expect(config.problems.map((p) => `${p.file}: ${p.message}`)).toEqual([
-      '.mysteditor.toml: Unknown section [extras] (expected directives, roles, tables, conditions, sphinx or pdf)',
+      '.mysteditor.toml: Unknown section [extras] (expected directives, roles, tables, conditions, sphinx, asciidoctor or pdf)',
       '.mysteditor.toml: [directives.a] body must be "markdown", "text" or "none"',
       '.mysteditor.toml: [roles.x] url must start with http:// or https://',
       '.mysteditor.toml: [conditions] block must be two keywords, like ["if","endif"]',

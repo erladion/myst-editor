@@ -1,13 +1,13 @@
 // Asciidoctor projects in the opened folder: a folder with a main document (one that
-// includes the others), or the opened folder itself, whose AsciiDoc pages then stand
-// on their own.
+// includes the others, or the one its .mysteditor.toml names in [asciidoctor] main),
+// or the opened folder itself, whose AsciiDoc pages then stand on their own.
 import { createHash } from 'node:crypto';
-import { promises as fs } from 'node:fs';
+import { existsSync, promises as fs, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { Project } from '../../shared/api.js';
 import { asciidocEditor, headerAttributes, type AsciidocConfig } from '../../core/asciidoc/config.js';
 import { documentTitle } from '../../core/asciidoc/pages.js';
-import { loadEditorConfig } from '../../core/editor-config.js';
+import { loadEditorConfig, SETTINGS_FILE } from '../../core/editor-config.js';
 import { settingsSources, type FolderScan } from '../project.js';
 
 // A folder's main document, by name: index.adoc always; the others when they
@@ -22,6 +22,16 @@ export async function asciidoctorProjects(root: string, scan: FolderScan, read: 
   const pages = scan.files.filter((f) => f.endsWith('.adoc'));
   if (!pages.length) return [];
   const mains = new Map<string, string>(); // folder → its main document
+  // Named in the settings: the settings file's folder is the project's.
+  const folders = new Set<string>(['']);
+  for (const page of pages) for (let d = dirOf(page); d; d = dirOf(d)) folders.add(d);
+  for (const dir of folders) {
+    const file = join(root, dir, SETTINGS_FILE);
+    if (!existsSync(file)) continue;
+    const rel = dir ? `${dir}/${SETTINGS_FILE}` : SETTINGS_FILE;
+    const { main } = loadEditorConfig([{ file: rel, text: readFileSync(file, 'utf8'), readCapabilities: () => '' }]).asciidoctor;
+    if (main && pages.includes(main) && inside(dirOf(main), dir)) mains.set(dir, main);
+  }
   for (const name of MAIN_NAMES) {
     for (const rel of pages.filter((p) => basename(p) === name)) {
       const dir = dirOf(rel);

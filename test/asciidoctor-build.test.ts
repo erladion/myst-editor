@@ -102,3 +102,15 @@ describe('an Asciidoctor project', () => {
     expect(Object.keys(fewer.info.docs).sort()).toEqual(['chapters/one', 'index']);
   });
 });
+
+describe('the main document named in the settings', () => {
+  it('makes its folder a project, whatever the main document is called', async () => {
+    const info = await openProject(folder({
+      'manual/.mysteditor.toml': '[asciidoctor]\nmain = "src/manual.adoc"\n',
+      'manual/src/manual.adoc': '= The Manual\n:edition: 2\n\ninclude::part-one.adoc[]\n',
+      'manual/src/part-one.adoc': '== Part One\n',
+    }));
+    expect(info.projects).toMatchObject([{ builder: 'asciidoctor', name: 'The Manual', dir: 'manual', marker: 'manual/src/manual.adoc', config: { main: 'src/manual.adoc', attributes: { edition: '2' } } }]);
+    expect(info.projects[0].config.editor.problems).toEqual([]);
+  });
+});

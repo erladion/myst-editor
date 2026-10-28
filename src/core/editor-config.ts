@@ -24,6 +24,9 @@
 //   block = ["if", "endif"]
 //   inline = ["if-inline", "endif-inline"]
 //
+//   [asciidoctor]                        # an Asciidoctor project
+//   main = "book.adoc"                   # its main document, relative to this file
+//
 //   [sphinx.env]                         # environment variables for Sphinx builds
 //   PRODUCT = "enterprise"               # (conf.py may read os.environ)
 //
@@ -227,6 +230,8 @@ export interface EditorConfig {
   conditionSettings: ConditionsDef | null;
   // Environment variables for the project's Sphinx builds.
   sphinxEnv: Record<string, string>;
+  // [asciidoctor]: an Asciidoctor project's main document, relative to the opened folder.
+  asciidoctor: { main: string | null };
   pdf: PdfDef;
   problems: SettingsProblem[];
 }
@@ -234,7 +239,7 @@ export interface EditorConfig {
 // A name a process environment can hold (and a shell would accept).
 export const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-export const EMPTY_EDITOR_CONFIG: EditorConfig = { directives: {}, roles: {}, tables: {}, conditions: null, conditionSettings: null, sphinxEnv: {}, pdf: DEFAULT_PDF, problems: [] };
+export const EMPTY_EDITOR_CONFIG: EditorConfig = { directives: {}, roles: {}, tables: {}, conditions: null, conditionSettings: null, sphinxEnv: {}, asciidoctor: { main: null }, pdf: DEFAULT_PDF, problems: [] };
 
 const DEFAULT_CONDITIONS: Omit<ConditionsDef, 'capabilities' | 'capabilitiesFile' | 'capabilitiesPath' | 'capabilitiesKey' | 'colors'> = {
   block: ['if', 'endif'],
@@ -256,7 +261,7 @@ export interface SettingsSource {
 // Merge the settings files that apply to a project, outermost first: later files
 // override earlier ones per directive, per role and per conditions setting.
 export function loadEditorConfig(sources: SettingsSource[]): EditorConfig {
-  const config: EditorConfig = { directives: {}, roles: {}, tables: {}, conditions: null, conditionSettings: null, sphinxEnv: {}, pdf: DEFAULT_PDF, problems: [] };
+  const config: EditorConfig = { directives: {}, roles: {}, tables: {}, conditions: null, conditionSettings: null, sphinxEnv: {}, asciidoctor: { main: null }, pdf: DEFAULT_PDF, problems: [] };
   for (const source of sources) applySettings(config, source);
   return config;
 }
@@ -271,7 +276,20 @@ function applySettings(config: EditorConfig, { file, text, readCapabilities }: S
     return;
   }
   for (const key of Object.keys(raw)) {
-    if (!['directives', 'roles', 'tables', 'conditions', 'sphinx', 'pdf'].includes(key)) problem(`Unknown section [${key}] (expected directives, roles, tables, conditions, sphinx or pdf)`);
+    if (!['directives', 'roles', 'tables', 'conditions', 'sphinx', 'asciidoctor', 'pdf'].includes(key)) problem(`Unknown section [${key}] (expected directives, roles, tables, conditions, sphinx, asciidoctor or pdf)`);
+  }
+
+  if (raw.asciidoctor !== undefined) {
+    const ad = raw.asciidoctor;
+    if (!isTable(ad)) problem('[asciidoctor] must be a table');
+    else {
+      for (const key of Object.keys(ad)) if (key !== 'main') problem(`[asciidoctor] unknown setting "${key}"`);
+      if (ad.main !== undefined) {
+        const main = typeof ad.main === 'string' && /\.adoc$/.test(ad.main) && !/^([a-z]:)?[\\/]/i.test(ad.main) ? joinPath(file.split('/').slice(0, -1).join('/'), ad.main) : null;
+        if (main) config.asciidoctor = { main };
+        else problem('[asciidoctor] main must be an .adoc file, relative to this settings file and inside the opened folder');
+      }
+    }
   }
 
   if (raw.sphinx !== undefined) {

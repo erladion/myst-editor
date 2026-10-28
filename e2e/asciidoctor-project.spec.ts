@@ -29,6 +29,9 @@ async function built(page: Page) {
 test('builds the book: its contents, references and preview', async () => {
   const { page } = ctx;
   await built(page);
+  // {product}, as the main document's header sets it.
+  await expect(page.locator('.prose .role-value')).toHaveText('Widget');
+  await expect(page.locator('.prose p').first()).toHaveText('Intro to Widget.');
   // The chapters under the book, in their includes' order.
   await expect(page.locator('.sidebar .page')).toContainText(['Widget Book', 'Installing', 'Using']);
   await page.getByRole('button', { name: 'Using', exact: true }).click();
