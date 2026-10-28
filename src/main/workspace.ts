@@ -4,7 +4,7 @@ import { app, dialog, ipcMain } from 'electron';
 import { createHash } from 'node:crypto';
 import { promises as fs, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { buildInputsOf, isBuildInput, listDocuments, openProject, readTitle, resolveInside, UNWATCHED_DIRS, unwatchedDir } from './project.js';
+import { buildInputsOf, isBuildInput, isMarker, listDocuments, openProject, readTitle, resolveInside, UNWATCHED_DIRS, unwatchedDir } from './project.js';
 import { FolderWatcher } from './watch.js';
 import type { ProjectInfo } from '../shared/api.js';
 import type { BuildInfo } from '../shared/build.js';
@@ -208,7 +208,7 @@ function startWatching(p: ProjectInfo) {
     if (changed.some((rel) => isBuildInput(rel.split('/').pop()!))) p.buildInputs = await buildInputsOf(p.root);
     for (const rel of changed) if (!rel.endsWith(SETTINGS_FILE)) buildFor(p, rel, true);
     // conf.py, editor settings and capabilities files change how pages are read.
-    const settings = (rel: string) => /(^|\/)(conf\.py|\.mysteditor\.toml)$/.test(rel) || (rel.endsWith('.json') && isBuildInput(rel.split('/').pop()!));
+    const settings = (rel: string) => isMarker(rel) || /(^|\/)\.mysteditor\.toml$/.test(rel) || (rel.endsWith('.json') && isBuildInput(rel.split('/').pop()!));
     if (changed.some(settings)) await refreshProject(p);
   };
   const w = new FolderWatcher(p.root, unwatchedDir, (rel) => {
