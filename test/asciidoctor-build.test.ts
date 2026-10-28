@@ -48,7 +48,7 @@ describe('an Asciidoctor project', () => {
     const info = await openProject(root);
     const book = info.projects.find((p) => p.builder === 'asciidoctor')!;
     const out = join(root, '.out');
-    const built = await buildAsciidoctor(book, out);
+    const { info: built } = await buildAsciidoctor(book, out);
     expect(built.builtWith.name).toBe('Asciidoctor');
     expect(built.rootDoc).toBe('index');
     expect(built.docs.index).toMatchObject({ source: 'book/index.adoc', title: 'The Book', uri: 'index.html', children: ['chapters/one', 'chapters/two'] });
@@ -64,5 +64,36 @@ describe('an Asciidoctor project', () => {
     expect(readFileSync(join(out, 'chapters/one.html'), 'utf8')).toContain('About Widget');
     expect(readFileSync(join(out, 'chapters/one.html'), 'utf8')).toContain('href="../asciidoctor.css"');
     expect(existsSync(join(out, 'asciidoctor.css'))).toBe(true);
+  });
+
+  it('builds again only what a change affects', async () => {
+    const root = folder(BOOK);
+    const info = await openProject(root);
+    const book = info.projects.find((p) => p.builder === 'asciidoctor')!;
+    const out = join(root, '.out');
+    const first = await buildAsciidoctor(book, out);
+    expect(first.built).toEqual(['chapters/one.adoc', 'chapters/two.adoc', 'index.adoc']);
+    // Nothing changed: nothing built, the same results.
+    const again = await buildAsciidoctor(book, out, { previous: first.cache });
+    expect(again.built).toEqual([]);
+    expect(again.info.docs).toEqual(first.info.docs);
+    expect(again.info.objects).toEqual(first.info.objects);
+    // A chapter changed: it, and the book including it.
+    writeFileSync(join(root, 'book/chapters/two.adoc'), '= Chapter Two\n\n[#start]\n== Starting\n');
+    const edited = await buildAsciidoctor(book, out, { previous: again.cache, changed: ['chapters/two.adoc'] });
+    expect(edited.built).toEqual(['chapters/two.adoc', 'index.adoc']);
+    expect(edited.info.objects.find((o) => o.name === 'start')?.title).toBe('Starting');
+    expect(edited.info.warnings.some((w) => /include file not found/.test(w.message))).toBe(false);
+    // The book's attributes changed: every page.
+    writeFileSync(join(root, 'book/index.adoc'), BOOK['book/index.adoc'].replace('Widget', 'Gadget'));
+    const all = await buildAsciidoctor(book, out, { previous: edited.cache, changed: ['index.adoc'] });
+    expect(all.built).toHaveLength(3);
+    expect(readFileSync(join(out, 'chapters/one.html'), 'utf8')).toContain('About Gadget');
+    // A page that was there and isn't: gone from the results.
+    writeFileSync(join(root, 'book/index.adoc'), '= The Book\n:product: Gadget\n\ninclude::chapters/one.adoc[]\n');
+    const { rmSync } = await import('node:fs');
+    rmSync(join(root, 'book/chapters/two.adoc'));
+    const fewer = await buildAsciidoctor(book, out, { previous: all.cache, changed: ['chapters/two.adoc', 'index.adoc'] });
+    expect(Object.keys(fewer.info.docs).sort()).toEqual(['chapters/one', 'index']);
   });
 });

@@ -1,16 +1,49 @@
 // Building an Asciidoctor project's pages with Asciidoctor.js: each page as HTML (for
 // the preview), and what the editor needs from the build: titles, which pages include
 // which, anchors, and Asciidoctor's warnings where it places them.
+//
+// Only what a change affects is built again: a changed page, and the pages that
+// include it (up to the main document). The main document's attributes apply to every
+// page, so when they change everything is. What each page gave is kept (see
+// BuildCache), between builds and between sessions.
 import { promises as fs } from 'node:fs';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { getVersion, loadFile, LoggerManager, MemoryLogger } from '@asciidoctor/core';
 import type { Project } from '../../shared/api.js';
 import type { BuildInfo, BuildPage, BuildTarget, BuildWarning } from '../../shared/build.js';
 import { fromProject } from '../../shared/projects.js';
+import { headerAttributes, type AsciidocConfig } from '../../core/asciidoc/config.js';
 // Asciidoctor's stylesheet, for the built pages (its package keeps it where a bundled
 // app can't find it, so it's bundled too).
 import STYLESHEET from '../../../node_modules/@asciidoctor/core/data/asciidoctor-default.css?raw';
-import type { AsciidocConfig } from '../../core/asciidoc/config.js';
+
+// What one page gave, and the file it was built from (to tell whether it changed).
+interface PageResult {
+  size: number;
+  mtime: number;
+  doc: BuildPage;
+  objects: BuildTarget[]; // the anchors written in it
+  warnings: BuildWarning[]; // about it
+}
+
+export interface BuildCache {
+  version: 1;
+  attributes: string; // the main document's, as JSON: when they change, every page is built again
+  pages: Record<string, PageResult>; // by page, relative to the project
+}
+
+export interface BuildOutcome {
+  info: BuildInfo;
+  cache: BuildCache;
+  built: string[]; // the pages built this time
+}
+
+export interface BuildRequest {
+  previous?: BuildCache | null; // the last build's, to build only what changed since
+  changed?: string[]; // files that changed, relative to the project
+  fresh?: boolean; // every page, whatever changed
+  extra?: Record<string, string>; // attributes for this build
+}
 
 // One build at a time: Asciidoctor's logger is shared.
 let queue: Promise<unknown> = Promise.resolve();
@@ -37,48 +70,78 @@ export async function pagesIn(dir: string, base = dir): Promise<string[]> {
 const stem = (page: string) => page.replace(/\.adoc$/, '');
 const titleOf = (title: unknown) => (title === undefined || title === null || title === '' ? null : String(title));
 
-// The pages a page includes, in order (by their stems).
-function includesOf(page: string, text: string, pages: Set<string>): string[] {
-  const out: string[] = [];
-  for (const m of text.matchAll(/^include::([^\s[]+\.adoc)\[/gm)) {
-    const target = join(dirname(page), m[1]).split(sep).join('/');
-    if (pages.has(target)) out.push(stem(target));
-  }
-  return out;
+// The files a page includes, relative to the project, in order.
+function includesOf(page: string, text: string): string[] {
+  return [...text.matchAll(/^include::([^\s[]+)\[/gm)].map((m) => join(dirname(page), m[1]).split(sep).join('/'));
 }
 
-// `extra`: attributes set for this build (the capabilities being viewed as, say).
-export function buildAsciidoctor(project: Project, outputDir: string, extra: Record<string, string> = {}): Promise<BuildInfo> {
-  const run = queue.then(() => build(project, outputDir, extra));
+export function buildAsciidoctor(project: Project, outputDir: string, request: BuildRequest = {}): Promise<BuildOutcome> {
+  const run = queue.then(() => build(project, outputDir, request));
   queue = run.catch(() => {});
   return run;
 }
 
-async function build(project: Project, outputDir: string, extra: Record<string, string>): Promise<BuildInfo> {
+async function build(project: Project, outputDir: string, { previous, changed = [], fresh = false, extra = {} }: BuildRequest): Promise<BuildOutcome> {
   const started = performance.now();
   const config = project.config as AsciidocConfig;
   const pages = await pagesIn(project.sourceDir);
   const pageSet = new Set(pages);
-  const docs: Record<string, BuildPage> = {};
-  const objects: BuildTarget[] = [];
-  const seen = new Set<string>();
-  const warnings: BuildWarning[] = [];
+  const texts = new Map<string, string>();
+  const stats = new Map<string, { size: number; mtime: number }>();
+  for (const page of pages) {
+    const file = join(project.sourceDir, page);
+    texts.set(page, await fs.readFile(file, 'utf8').catch(() => ''));
+    const st = await fs.stat(file).catch(() => null);
+    stats.set(page, { size: st?.size ?? 0, mtime: st?.mtimeMs ?? 0 });
+  }
+  // The main document's header sets attributes for every page (read again: it may
+  // have changed since the project was opened).
+  const mainAttributes = config.main ? headerAttributes(texts.get(config.main) ?? '') : {};
+  const attributesKey = JSON.stringify([mainAttributes, extra]);
+  const reuse = previous?.version === 1 && previous.attributes === attributesKey && !fresh ? previous : null;
+
+  // What's built: pages that are new or changed (or whose included files are), and the
+  // pages including those.
+  const dirty = new Set<string>();
+  for (const page of pages) {
+    const was = reuse?.pages[page];
+    const now = stats.get(page)!;
+    if (!was || was.size !== now.size || was.mtime !== now.mtime) dirty.add(page);
+  }
+  for (const file of changed) {
+    if (pageSet.has(file)) dirty.add(file);
+    // A snippet, a code sample, an image: the pages that include or name it.
+    else for (const page of pages) if (includesOf(page, texts.get(page)!).includes(file) || texts.get(page)!.includes(basename(file))) dirty.add(page);
+  }
+  const includers = new Map<string, string[]>();
+  for (const page of pages) for (const inc of includesOf(page, texts.get(page)!)) includers.set(inc, [...(includers.get(inc) ?? []), page]);
+  const upward = [...dirty];
+  while (upward.length) {
+    for (const up of includers.get(upward.pop()!) ?? []) {
+      if (!dirty.has(up)) {
+        dirty.add(up);
+        upward.push(up);
+      }
+    }
+  }
+
+  const results: Record<string, PageResult> = {};
+  for (const page of pages) if (!dirty.has(page) && reuse?.pages[page]) results[page] = reuse.pages[page];
   const pageOf = (file: string | undefined) => {
     if (!file) return null;
     const rel = relative(project.sourceDir, resolve(file)).split(sep).join('/');
     return pageSet.has(rel) ? rel : null;
   };
-  // The main document's header sets attributes for every page.
-  const attributes = { ...config.attributes, ...extra, showtitle: '', 'attribute-missing': 'warn' };
+  const attributes = { ...mainAttributes, ...extra, showtitle: '', 'attribute-missing': 'warn' };
   await fs.mkdir(outputDir, { recursive: true });
   await fs.writeFile(join(outputDir, 'asciidoctor.css'), STYLESHEET);
   const logger = MemoryLogger.create();
   const before = LoggerManager.getLogger();
   LoggerManager.setLogger(logger);
+  const built = pages.filter((p) => dirty.has(p));
   try {
-    for (const page of pages) {
+    for (const page of built) {
       const file = join(project.sourceDir, page);
-      const text = await fs.readFile(file, 'utf8').catch(() => '');
       const from = logger.getMessages().length;
       const out = join(outputDir, `${stem(page)}.html`);
       const stylesdir = relative(dirname(out), outputDir).split(sep).join('/') || '.';
@@ -86,48 +149,65 @@ async function build(project: Project, outputDir: string, extra: Record<string, 
       const html = (await doc.convert({ standalone: true })) as string;
       await fs.mkdir(dirname(out), { recursive: true });
       await fs.writeFile(out, html);
-      docs[stem(page)] = {
-        source: fromProject(project, page),
-        title: titleOf(doc.getDocumentTitle({ sanitize: true })),
-        uri: `${stem(page)}.html`,
-        children: includesOf(page, text, pageSet),
-      };
-      // Anchors, where they're written: a page's own, and its included pages'.
+      const objects: BuildTarget[] = [];
+      // Its own anchors (an included page's are its own build's).
       for (const [id, node] of Object.entries(doc.getRefs() as Record<string, { getTitle?(): string; getContext?(): string; getSourceLocation?(): { getFile?(): string } | undefined }>)) {
-        const where = pageOf(node.getSourceLocation?.()?.getFile?.()) ?? page;
-        const key = `${where}#${id}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        objects.push({ domain: 'adoc', type: node.getContext?.() === 'section' ? 'section' : 'anchor', name: id, title: node.getTitle?.() ?? null, doc: stem(where), anchor: id });
+        if ((pageOf(node.getSourceLocation?.()?.getFile?.()) ?? page) !== page) continue;
+        objects.push({ domain: 'adoc', type: node.getContext?.() === 'section' ? 'section' : 'anchor', name: id, title: node.getTitle?.() ?? null, doc: stem(page), anchor: id });
       }
+      const warnings: BuildWarning[] = [];
       for (const m of logger.getMessages().slice(from)) {
         const loc = m.getSourceLocation?.();
-        const where = pageOf(loc?.getFile?.()) ?? page;
+        const where = pageOf(loc?.getFile?.());
+        // About an included page: its own build says so.
+        if (where && where !== page) continue;
         const severity = String(m.getSeverity?.() ?? '').toLowerCase();
         warnings.push({
-          source: fromProject(project, where),
-          line: loc?.getLineNumber?.() ?? null,
+          source: fromProject(project, page),
+          line: where ? (loc?.getLineNumber?.() ?? null) : null,
           level: /error|fatal/.test(severity) ? 'error' : 'warning',
           message: String(m.getText?.() ?? m),
           type: null,
           phase: 'read',
         });
       }
+      results[page] = {
+        ...stats.get(page)!,
+        doc: {
+          source: fromProject(project, page),
+          title: titleOf(doc.getDocumentTitle({ sanitize: true })),
+          uri: `${stem(page)}.html`,
+          children: includesOf(page, texts.get(page)!).filter((f) => pageSet.has(f)).map(stem),
+        },
+        objects,
+        warnings,
+      };
     }
   } finally {
     LoggerManager.setLogger(before);
   }
-  // The same warning, from a page and from a page including it, once.
-  const unique = [...new Map(warnings.map((w) => [`${w.source}:${w.line}:${w.message}`, w])).values()];
+
+  // A warning without a place (a missing attribute) comes from a page and from those
+  // including it: it's the innermost's.
+  const below = (page: string, seen = new Set<string>()): Set<string> => {
+    for (const child of includesOf(page, texts.get(page)!)) if (pageSet.has(child) && !seen.has(child)) below(child, seen.add(child));
+    return seen;
+  };
+  const warnings: BuildWarning[] = [];
+  for (const page of pages) {
+    const inner = new Set([...below(page)].flatMap((p) => results[p]?.warnings.filter((w) => w.line === null).map((w) => w.message) ?? []));
+    warnings.push(...(results[page]?.warnings ?? []).filter((w) => w.line !== null || !inner.has(w.message)));
+  }
   const root = config.main ? stem(config.main) : pages.includes('index.adoc') ? 'index' : stem(pages[0] ?? 'index');
-  return {
+  const info: BuildInfo = {
     builtWith: { name: 'Asciidoctor', version: getVersion() },
     rootDoc: root,
-    docs,
-    objects,
-    warnings: unique,
+    docs: Object.fromEntries(pages.filter((p) => results[p]).map((p) => [stem(p), results[p].doc])),
+    objects: pages.flatMap((p) => results[p]?.objects ?? []),
+    warnings,
     builtAt: Date.now(),
     duration: (performance.now() - started) / 1000,
     variables: {},
   };
+  return { info, cache: { version: 1, attributes: attributesKey, pages: results }, built };
 }
