@@ -190,21 +190,29 @@ class InlineParser {
     }
     if (!found) return null;
     const literalEscape = found.double ? 'unsupported' : 'literal';
+    // Its roles: [.path], [.term.key]. Only roles: other attributes aren't kept.
+    let roles: string | null = null;
+    if (attrs !== null) {
+      if (!/^(\.[\w-]+)+$/.test(attrs)) throw new Unsupported('formatting with attributes');
+      roles = attrs.slice(1).split('.').join(' ');
+    }
     if (c === '#') {
-      if (attrs === '.line-through') {
+      // The editor's strikethrough; else highlighted, or a span of its role.
+      if (roles === 'line-through') {
         const strike = schema.marks.strike.create().addToSet(marks);
         return { end: found.end, nodes: this.parse(found.start, found.close, strike), escape: 'unsupported' };
       }
-      throw new Unsupported('highlight');
+      const span = schema.marks.span.create({ role: roles }).addToSet(marks);
+      return { end: found.end, nodes: this.parse(found.start, found.close, span), escape: found.double ? 'unsupported' : 'literal' };
     }
-    if (attrs !== null) throw new Unsupported('formatting with attributes');
     if (c === '^' || c === '~') {
+      if (roles !== null) throw new Unsupported('formatting with attributes');
       const value = src.slice(found.start, found.close);
       if (/[*_`#^~+{\[\\<]/.test(value)) throw new Unsupported('formatting in a superscript');
       return { end: found.end, nodes: [role(c === '^' ? 'sup' : 'sub', value, marks)], escape: 'literal' };
     }
     const mark = c === '*' ? schema.marks.strong : c === '_' ? schema.marks.em : schema.marks.code;
-    const inner = mark.create().addToSet(marks);
+    const inner = mark.create({ role: roles }).addToSet(marks);
     // `+literal+` in monospace: no formatting inside.
     // (`++text++` is monospace around a passthrough, read as one.)
     const content = src.slice(found.start, found.close);
@@ -253,10 +261,28 @@ class InlineParser {
     }
     const close = closingBracket(src, open + 1, to);
     if (close < 0) return null;
-    const text = src.slice(open + 1, close);
-    if (text.includes('=') || /\^$/.test(text)) throw new Unsupported('link with attributes');
-    const link = schema.marks.link.create({ href, title: null }).addToSet(marks);
-    const nodes = text ? this.parse(open + 1, close, link, true) : textNodes(macro?.[1] === 'mailto' ? macro[2] : href, link);
+    // The text, and what's after it: ^ (a new window), or attributes (window=_blank).
+    let from = open + 1;
+    let until = close;
+    let extra: string | null = null;
+    const raw = src.slice(open + 1, close);
+    if (raw.includes('=')) {
+      const comma = topComma(raw);
+      if (comma < 0) throw new Unsupported('link with only attributes');
+      extra = raw.slice(comma + 1).trim();
+      until = open + 1 + comma;
+      const quoted = /^\s*"([\s\S]*)"\s*$/.exec(raw.slice(0, comma));
+      if (quoted) {
+        from = open + 1 + raw.indexOf('"') + 1;
+        until = from + quoted[1].length;
+        if (quoted[1].includes('"')) throw new Unsupported('quotes in a link’s text');
+      }
+    } else if (/\^$/.test(raw)) {
+      extra = '^';
+      until = close - 1;
+    }
+    const link = schema.marks.link.create({ href, title: null, extra }).addToSet(marks);
+    const nodes = until > from ? this.parse(from, until, link, true) : textNodes(macro?.[1] === 'mailto' ? macro[2] : href, link);
     return { end: close + 1, nodes, escape: 'literal' };
   }
 
@@ -273,8 +299,17 @@ class InlineParser {
     const end = close + 1;
     const one = (node: PMNode): Found => ({ end, nodes: [node], escape: 'literal' });
     if (name === 'image') {
-      if (!target || /[,=]/.test(content)) throw new Unsupported('image with attributes');
-      return one(schema.node('image', { src: target, alt: content, title: null }, undefined, marks));
+      if (!target) throw new Unsupported('image without a file');
+      // Its description, then the rest as written (a width, a role…).
+      const comma = topComma(raw);
+      const first = comma < 0 ? raw : raw.slice(0, comma);
+      const named = /^\s*[\w-]+\s*=/.test(first);
+      const altRaw = named ? '' : first.trim();
+      const extra = named ? raw.trim() : comma < 0 ? null : raw.slice(comma + 1).trim();
+      const quoted = /^"([\s\S]*)"$/.exec(altRaw);
+      const alt = (quoted ? quoted[1] : altRaw).replace(/\\]/g, ']');
+      if (quoted?.[1].includes('"')) throw new Unsupported('quotes in an image’s description');
+      return one(schema.node('image', { src: target, alt, title: null, extra: extra || null }, undefined, marks));
     }
     if (name === 'xref') {
       if (/[=<>]/.test(content)) throw new Unsupported('cross-reference with attributes');
@@ -290,6 +325,16 @@ class InlineParser {
 
 function role(name: string, value: string, marks: readonly Mark[]): PMNode {
   return schema.node('role', { name, value }, undefined, marks);
+}
+
+// Where an attribute list's first entry ends: its first comma outside quotes; -1 if none.
+function topComma(text: string): number {
+  let quote = false;
+  for (let k = 0; k < text.length; k++) {
+    if (text[k] === '"' && text[k - 1] !== '\\') quote = !quote;
+    else if (text[k] === ',' && !quote) return k;
+  }
+  return -1;
 }
 
 // A cross-reference's value as the editor keeps them: "text <target>", or the target.
@@ -392,7 +437,10 @@ function inlineForm(block: PMNode): unknown[] {
   return out.filter((item) => item.text !== '');
 }
 
-const MARK_ORDER = ['link', 'code', 'strong', 'strike', 'em'];
+const MARK_ORDER = ['link', 'span', 'code', 'strong', 'strike', 'em'];
+
+// A mark's roles as written in front of it: [.path], [.term.key].
+const rolePrefix = (mark: Mark) => (mark.attrs.role ? `[.${String(mark.attrs.role).split(/\s+/).join('.')}]` : '');
 
 const SPECIAL = /[*_`#^~+{}[\]<>\\:]|\(\(|https?:|ftp:|irc:|file:/;
 
@@ -438,10 +486,10 @@ class InlineWriter {
       const inside = nodes.slice(k, e);
       if (next.type !== schema.marks.code) this.span(next, inside, [...outer, next], nodes[e]);
       // Monospace around text alone: written as it is (`+literal+`) when it must be.
-      else if (inside.every((n) => n.isText && n.marks.length === outer.length + 1)) this.code(inside.map((n) => n.text).join(''), nodes[e]);
+      else if (inside.every((n) => n.isText && n.marks.length === outer.length + 1)) this.code(inside.map((n) => n.text).join(''), nodes[e], rolePrefix(next));
       else {
         const tick = !this.safe && this.constrainedBefore('"\'`') && edgesOk(inside) && constrainedAfter(nodes[e], '"\'`') ? '`' : '``';
-        this.out += tick;
+        this.out += rolePrefix(next) + tick;
         this.run(inside, [...outer, next]);
         this.out += tick;
       }
@@ -451,7 +499,7 @@ class InlineWriter {
 
   private span(mark: Mark, nodes: PMNode[], marks: readonly Mark[], after: PMNode | undefined) {
     if (mark.type === schema.marks.link) return this.link(mark, nodes, marks, after);
-    const char = mark.type === schema.marks.strong ? '*' : mark.type === schema.marks.em ? '_' : null;
+    const char = mark.type === schema.marks.strong ? '*' : mark.type === schema.marks.em ? '_' : mark.type === schema.marks.span ? '#' : null;
     if (mark.type === schema.marks.strike) {
       this.out += '[.line-through]#';
       this.run(nodes, marks);
@@ -459,8 +507,10 @@ class InlineWriter {
       return;
     }
     if (!char) throw new Unsupported(`mark ${mark.type.name}`);
-    const start = this.out.length;
+    // Whether it may be constrained is up to what's before its roles.
     const constrained = !this.safe && this.constrainedBefore() && edgesOk(nodes) && constrainedAfter(after);
+    this.out += rolePrefix(mark);
+    const start = this.out.length;
     const open = constrained ? char : char + char;
     this.out += open;
     this.run(nodes, marks);
@@ -481,7 +531,10 @@ class InlineWriter {
     // longer (punctuation at its end isn't part of one).
     const following = after?.isText ? /^\S*/.exec(after.text!)![0] : '';
     const read = /^[^\s[\]<]*/.exec(href + following)![0].replace(/[,.?!)]+$/, '');
-    if (scheme && plainText && text === href && read === href && !following.startsWith('[') && this.urlBoundary()) {
+    const extra: string | null = mark.attrs.extra;
+    // What's written after the text: ^ (a new window), or attributes.
+    const suffix = extra === null ? '' : extra === '^' ? '^' : `,${extra}`;
+    if (!extra && scheme && plainText && text === href && read === href && !following.startsWith('[') && this.urlBoundary()) {
       this.out += href;
       return;
     }
@@ -489,21 +542,24 @@ class InlineWriter {
     if (scheme && !this.urlBoundary()) this.out += 'link:';
     // A URL as its own text: empty brackets say that.
     if (scheme && plainText && text === href) {
-      this.out += `${href}[]`;
+      this.out += `${href}[${suffix}]`;
       return;
     }
     this.out += `${target}[`;
     const start = this.out.length;
     this.run(nodes, marks);
-    this.out = this.out.slice(0, start) + this.out.slice(start).replace(/\]/g, '\\]');
-    this.out += ']';
+    let written = this.out.slice(start).replace(/\]/g, '\\]');
+    // Before attributes, text with a comma or = in it goes in quotes.
+    if (extra && extra !== '^' && /[,="]/.test(written)) written = `"${written}"`;
+    this.out = this.out.slice(0, start) + written + suffix + ']';
   }
 
-  private code(text: string, after: PMNode | undefined) {
+  private code(text: string, after: PMNode | undefined, prefix = '') {
     // Literal when it must be, or (writing safely) when it could need to.
     const literal = (this.safe && /[*_`#^~+{\\[<:]/.test(text)) || /`|\s$|^\s/.test(text);
     const constrained = this.constrainedBefore('"\'`') && !isSpace(text[0]) && !isSpace(text[text.length - 1]) && constrainedAfter(after, '"\'`');
     const tick = constrained ? '`' : '``';
+    this.out += prefix;
     if (!literal) this.out += `${tick}${text}${tick}`;
     // With backticks or pluses in it: ++text++ inside, which nothing ends early.
     else if (/[`+]/.test(text) && !text.includes('++')) this.out += `${tick}++${text}++${tick}`;
@@ -520,9 +576,15 @@ class InlineWriter {
       case 'hard_break':
         if (after && after.type.name !== 'hard_break') this.out += ' +\n';
         return;
-      case 'image':
-        this.out += `image:${node.attrs.src}[${(node.attrs.alt as string).replace(/\]/g, '\\]')}]`;
+      case 'image': {
+        // Its description, then what was written after it (a width, say).
+        const alt = (node.attrs.alt as string).replace(/\]/g, '\\]');
+        const extra: string | null = node.attrs.extra;
+        if (!extra) this.out += `image:${node.attrs.src}[${alt}]`;
+        else if (!alt && /^[\w-]+\s*=/.test(extra)) this.out += `image:${node.attrs.src}[${extra}]`;
+        else this.out += `image:${node.attrs.src}[${/[,"=]|^\s|\s$/.test(alt) ? `"${alt}"` : alt},${extra}]`;
         return;
+      }
       case 'inline_math':
         this.out += `latexmath:[${(node.attrs.value as string).replace(/\]/g, '\\]')}]`;
         return;

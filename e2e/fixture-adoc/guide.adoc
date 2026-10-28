@@ -34,3 +34,5 @@ Memory:: 4 GB
 ----
 
 See <<requirements>> and xref:other.adoc[the other page].
+
+Run [.cmd]`install.sh` with #care#, see https://example.org[the site^].

@@ -46,6 +46,10 @@ test('shows an AsciiDoc page as formatted content, and leaves it as it is', asyn
   await expect(page.locator('.prose dt')).toHaveText(['CPU', 'Memory']);
   await expect(page.locator('.prose dd')).toHaveText(['Any 64-bit processor', '4 GB']);
   await expect(page.locator('.role-ref')).toHaveCount(2);
+  // Highlighted text, a role on monospace, a link that opens a new window: shown, kept.
+  await expect(page.locator('.prose mark')).toHaveText('care');
+  await expect(page.locator('.prose code.text-role')).toHaveText('install.sh');
+  await expect(page.locator('.prose a', { hasText: 'the site' })).toBeVisible();
   await expect(page.locator('.statusbar .dialect')).toHaveText('AsciiDoc');
   await expect(page.locator('.save-status')).toHaveText('All changes saved');
   expect(file('guide.adoc')).toBe(original('guide.adoc'));

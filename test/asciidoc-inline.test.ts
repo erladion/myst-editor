@@ -12,14 +12,24 @@ const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').rep
 function html(nodes: PMNode[]): string {
   let out = '';
   const open: string[] = [];
-  const tag = (name: string) => {
-    if (name === 'strong') return ['<strong>', '</strong>'];
-    if (name === 'em') return ['<em>', '</em>'];
-    if (name === 'code') return ['<code>', '</code>'];
+  // A mark as a key: its name, and its role (name|role).
+  const tag = (key: string) => {
+    const [name, role] = key.split('|');
+    const cls = role ? ` class="${role}"` : '';
+    if (name === 'strong') return [`<strong${cls}>`, '</strong>'];
+    if (name === 'em') return [`<em${cls}>`, '</em>'];
+    if (name === 'code') return [`<code${cls}>`, '</code>'];
     if (name === 'strike') return ['<span class="line-through">', '</span>'];
+    if (name === 'span') return role ? [`<span${cls}>`, '</span>'] : ['<mark>', '</mark>'];
     return ['', ''];
   };
-  const marksOf = (n: PMNode) => n.marks.map((m) => (m.type.name === 'link' ? `link:${m.attrs.href}` : m.type.name));
+  // A link: where to, and what its attributes say (a new window, a role).
+  const linkOpen = (href: string, extra: string | null) => {
+    const blank = extra === '^' || /window=_blank/.test(extra ?? '');
+    const role = /role=([\w-]+)/.exec(extra ?? '')?.[1];
+    return `<a href="${href}"${role ? ` class="${role}"` : ''}${blank ? ' target="_blank" rel="noopener"' : ''}>`;
+  };
+  const marksOf = (n: PMNode) => n.marks.map((m) => (m.type.name === 'link' ? `link:${m.attrs.href}\u0000${m.attrs.extra ?? ''}` : m.attrs.role ? `${m.type.name}|${m.attrs.role}` : m.type.name));
   for (const n of nodes) {
     const want = marksOf(n);
     // Open marks stay open while the node has them, whatever their order.
@@ -30,13 +40,22 @@ function html(nodes: PMNode[]): string {
       out += m.startsWith('link:') ? '</a>' : tag(m)[1];
     }
     for (const m of want.filter((w) => !open.includes(w))) {
-      out += m.startsWith('link:') ? `<a href="${m.slice(5)}">` : tag(m)[0];
+      out += m.startsWith('link:') ? linkOpen(m.slice(5).split('\u0000')[0], m.split('\u0000')[1] || null) : tag(m)[0];
       open.push(m);
     }
     if (n.isText) out += escape(n.text!);
     else if (n.type.name === 'soft_break') out += '\n';
     else if (n.type.name === 'hard_break') out += '<br>\n';
-    else if (n.type.name === 'image') out += `<span class="image"><img src="${n.attrs.src}" alt="${n.attrs.alt}"></span>`;
+    else if (n.type.name === 'image') {
+      // Its width and height: positional, or named.
+      const extra = (n.attrs.extra ?? '').split(',').map((x: string) => x.trim()).filter(Boolean);
+      const positional = extra.filter((x: string) => !x.includes('='));
+      const named = Object.fromEntries(extra.filter((x: string) => x.includes('=')).map((x: string) => x.split('=')));
+      const width = named.width ?? positional[0];
+      const height = named.height ?? positional[1];
+      const alt = n.attrs.alt || n.attrs.src.replace(/^.*\//, '').replace(/\.\w+$/, '');
+      out += `<span class="image"><img src="${n.attrs.src}" alt="${alt}"${width ? ` width="${width}"` : ''}${height ? ` height="${height}"` : ''}></span>`;
+    }
     else if (n.type.name === 'html_inline') out += n.attrs.value;
     else if (n.type.name === 'role') {
       const { name, value } = n.attrs;
@@ -96,6 +115,12 @@ const SAMPLES = [
   'back\\slash and \\\\ and a\\b',
   'brackets [like this] and <angles> & ampersands',
   'link:https://example.org[*bold* link]',
+  'a #highlighted# word and a ##high##light',
+  'the [.path]_config.yml_ file and [.term]*API* and [.cmd]`ls -l`',
+  'a [.big.red]#warning# here',
+  'https://example.org[new window^] and https://example.org[the site,window=_blank]',
+  'https://example.org["a, b",role=ext]',
+  'image:logo.png[The logo,100] and image:a.png[width=40] and image:b.png["A, B",30,20]',
 ];
 
 describe('AsciiDoc inline text', () => {
@@ -111,7 +136,7 @@ describe('AsciiDoc inline text', () => {
   });
 
   it('keeps what it can’t show as it is', () => {
-    for (const text of ['#highlight#', '[.role]*styled*', 'https://example.org[new window^]', 'image:a.png[A,100]', '((index term))']) {
+    for (const text of ['[id=x]*styled*', 'https://example.org[a=b]', 'x^[.r]^', '((index term))']) {
       expect(() => parseInline(text), text).toThrow(Unsupported);
     }
   });
