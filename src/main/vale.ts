@@ -2,6 +2,7 @@
 // location), with a .vale.ini that applies (Vale looks from the page's folder up, and
 // in its global config).
 import { execFile } from 'node:child_process';
+import { app } from 'electron';
 import { accessSync, constants, existsSync, promises as fs, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
@@ -35,11 +36,32 @@ export function findVale(): string | null {
   return null;
 }
 
-function run(vale: string, args: string[], cwd: string): Promise<{ code: number; stdout: string; stderr: string }> {
+// Vale reads AsciiDoc pages through the asciidoctor command. Where it isn't installed,
+// the app's own stands in (asciidoctor/cli.ts, run by the app's Node): a folder with
+// an asciidoctor script in it, first on Vale's PATH.
+let shimDir: string | null = null;
+async function asciidoctorShim(): Promise<string | null> {
+  const name = process.platform === 'win32' ? 'asciidoctor.cmd' : 'asciidoctor';
+  if ((process.env.PATH ?? '').split(delimiter).some((d) => d && (executable(join(d, name)) || executable(join(d, 'asciidoctor.bat')) || executable(join(d, 'asciidoctor.exe'))))) return null;
+  if (shimDir) return shimDir;
+  const cli = join(import.meta.dirname, 'asciidoctor-cli.js');
+  if (!existsSync(cli)) return null;
+  const dir = join(app.getPath('userData'), 'asciidoctor-bin');
+  await fs.mkdir(dir, { recursive: true });
+  const script =
+    process.platform === 'win32'
+      ? `@echo off\r\nset ELECTRON_RUN_AS_NODE=1\r\n"${process.execPath}" "${cli}" %*\r\n`
+      : `#!/bin/sh\nELECTRON_RUN_AS_NODE=1 exec "${process.execPath}" "${cli}" "$@"\n`;
+  await fs.writeFile(join(dir, name), script, { mode: 0o755 });
+  return (shimDir = dir);
+}
+
+function run(vale: string, args: string[], cwd: string, extraPath: string | null = null): Promise<{ code: number; stdout: string; stderr: string }> {
   // A .js Vale is a stand-in run with Electron's own Node.
   const script = /\.[cm]?js$/.test(vale);
   const [file, argv] = script ? [process.execPath, [vale, ...args]] : [vale, args];
-  const env = script ? { ...process.env, ELECTRON_RUN_AS_NODE: '1' } : process.env;
+  const base = extraPath ? { ...process.env, PATH: `${extraPath}${delimiter}${process.env.PATH ?? ''}` } : process.env;
+  const env = script ? { ...base, ELECTRON_RUN_AS_NODE: '1' } : base;
   return new Promise((resolve) => {
     execFile(file, argv, { cwd, env, timeout: TIMEOUT_MS, maxBuffer: 32 * 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
       const code = err ? (typeof (err as { code?: unknown }).code === 'number' ? (err as { code: number }).code : -1) : 0;
@@ -70,7 +92,8 @@ export async function lint(file: string): Promise<ValeResult> {
   const vale = findVale();
   if (!vale) return { status: 'unavailable', reason: 'not-installed', message: 'Vale isn’t installed.' };
   const cwd = dirname(file);
-  const { code, stdout, stderr } = await run(vale, ['--output=JSON', '--no-exit', file], cwd);
+  const shim = file.endsWith('.adoc') ? await asciidoctorShim() : null;
+  const { code, stdout, stderr } = await run(vale, ['--output=JSON', '--no-exit', file], cwd, shim);
   if (code !== 0) {
     // Runtime errors are JSON too: {"Code": "E100", "Text": "..."}.
     let error: { Code?: string; Text?: string } = {};

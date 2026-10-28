@@ -134,3 +134,20 @@ test('hovering shows the remark, in dark mode too', async () => {
   expect(await background(page.locator('.cm-tooltip', { has: tooltip }))).toBe(dark);
   expect(await background(tooltip.locator('.cm-diagnosticAction').first())).not.toBe('rgb(68, 68, 68)'); // CodeMirror's own
 });
+
+test('on AsciiDoc pages too, without asciidoctor installed: the app’s own reads them for Vale', async () => {
+  ctx = await launch({
+    fixture: 'fixture-adoc',
+    // A PATH without an asciidoctor command on it.
+    env: { MYSTEDITOR_VALE: stub, PATH: process.platform === 'win32' ? (process.env.PATH ?? '') : '/usr/bin:/bin' },
+    prepare: (project) => {
+      writeFileSync(join(project, '.vale.ini'), '[*.adoc]\nBasedOnStyles = Vale\n');
+      appendFileSync(join(project, 'guide.adoc'), '\nWe utilize it.\n\n// We utilize comments too.\n');
+    },
+  });
+  const { page } = ctx;
+  await page.getByRole('button', { name: 'Installation Guide' }).click();
+  // The word in the text is flagged; the one in the comment isn't in the page Vale sees.
+  await expect(page.locator('.prose .vale')).toHaveCount(1, { timeout: 15_000 });
+  await expect(page.locator('.prose .vale-warning')).toHaveText('utilize');
+});

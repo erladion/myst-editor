@@ -4,7 +4,8 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   main: {
     // Bundle dependencies: the packaged app ships without node_modules.
-    build: { externalizeDeps: false, rollupOptions: { input: 'src/main/index.ts' } },
+    // The asciidoctor command's stand-in, for Vale (see vale.ts), beside the app.
+    build: { externalizeDeps: false, rollupOptions: { input: { index: 'src/main/index.ts', 'asciidoctor-cli': 'src/main/asciidoctor/cli.ts' } } },
   },
   preload: {
     // Sandboxed preload scripts must be CommonJS.
