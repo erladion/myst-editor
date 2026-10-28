@@ -18,9 +18,11 @@ export interface References {
 export interface ProjectBuilder {
   contents: Contents;
   references: References;
+  // Whether its builds can show single blocks, for cards' previews.
+  fragments: boolean;
 }
 
-const SPHINX: ProjectBuilder = { contents: sphinxContents, references: sphinxReferences };
+const SPHINX: ProjectBuilder = { contents: sphinxContents, references: sphinxReferences, fragments: true };
 
 // A project's (pages outside every project: Sphinx's rules, as for a Markdown folder).
 export const builderFor = (_project: Project | null): ProjectBuilder => SPHINX;

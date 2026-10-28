@@ -31,6 +31,7 @@ import { checksOf, fixFinding, showFinding } from './editor/checks';
 import { checkDoc } from '../../core/checks';
 import { loadDocument } from '../../core/document';
 import { editingFor } from './formats/editing';
+import { builderFor } from './builders/builder';
 import { pagesOf } from '../../core/format';
 import { editorCommands, type PaletteCommand } from './app/palette';
 import { ValeChip } from './components/ValeChip';
@@ -297,7 +298,7 @@ export function App() {
   }, [newPage, ws]);
   const pageProblems = useMemo(() => problemsIn(info, session?.path ?? null), [info, session?.path]);
   // Hooks stay above the welcome screen's early return.
-  const previewBuild = usePreviewBuild(pageProject?.id ?? null, info, session);
+  const previewBuild = usePreviewBuild(builderFor(pageProject).fragments ? (pageProject?.id ?? null) : null, info, session);
   const notify = useCallback((m: string) => dialogs.current?.notify(m), []);
   const vale = useVale(session?.path ?? null, session?.savedText ?? null, ws?.project.root ?? null, notify);
   const preview = usePreviewFollow(ws, session, showPreview, scrollRef, viewRef);
