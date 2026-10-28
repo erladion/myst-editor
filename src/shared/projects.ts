@@ -1,7 +1,7 @@
-// Which Sphinx project a page belongs to.
+// Which project a page belongs to, and how to read it.
 import { DEFAULT_CONFIG } from '../core/project-config.js';
 import { pageFormat, type PageConfig } from '../core/format.js';
-import { ASCIIDOC_CONFIG, type AsciidocConfig } from '../core/asciidoc/config.js';
+import { ASCIIDOC_CONFIG, asciidocEditor, type AsciidocConfig } from '../core/asciidoc/config.js';
 import type { ProjectInfo, Project } from './api.js';
 
 // The innermost project whose source directory contains `path` (relative to the
@@ -19,15 +19,17 @@ export function projectFor(projects: Project[], path: string): Project | null {
   return best;
 }
 
-// How to read a page: its format and the project's settings for it. AsciiDoc pages
-// are read as Asciidoctor reads them, with the folder's editor settings but for
-// conditions (theirs are written in MyST's syntax).
+// How to read a page: as its project says (see projectFor). An AsciiDoc page outside
+// every AsciiDoc project is read as Asciidoctor reads AsciiDoc, with the editor
+// settings of where it is (a Sphinx project, the folder).
 export function configFor(info: ProjectInfo, path: string): PageConfig {
-  const myst = projectFor(info.projects, path)?.config ?? info.defaultConfig ?? DEFAULT_CONFIG;
-  if (pageFormat(path)?.id !== 'asciidoc') return myst;
+  const project = projectFor(info.projects, path);
+  if (project) return project.config;
+  const around = info.projects.filter((p) => p.dir === '' || path.startsWith(p.dir + '/')).sort((a, b) => b.dir.length - a.dir.length)[0]?.config ?? info.defaultConfig ?? DEFAULT_CONFIG;
+  if (pageFormat(path)?.id !== 'asciidoc') return around.format === 'myst' ? around : (info.defaultConfig ?? DEFAULT_CONFIG);
   // One for each, so that it's the same settings each time.
-  let adoc = asciidocConfigs.get(myst);
-  if (!adoc) asciidocConfigs.set(myst, (adoc = { ...ASCIIDOC_CONFIG, editor: { ...myst.editor, conditions: null } }));
+  let adoc = asciidocConfigs.get(around);
+  if (!adoc) asciidocConfigs.set(around, (adoc = { ...ASCIIDOC_CONFIG, editor: asciidocEditor(around.editor) }));
   return adoc;
 }
 

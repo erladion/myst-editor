@@ -10,6 +10,7 @@ import { schema } from '../schema.js';
 import { SourceMap, type ContainerEntry } from '../sourcemap.js';
 import { parseInline, Unsupported } from './inline.js';
 import { tableRows } from './table.js';
+import { readCondition } from './conditions.js';
 import {
   ADMONITION_PARAGRAPH,
   ADMONITIONS,
@@ -37,9 +38,14 @@ export interface ParseResult {
   map: SourceMap;
 }
 
-export function parseAsciidoc(source: string): ParseResult {
+export interface ParseOptions {
+  // ifdef::[]…endif::[] lines are conditional content's markers (see conditions.ts).
+  conditions?: boolean;
+}
+
+export function parseAsciidoc(source: string, opts: ParseOptions = {}): ParseResult {
   const map = new SourceMap();
-  const { nodes, entry } = new Reader(map).container(source, 1, true);
+  const { nodes, entry } = new Reader(map, opts).container(source, 1, true);
   const doc = schema.node('doc', { sid: null }, nodes.length ? nodes : [schema.node('paragraph')]);
   map.root = entry;
   return { doc, map };
@@ -322,7 +328,10 @@ const CODE_STYLES = new Set(['', 'source', 'listing']);
 class Reader {
   private line = 1;
 
-  constructor(private map: SourceMap) {}
+  constructor(
+    private map: SourceMap,
+    private opts: ParseOptions,
+  ) {}
 
   container(text: string, base: number, isDoc = false): { nodes: PMNode[]; entry: ContainerEntry } {
     const lines = text.split('\n');
@@ -440,8 +449,10 @@ class Reader {
         return this.raw('attributes', src);
       case 'comment':
         return this.raw('comment', src);
-      case 'preprocessor':
-        return this.raw('preprocessor', src);
+      case 'preprocessor': {
+        const marker = this.opts.conditions ? readCondition(src) : null;
+        return this.raw(marker ? `condition-${marker.kind}` : 'preprocessor', src);
+      }
       case 'break':
         return this.withSid('thematic_break', { markup: src.trim() }, null, src);
       case 'pagebreak':
@@ -491,7 +502,7 @@ class Reader {
     }
     if (d === '|===') {
       try {
-        const rows = tableRows(header, own.slice(body + 1, -1), this.map);
+        const rows = tableRows(header, own.slice(body + 1, -1), this.map, !!this.opts.conditions);
         return this.withSid('table', { header: body ? own.slice(0, body).join('\n') : null }, rows, src);
       } catch (e) {
         if (!(e instanceof Unsupported)) throw e;

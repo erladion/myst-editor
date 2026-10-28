@@ -7,6 +7,7 @@
 // Precedence: not > and > or. Keywords are case-insensitive; capability names follow
 // the project's case_sensitive setting.
 import type { ConditionsDef } from './editor-config.js';
+import { ifdefMarkers } from './asciidoc/conditions.js';
 
 export type Expr =
   | { kind: 'name'; name: string }
@@ -152,7 +153,7 @@ export function commentMarkers(settings: ConditionsDef): ConditionMarkers {
   return { block: syntax(settings.block), inline: syntax(settings.inline), refuse: () => null };
 }
 
-const SYNTAXES: Record<NonNullable<ConditionsDef['markers']>, (settings: ConditionsDef) => ConditionMarkers> = { comments: commentMarkers };
+const SYNTAXES: Record<NonNullable<ConditionsDef['markers']>, (settings: ConditionsDef) => ConditionMarkers> = { comments: commentMarkers, ifdef: ifdefMarkers };
 const made = new WeakMap<ConditionsDef, ConditionMarkers>();
 
 // The markers the settings say pages write.

@@ -8,3 +8,8 @@ export interface AsciidocConfig {
 }
 
 export const ASCIIDOC_CONFIG: AsciidocConfig = { format: 'asciidoc', editor: EMPTY_EDITOR_CONFIG };
+
+// Editor settings for AsciiDoc pages: conditions are written as ifdef::[] there.
+export function asciidocEditor(editor: EditorConfig): EditorConfig {
+  return { ...editor, conditions: editor.conditions && { ...editor.conditions, markers: 'ifdef' } };
+}

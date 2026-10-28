@@ -111,6 +111,9 @@ class Writer {
     if (a.type.name === 'target' || (a.type.name === 'raw_block' && a.attrs.kind === 'block-attributes')) return '\n';
     // The document header goes right under the title.
     if (b.type.name === 'raw_block' && b.attrs.kind === 'header') return '\n';
+    // A condition's markers go right around what's in it.
+    const kind = (n: PMNode) => (n.type.name === 'raw_block' ? n.attrs.kind : null);
+    if (kind(a) === 'condition-start' || kind(b) === 'condition-end') return '\n';
     return '\n\n';
   }
 

@@ -6,11 +6,17 @@ import { schema } from '../schema.js';
 import type { SourceMap } from '../sourcemap.js';
 import { parseInline, serializeInline, Unsupported } from './inline.js';
 import type { BlockHeader } from './parse.js';
+import type { RowCondition } from '../schema.js';
+import { readCondition } from './conditions.js';
+
+// Numbers the groups of rows inside a condition.
+let rowGroups = 0;
 
 type Align = 'left' | 'center' | 'right' | null;
 interface Cell {
   text: string; // as written, between its separators
   line: number; // which of the table's lines it's on
+  conds: RowCondition[]; // the conditions around it (outermost first)
   colspan: number;
   rowspan: number;
   align: Align;
@@ -36,7 +42,7 @@ function columnsOf(cols: string): number | null {
 
 // A line's cells: the text between separators, and the spec in front of each (2+,
 // .2+, ^). Null if a spec is one the editor can't keep (a style, a duplication).
-function cellsOf(line: string): Omit<Cell, 'line'>[] | null {
+function cellsOf(line: string): Omit<Cell, 'line' | 'conds'>[] | null {
   const bars: number[] = [];
   for (let i = 0; i < line.length; i++) {
     if (line[i] === '\\' && line[i + 1] === '|') i++;
@@ -55,7 +61,7 @@ function cellsOf(line: string): Omit<Cell, 'line'>[] | null {
     }
   }
   if (specs[0].trim() && !SPEC.test(specs[0].trim())) return null;
-  return pieces.map((text, k): Omit<Cell, 'line'> => {
+  return pieces.map((text, k): Omit<Cell, 'line' | 'conds'> => {
     const m = SPEC.exec(specs[k].trim())!;
     if (m[7] || m[8] || m[9]) throw new Unsupported('cell style');
     return { text: text.trimEnd(), colspan: m[3] ? Number(m[3]) : 1, rowspan: Number(m[4] ?? m[5] ?? 1), align: m[6] ? ALIGNS[m[6]] : null };
@@ -64,7 +70,7 @@ function cellsOf(line: string): Omit<Cell, 'line'>[] | null {
 
 // The rows of the table in `lines` (between its delimiters), with `header` read from
 // the lines before it.
-export function tableRows(header: BlockHeader, lines: string[], map: SourceMap): PMNode[] {
+export function tableRows(header: BlockHeader, lines: string[], map: SourceMap, conditions = false): PMNode[] {
   const { attrs } = header;
   const named = new Map(attrs.named);
   if (attrs.style || attrs.positional.length || attrs.named.some(([k]) => !NAMED.has(k))) throw new Unsupported('table attributes');
@@ -74,7 +80,17 @@ export function tableRows(header: BlockHeader, lines: string[], map: SourceMap):
   let firstLine = -1;
   let firstCount = 0;
   let blankAfterFirst = false;
+  // Conditions between rows (ifdef::[] lines): each row knows those it's in.
+  const open: RowCondition[] = [];
   lines.forEach((line, k) => {
+    const marker = conditions ? readCondition(line) : null;
+    if (marker?.kind === 'start') return void open.push({ id: `a${++rowGroups}`, start: line, end: '' });
+    if (marker?.kind === 'end') {
+      const group = open.pop();
+      if (!group) throw new Unsupported('condition end without a start');
+      group.end = line;
+      return;
+    }
     if (!line.trim()) {
       if (firstLine >= 0 && k === firstLine + 1) blankAfterFirst = true;
       return;
@@ -85,8 +101,9 @@ export function tableRows(header: BlockHeader, lines: string[], map: SourceMap):
       firstLine = k;
       firstCount = own.length;
     }
-    cells.push(...own.map((c) => ({ ...c, line: k })));
+    cells.push(...own.map((c) => ({ ...c, line: k, conds: [...open] })));
   });
+  if (open.length) throw new Unsupported('condition without an end');
   const ncols = named.has('cols') ? columnsOf(named.get('cols')!) : firstCount;
   if (!ncols || !cells.length) throw new Unsupported('table columns');
   // Rows: cells fill the columns left free by cells merged from rows above.
@@ -111,14 +128,17 @@ export function tableRows(header: BlockHeader, lines: string[], map: SourceMap):
     }
   }
   if (row.length || taken.length > rows.length) throw new Unsupported('incomplete row');
+  // A row is in one set of conditions; the header row in none.
+  if (rows.some((r) => r.some((c) => c.conds.length !== r[0].conds.length || c.conds.some((g, i) => g !== r[0].conds[i])))) throw new Unsupported('condition inside a row');
   // The first row is the header: by its options, or by being alone on the first line
   // with a blank line after it.
   const headerRow = !opts.includes('noheader') && (opts.includes('header') || (firstLine === 0 && blankAfterFirst && firstCount === rows[0].length && rows[0].every((c) => c.colspan === 1 && c.rowspan === 1) && rows.length > 1));
   let end = -1; // the last line of the row before
   return rows.map((cells, k) => {
+    if (k === 0 && headerRow && cells[0].conds.length) throw new Unsupported('header row in a condition');
     const row = schema.node(
       'table_row',
-      null,
+      cells[0].conds.length ? { conds: cells[0].conds } : null,
       cells.map((c) => {
         const type = k === 0 && headerRow ? 'table_header' : 'table_cell';
         const node = schema.node(type, { colspan: c.colspan, rowspan: c.rowspan, align: c.align }, [schema.node('paragraph', null, parseInline(c.text.trim().replace(/\\\|/g, '|')))]);
@@ -130,9 +150,10 @@ export function tableRows(header: BlockHeader, lines: string[], map: SourceMap):
     const first = cells[0].line;
     const last = cells[cells.length - 1].line;
     if (first > end && !cells.some((c) => c.line < first)) {
-      const trail = k === rows.length - 1 ? lines.slice(last + 1).map((l) => `${l}\n`).join('') : '';
       const breaks = cells.map((c, n) => n > 0 && c.line !== cells[n - 1].line);
-      written.set(row, { text: lines.slice(first, last + 1).join('\n'), gap: lines.slice(end + 1, first).map((l) => `${l}\n`).join(''), trail, breaks });
+      const between = (from: number, to: number) => lines.slice(from, to).filter((l) => !(conditions && readCondition(l))).map((l) => `${l}\n`).join('');
+      const trailing = k === rows.length - 1 ? between(last + 1, lines.length) : '';
+      written.set(row, { text: lines.slice(first, last + 1).join('\n'), gap: between(end + 1, first), trail: trailing, breaks });
     }
     end = last;
     return row;
@@ -197,8 +218,21 @@ export function writeTable(node: PMNode, map: SourceMap | null, original: PMNode
   // it, would be read as one: a blank line before it says it isn't.
   const [first, second] = parts;
   if (first && !first.header && !first.gap && second?.gap && !first.text.includes('\n')) first.gap = '\n';
+  // Rows in conditions go between their markers: a group's start before its first
+  // row, its end after its last (inner groups inside outer ones).
   let out = `${header ? `${header}\n` : ''}|===\n`;
-  for (const p of parts) out += `${p.gap}${p.text}\n`;
+  let open: RowCondition[] = [];
+  const markers = (conds: RowCondition[]) => {
+    let keep = 0;
+    while (keep < open.length && keep < conds.length && open[keep].id === conds[keep].id) keep++;
+    const lines = [...open.slice(keep).reverse().map((c) => c.end), ...conds.slice(keep).map((c) => c.start)];
+    open = conds;
+    return lines.map((l) => `${l}\n`).join('');
+  };
+  parts.forEach((p, k) => {
+    out += `${p.gap}${markers(node.child(k).attrs.conds)}${p.text}\n`;
+  });
+  out += markers([]);
   // The lines after the last row, as they were.
   const last = node.childCount - 1;
   const trail = (map ? written.get(node.child(last)) : undefined)?.trail ?? before(original ? original.childCount - 1 : -1)?.trail ?? '';

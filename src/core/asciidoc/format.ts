@@ -7,6 +7,6 @@ import { asciidocPages } from './pages.js';
 
 export const asciidoc: Format<AsciidocConfig> = {
   ...asciidocPages,
-  load: (text) => parseAsciidoc(text),
+  load: (text, config) => parseAsciidoc(text, { conditions: !!config.editor.conditions }),
   save: (doc, map) => serializeAsciidoc(doc, map),
 };

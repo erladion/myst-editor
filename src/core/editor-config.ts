@@ -92,8 +92,9 @@ export interface RoleDef {
   url?: string; // "{value}" is replaced with the role's content
 }
 
-// How pages write conditions' markers: MyST's HTML comments (see conditions.ts).
-export type MarkerKind = 'comments';
+// How pages write conditions' markers: MyST's HTML comments, AsciiDoc's ifdef
+// (see conditions.ts).
+export type MarkerKind = 'comments' | 'ifdef';
 
 export interface ConditionsDef {
   block: [string, string];

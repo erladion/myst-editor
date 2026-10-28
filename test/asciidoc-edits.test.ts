@@ -7,6 +7,7 @@ import { addColumnAfter, addRowAfter, CellSelection, mergeCells } from 'prosemir
 import { loadDocument, saveDocument } from '../src/core/document.js';
 import { ASCIIDOC_CONFIG } from '../src/core/asciidoc/config.js';
 import { schema } from '../src/core/schema.js';
+import * as conditions from '../src/core/conditions.js';
 
 const { nodes } = schema;
 const load = (text: string) => loadDocument(text, ASCIIDOC_CONFIG);
@@ -144,5 +145,40 @@ describe('new blocks', () => {
       "== Title\n\nNOTE: A note.\n\n[source,python]\n----\nprint(1)\n----\n\n[latexmath]\n++++\nx^2\n++++\n\n.Click to expand\n[%collapsible]\n====\nHidden.\n====\n\n'''\n\nA *bold* word and image:a.png[A]",
     );
     expect(Fragment.from(load(out).doc.content).childCount).toBe(7);
+  });
+});
+
+describe('conditions', () => {
+  const settings = { block: ['if', 'endif'] as [string, string], inline: ['if-inline', 'endif-inline'] as [string, string], caseSensitive: true, capabilities: ['Cloud', 'Desktop'], capabilitiesFile: null, capabilitiesPath: null, capabilitiesKey: null, colors: {}, markers: 'ifdef' as const };
+  const config = { ...ASCIIDOC_CONFIG, editor: { ...ASCIIDOC_CONFIG.editor, conditions: settings } };
+
+  it('are ifdef lines, read as markers', () => {
+    const text = 'Always.\n\nifdef::Cloud,Desktop[]\nCloud or desktop.\nendif::[]\n\nifndef::Cloud[]\nNot cloud.\nendif::[]\n';
+    const { doc } = loadDocument(text, config);
+    const kinds = Array.from({ length: doc.childCount }, (_, i) => doc.child(i)).filter((n) => n.type === nodes.raw_block).map((n) => n.attrs.kind);
+    expect(kinds).toEqual(['condition-start', 'condition-end', 'condition-start', 'condition-end']);
+    const { markersOf } = conditions;
+    expect(markersOf(settings).block.read('ifdef::Cloud,Desktop[]')).toEqual({ kind: 'start', expr: 'Cloud or Desktop' });
+    expect(markersOf(settings).block.read('ifndef::Cloud+Desktop[]')).toEqual({ kind: 'start', expr: 'not (Cloud and Desktop)' });
+    expect(markersOf(settings).block.start('not (Cloud or Desktop)')).toBe('ifndef::Cloud,Desktop[]');
+    // What ifdef can't say is refused, with why.
+    expect(conditions.parseFor(settings, 'Cloud and not Desktop')).toMatchObject({ ok: false, error: expect.stringMatching(/can’t write/) });
+    const loaded = loadDocument(text, config);
+    expect(saveDocument(loaded.doc, loaded.map, config).text).toBe(text);
+  });
+
+  it('go around table rows', () => {
+    const text = '|===\n| Name | Where\n\n| a | everywhere\nifdef::Cloud[]\n| b | cloud\nendif::[]\n|===\n';
+    const { doc, map } = loadDocument(text, config);
+    const table = doc.firstChild!;
+    expect(table.type).toBe(nodes.table);
+    expect(table.child(2).attrs.conds.map((c: { start: string }) => c.start)).toEqual(['ifdef::Cloud[]']);
+    // The first row joins the condition: its marker moves up.
+    const tr = EditorState.create({ doc, schema }).tr;
+    const first = table.child(1);
+    tr.setNodeMarkup(1 + table.child(0).nodeSize, null, { ...first.attrs, conds: table.child(2).attrs.conds });
+    const saved = saveDocument(tr.doc, map, config);
+    expect(saved.verified).toBe(true);
+    expect(saved.text).toBe('|===\n| Name | Where\n\nifdef::Cloud[]\n| a | everywhere\n| b | cloud\nendif::[]\n|===\n');
   });
 });
