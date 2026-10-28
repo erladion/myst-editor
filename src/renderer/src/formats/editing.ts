@@ -72,10 +72,11 @@ export interface Roles {
 
 // Pictures, where the format has more to say about them than a path from the page.
 export interface Images {
-  // Where a picture written as `ref` is, from the page (AsciiDoc's are under :imagesdir:).
-  fromPage(ref: string, config: PageConfig): string;
+  // Where a picture written as `ref` on `page` is, from the page (AsciiDoc's are under
+  // :imagesdir:, from the main document's folder).
+  fromPage(ref: string, config: PageConfig, page: string): string;
   // How a picture at `path` (from the page) is written in it.
-  toRef(path: string, config: PageConfig): string;
+  toRef(path: string, config: PageConfig, page: string): string;
   // An image's width as written ("300", "50%"), and its attributes with another.
   width(attrs: Record<string, unknown>): string | null;
   withWidth(attrs: Record<string, unknown>, width: string | null): Record<string, unknown>;

@@ -65,7 +65,7 @@ export function useEditorContext(dialogs: RefObject<DialogApi | null>, ws: Works
       const w = current();
       if (!w?.current) return path;
       const config = configFor(w.project, w.current);
-      return editingFor(config).images?.toRef(path, config) ?? path;
+      return editingFor(config).images?.toRef(path, config, w.current) ?? path;
     };
     return {
       ui: {
@@ -100,7 +100,7 @@ export function useEditorContext(dialogs: RefObject<DialogApi | null>, ws: Works
       assetUrl(written: string) {
         const w = current();
         if (!w || /^(https?:|data:)/.test(written)) return written;
-        const ref = w.current ? (editingFor(configFor(w.project, w.current)).images?.fromPage(written, configFor(w.project, w.current)) ?? written) : written;
+        const ref = w.current ? (editingFor(configFor(w.project, w.current)).images?.fromPage(written, configFor(w.project, w.current), w.current) ?? written) : written;
         const rel = resolveRef(w.current, ref, pageProject()?.dir ?? '');
         return rel === null ? '' : api.assetUrl(rel);
       },
