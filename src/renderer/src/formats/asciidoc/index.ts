@@ -3,6 +3,7 @@ import type { EditingFormat, Images } from '../editing';
 import { dirname, join } from '../../paths';
 import { relativePath } from '../../../../core/rename';
 import type { PageConfig } from '../../../../core/format';
+import type { Node as PMNode } from 'prosemirror-model';
 import type { AsciidocConfig } from '../../../../core/asciidoc/config';
 import { splitRoleValue } from '../myst/directives';
 import { ADMONITIONS, CALLOUT_CHOICES, blockInfo } from './blocks';
@@ -18,10 +19,30 @@ const BUILT_IN: Record<string, string> = {
   'two-colons': '::', 'two-semicolons': ';;', cpp: 'C++', pp: '++',
 };
 
-// An attribute reference: its value, from the main document's header (or Asciidoctor's own).
-function attributeShown(name: string, config: PageConfig) {
-  const own = config.format === 'asciidoc' ? (config as AsciidocConfig).attributes[name] : undefined;
-  if (own !== undefined) return { text: own || `{${name}}`, title: `{${name}}: set in the main document${own ? '' : ', to nothing'}` };
+// The attributes set where `pos` is on the page: the main document's header's, then
+// the page's own (its header, and entries above it), in order; :name!: unsets one.
+function attributesAt(config: PageConfig, doc: PMNode, pos: number): Map<string, { value: string | null; here: boolean }> {
+  const out = new Map<string, { value: string | null; here: boolean }>();
+  for (const [k, v] of Object.entries(config.format === 'asciidoc' ? (config as AsciidocConfig).attributes : {})) out.set(k, { value: v, here: false });
+  doc.descendants((node, at) => {
+    if (at >= pos) return false;
+    if (node.type.name !== 'raw_block' || !['attributes', 'header'].includes(node.attrs.kind)) return true;
+    for (const line of (node.attrs.source as string).split('\n')) {
+      const m = /^:(!?)([\w][\w-]*)(!?):(?:[ \t]+(.*))?$/.exec(line);
+      if (m) out.set(m[2], { value: m[1] || m[3] ? null : (m[4] ?? '').trim(), here: true });
+    }
+    return false;
+  });
+  return out;
+}
+
+// An attribute reference: its value where it is (or Asciidoctor's own).
+function attributeShown(name: string, config: PageConfig, where: { doc: PMNode; pos: number }) {
+  const set = attributesAt(config, where.doc, where.pos).get(name);
+  const own = set?.value ?? undefined;
+  const from = set?.here ? 'on this page' : 'in the main document';
+  if (set && set.value === null) return { text: `{${name}}`, title: `{${name}} is unset ${from}`, missing: true };
+  if (own !== undefined) return { text: own || `{${name}}`, title: `{${name}}: set ${from}${own ? '' : ', to nothing'}` };
   if (name in BUILT_IN) return { text: BUILT_IN[name], title: `{${name}}` };
   return { text: `{${name}}`, title: `{${name}} isn’t set in the main document’s header`, missing: true };
 }
@@ -91,6 +112,6 @@ export const asciidocEditing: EditingFormat = {
     references: { ref: 'Anchor', xref: 'Cross-reference' },
     split: splitRoleValue,
     page: (name, target) => (name === 'xref' || name === 'ref' ? pageOf(target) : null),
-    shown: (name, value, config) => (name === 'attribute' ? attributeShown(value, config) : null),
+    shown: (name, value, config, where) => (name === 'attribute' ? attributeShown(value, config, where) : null),
   },
 };

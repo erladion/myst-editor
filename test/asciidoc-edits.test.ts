@@ -284,3 +284,23 @@ describe('figures', () => {
     expect(edited('', () => nodes.doc.create(null, nodes.md_directive.create({ name: 'figure', args: 'b.png', options: [['width', '50%']], fence: '' }, nodes.paragraph.create())))).toBe('image::b.png[,50%]');
   });
 });
+
+describe('attribute values', async () => {
+  const { asciidocEditing } = await import('../src/renderer/src/formats/asciidoc/index.js');
+  const shown = asciidocEditing.roles.shown!;
+  it('are where they are set: the main document’s, then the page’s, above them', () => {
+    const config = { ...ASCIIDOC_CONFIG, attributes: { product: 'Widget', edition: '1' } };
+    const { doc } = load('= Chapter\n:edition: 2\n\nFirst {edition}.\n\n:product: Gadget\n\nThen {product}.\n\n:edition!:\n\nNow {edition}.\n', config);
+    const at = (text: string) => {
+      let pos = 0;
+      doc.descendants((n, p) => {
+        if (!pos && n.type.name === 'paragraph' && n.textContent.startsWith(text)) pos = p;
+      });
+      return pos;
+    };
+    expect(shown('attribute', 'edition', config, { doc, pos: at('First') })).toMatchObject({ text: '2' });
+    expect(shown('attribute', 'product', config, { doc, pos: at('First') })).toMatchObject({ text: 'Widget' });
+    expect(shown('attribute', 'product', config, { doc, pos: at('Then') })).toMatchObject({ text: 'Gadget' });
+    expect(shown('attribute', 'edition', config, { doc, pos: at('Now') })).toMatchObject({ text: '{edition}', missing: true });
+  });
+});
