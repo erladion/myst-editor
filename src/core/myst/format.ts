@@ -1,7 +1,7 @@
 // MyST Markdown, as Sphinx's MyST-Parser reads it.
 import type { Format } from '../format.js';
-import { parseMyst } from '../parse.js';
-import { serializeMyst } from '../serialize.js';
+import { parseMyst } from './parse.js';
+import { serializeMyst } from './serialize.js';
 import { parserExtensions, type MystConfig } from '../project-config.js';
 import { mystPages } from './pages.js';
 

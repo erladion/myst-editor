@@ -5,9 +5,9 @@
 // serialized, and their header/marker/fence style is carried over from the original.
 import type { Node as PMNode, Mark } from 'prosemirror-model';
 import { MarkdownSerializerState, defaultMarkdownSerializer } from 'prosemirror-markdown';
-import { schema, type RowCondition } from './schema.js';
-import { SourceMap, type ContainerEntry, type InlineStyle } from './sourcemap.js';
-import { headerKey, renderHeader, fenceFor } from './directive.js';
+import { schema, type RowCondition } from '../schema.js';
+import { SourceMap, type ContainerEntry, type InlineStyle } from '../sourcemap.js';
+import { headerKey, renderHeader, fenceFor } from '../directive.js';
 import { hardBreakStyle } from './parse.js';
 
 export interface SerializeOptions {

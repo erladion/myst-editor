@@ -7,10 +7,10 @@
 // extracted (fence/marker/`>` removed) and are parsed again recursively.
 import { createTokenizer, tokensToMyst } from 'myst-parser';
 import type { Node as PMNode, Mark } from 'prosemirror-model';
-import { schema, type RowCondition } from './schema.js';
-import { splitDirective, headerKey } from './directive.js';
-import { readMarker } from './conditions.js';
-import { SourceMap } from './sourcemap.js';
+import { schema, type RowCondition } from '../schema.js';
+import { splitDirective, headerKey } from '../directive.js';
+import { readMarker } from '../conditions.js';
+import { SourceMap } from '../sourcemap.js';
 
 type MdNode = { type: string; position?: { start: { line: number }; end: { line: number } }; [k: string]: any };
 

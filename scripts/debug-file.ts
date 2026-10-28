@@ -2,8 +2,8 @@
 //   npx tsx scripts/debug-file.ts <file.md>
 import { readFileSync } from 'node:fs';
 import type { Node as PMNode } from 'prosemirror-model';
-import { parseMyst } from '../src/core/parse.js';
-import { serializeMyst } from '../src/core/serialize.js';
+import { parseMyst } from '../src/core/myst/parse.js';
+import { serializeMyst } from '../src/core/myst/serialize.js';
 import { normalized } from '../test/helpers.js';
 
 const src = readFileSync(process.argv[2], 'utf8');

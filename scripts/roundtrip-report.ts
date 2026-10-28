@@ -10,8 +10,8 @@ import { join, relative } from 'node:path';
 import { diffLines } from 'diff';
 import type { Node as PMNode } from 'prosemirror-model';
 import { EditorState } from 'prosemirror-state';
-import { parseMyst } from '../src/core/parse.js';
-import { serializeMyst } from '../src/core/serialize.js';
+import { parseMyst } from '../src/core/myst/parse.js';
+import { serializeMyst } from '../src/core/myst/serialize.js';
 import { schema } from '../src/core/schema.js';
 import { normalized } from '../test/helpers.js';
 
