@@ -245,7 +245,9 @@ const nodes: Record<string, NodeSpec> = {
     tableRole: 'table',
     isolating: true,
     // `ruleSpaces`: the delimiter row is written `| --- |` rather than `|-----|`.
-    attrs: { ...sid, pretty: { default: true }, ruleSpaces: { default: true } },
+    // `header`: what a format writes with the table, before it, as it was written
+    // (its title and settings), for those that have such lines.
+    attrs: { ...sid, pretty: { default: true }, ruleSpaces: { default: true }, header: { default: null as string | null } },
     parseDOM: [{ tag: 'table', getAttrs: (dom) => fromData(dom as HTMLElement) }],
     toDOM: (node) => ['table', dataAttrs(node), ['tbody', 0]],
   },
