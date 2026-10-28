@@ -167,7 +167,7 @@ export function SphinxDialog({ state, project, projectId, onChangeEnvironment, o
   const statusText =
     status.kind === 'building' ? 'Building…' :
     status.kind === 'setting-up' ? `${status.step}…` :
-    status.kind === 'ready' && info ? `Built in ${info.duration.toFixed(1)} s with Sphinx ${info.sphinxVersion}` :
+    status.kind === 'ready' && info ? `Built in ${info.duration.toFixed(1)} s with ${info.builtWith.name} ${info.builtWith.version}` :
     status.kind === 'declined' ? 'Off for this session' :
     status.kind === 'error' ? 'Failed' : '';
   return (
@@ -355,7 +355,7 @@ export function SphinxChip({ state, project, problems, onShowProblems, onShowDet
       const label = prefix + (status.kind === 'building' ? 'Building…' : info ? `Built in ${info.duration.toFixed(1)} s` : 'Ready');
       return (
         <>
-          <button type="button" className={`chip-button${status.kind === 'building' ? ' busy' : ''}`} onClick={onShowDetails} title={info ? `Sphinx ${info.sphinxVersion}` : undefined}>
+          <button type="button" className={`chip-button${status.kind === 'building' ? ' busy' : ''}`} onClick={onShowDetails} title={info ? `${info.builtWith.name} ${info.builtWith.version}` : undefined}>
             {status.kind === 'building' && <span className="spinner" aria-hidden="true" />}
             {label}
           </button>

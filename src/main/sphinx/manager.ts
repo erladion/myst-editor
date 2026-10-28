@@ -40,7 +40,7 @@ const BUSY_GRACE_MS = 2000;
 // The last build's results, kept between sessions so opening a project shows them at
 // once and only needs an incremental build.
 interface SavedState {
-  version: 1;
+  version: 2; // 2: BuildInfo.builtWith in place of sphinxVersion
   key: string; // what the results depend on: see buildKey()
   info: BuildInfo;
 }
@@ -105,7 +105,7 @@ export class SphinxManager implements Builder {
   private loadSaved(): SavedState | null {
     try {
       const saved = JSON.parse(readFileSync(this.savedFile, 'utf8')) as SavedState;
-      return saved.version === 1 && saved.info ? saved : null;
+      return saved.version === 2 && saved.info ? saved : null;
     } catch {
       return null;
     }
@@ -338,7 +338,7 @@ export class SphinxManager implements Builder {
     this.fresh = false;
     const previous = fresh ? [] : (this.state.info?.warnings ?? []);
     const info: BuildInfo = {
-      sphinxVersion: result.sphinx_version ?? '',
+      builtWith: { name: 'Sphinx', version: result.sphinx_version ?? '' },
       rootDoc: result.root_doc ?? 'index',
       docs: result.docs ?? {},
       objects: result.objects ?? [],
@@ -349,7 +349,7 @@ export class SphinxManager implements Builder {
     };
     this.state = { ...this.state, status: { kind: 'ready' }, info };
     this.opts.emit(this.state);
-    const saved: SavedState = { version: 1, key: this.buildKey(), info };
+    const saved: SavedState = { version: 2, key: this.buildKey(), info };
     // Written at once, under another name and then moved into place: the app may close
     // (or another session start) right after a build, and must find all of it or none.
     try {

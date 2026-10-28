@@ -336,7 +336,7 @@ export function App() {
             }}
           />
         )}
-        {about && <AboutDialog sphinx={null} onClose={closeAbout} />}
+        {about && <AboutDialog builtWith={null} onClose={closeAbout} />}
         {palette && <CommandPalette commands={palette} onClose={closePalette} />}
         {shortcuts && <ShortcutsDialog emacs={emacs} onClose={closeShortcuts} />}
         {newProject && (
@@ -580,7 +580,7 @@ export function App() {
           }}
         />
       )}
-      {about && <AboutDialog sphinx={info?.sphinxVersion ?? null} onClose={closeAbout} />}
+      {about && <AboutDialog builtWith={info?.builtWith ?? null} onClose={closeAbout} />}
       {palette && <CommandPalette commands={palette} onClose={closePalette} />}
       {shortcuts && <ShortcutsDialog emacs={emacs} onClose={closeShortcuts} />}
       {newProject && (

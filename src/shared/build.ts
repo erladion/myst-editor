@@ -31,7 +31,7 @@ export interface BuildWarning {
 }
 
 export interface BuildInfo {
-  sphinxVersion: string;
+  builtWith: { name: string; version: string }; // the builder: "Sphinx", "8.1.3"
   rootDoc: string;
   docs: Record<string, BuildPage>;
   objects: BuildTarget[];

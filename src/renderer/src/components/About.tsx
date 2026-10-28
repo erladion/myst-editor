@@ -4,7 +4,7 @@ import type { AboutInfo } from '../../../shared/api';
 
 const api = window.myst;
 
-export function AboutDialog({ sphinx, onClose }: { sphinx: string | null; onClose: () => void }) {
+export function AboutDialog({ builtWith, onClose }: { builtWith: { name: string; version: string } | null; onClose: () => void }) {
   const [info, setInfo] = useState<AboutInfo | null>(null);
   const [copied, setCopied] = useState(false);
   useEffect(() => {
@@ -18,7 +18,7 @@ export function AboutDialog({ sphinx, onClose }: { sphinx: string | null; onClos
         ['Electron', info.electron],
         ['Chromium', info.chromium],
         ['Node', info.node],
-        ...(sphinx ? ([['Sphinx', sphinx]] as [string, string][]) : []),
+        ...(builtWith ? ([[builtWith.name, builtWith.version]] as [string, string][]) : []),
         ['System', info.system],
       ]
     : [];
