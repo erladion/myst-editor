@@ -60,6 +60,7 @@
 //   [pdf.variables]                      # {name} in the headers, footers and cover, as
 //   classification = "Internal"          # are author, copyright and html_context from conf.py
 import { parse as parseToml } from 'smol-toml';
+import { appendToJson, jsonLike } from './json-edit.js';
 
 export const SETTINGS_FILE = '.mysteditor.toml';
 
@@ -575,27 +576,25 @@ function joinPath(dir: string, p: string): string | null {
 export const isCapabilityName = (name: string) => /^[A-Za-z_][\w.:-]*$/.test(name) && !/^(and|or|not)$/i.test(name);
 
 // The capabilities file's text with `name` added to its list, in the list's own shape
-// (a name, an object with a name or id, or a key), and written the way the file is
-// (its indentation, or on one line). Null when there's no list to add to.
+// (a name, an object with a name or id, or a key). Only the new entry is written: the
+// rest of the file stays as it is. Null when there's no list to add to.
 export function addCapability(text: string, key: string | null, name: string): string | null {
   const json: unknown = JSON.parse(text);
+  const path = key ? key.split('.') : isTable(json) && 'capabilities' in json ? ['capabilities'] : [];
   let list: unknown = json;
-  if (key) {
-    for (const part of key.split('.')) list = isTable(list) ? list[part] : undefined;
-  } else if (isTable(list) && 'capabilities' in list) {
-    list = list.capabilities;
-  }
+  for (const part of path) list = isTable(list) ? list[part] : undefined;
   if (capabilityNames(list, null)?.includes(name)) return text;
-  if (isStrings(list)) list.push(name);
-  else if (Array.isArray(list) && list.every(isTable)) {
+  if (isStrings(list)) return appendToJson(text, path, () => JSON.stringify(name));
+  if (Array.isArray(list) && list.every(isTable)) {
     const field = list.length && 'id' in list[0] && !('name' in list[0]) ? 'id' : 'name';
-    list.push({ [field]: name });
-  } else if (isTable(list)) {
+    return appendToJson(text, path, (style) => jsonLike({ [field]: name }, style));
+  }
+  if (isTable(list)) {
     const like = Object.values(list)[0];
-    list[name] = typeof like === 'boolean' ? true : typeof like === 'string' ? '' : typeof like === 'number' ? 0 : isTable(like) ? {} : null;
-  } else return null;
-  const indent = text.trimEnd().includes('\n') ? (/\n([ \t]+)\S/.exec(text)?.[1] ?? 2) : undefined;
-  return (indent === undefined ? JSON.stringify(json) : JSON.stringify(json, null, indent)) + (text.endsWith('\n') ? '\n' : '');
+    const value = typeof like === 'boolean' ? true : typeof like === 'string' ? '' : typeof like === 'number' ? 0 : isTable(like) ? {} : null;
+    return appendToJson(text, path, (style) => `${JSON.stringify(name)}${style.colon}${JSON.stringify(value)}`);
+  }
+  return null;
 }
 
 // Capability names from a JSON file whose exact shape isn't fixed: a list of names,
