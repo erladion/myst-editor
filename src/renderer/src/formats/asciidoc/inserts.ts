@@ -35,10 +35,10 @@ async function insertFigure(ctx: EditorContext, run: (cmd: Command) => void) {
   if (!values?.src) return;
   const caption = values.caption.trim();
   const id = values.id.trim() || (caption ? uniqueLabel(ctx, `fig-${targetLabel(caption).slice(0, 40).replace(/-+$/, '')}`) : '');
-  const before = `${id ? `[[${id}]]\n` : ''}${caption ? `.${caption}\n` : ''}`;
   const alt = values.alt.trim();
-  const source = `${before}image::${values.src.trim()}[${/[,"\]]/.test(alt) ? `"${alt.replace(/"/g, '\\"')}"` : alt}]`;
-  run(insertBlock(nodes.opaque_directive.create({ name: 'image', args: values.src.trim(), options: alt ? [['alt', alt]] : [], source })));
+  const options: [string, string][] = [...(id ? [['id', id] as [string, string]] : []), ...(alt ? [['alt', alt] as [string, string]] : [])];
+  const figure = nodes.md_directive.create({ name: 'figure', args: values.src.trim(), options, fence: '' }, nodes.paragraph.create(null, caption ? schema.text(caption) : undefined));
+  run(insertBlock(figure, 2));
 }
 
 // A table with its caption written above it (.Caption).

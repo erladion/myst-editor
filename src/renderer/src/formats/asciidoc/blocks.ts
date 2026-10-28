@@ -10,6 +10,7 @@ export const ADMONITIONS: Record<string, DirectiveInfo> = {
 };
 
 const OTHER: Record<string, DirectiveInfo> = {
+  figure: { label: 'Figure', tone: 'neutral', argLabel: 'Image' },
   example: { label: 'Example', tone: 'neutral', argLabel: 'Title' },
   sidebar: { label: 'Sidebar', tone: 'neutral', argLabel: 'Title' },
   quote: { label: 'Quote', tone: 'neutral', argLabel: 'Title' },

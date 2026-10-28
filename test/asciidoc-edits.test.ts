@@ -258,3 +258,29 @@ describe('pictures in an AsciiDoc page', async () => {
     expect(edited('', () => nodes.doc.create(null, para))).toBe('image:a.png[A,120,role=r]');
   });
 });
+
+describe('figures', () => {
+  const text = '[[arch]]\n.How it *fits* together\nimage::diagram.png[The parts,600,role=right]\n\nAfter.\n';
+
+  it('are pictures with captions, written back as they were', () => {
+    const { doc, map } = load(text);
+    const figure = doc.firstChild!;
+    expect(figure.type).toBe(nodes.md_directive);
+    expect(figure.attrs).toMatchObject({ name: 'figure', args: 'diagram.png', options: [['id', 'arch'], ['role', 'right'], ['alt', 'The parts'], ['width', '600']] });
+    expect(figure.textContent).toBe('How it fits together');
+    expect(saveDocument(doc, map, ASCIIDOC_CONFIG)).toEqual({ text, verified: true });
+  });
+
+  it('edited: the caption, the description, the picture', () => {
+    let out = edited(text, (s) => s.tr.insertText(' well', s.doc.firstChild!.nodeSize - 2));
+    expect(out).toBe(text.replace('together', 'together well'));
+    out = edited(text, (s) => s.tr.setNodeMarkup(0, null, { ...s.doc.firstChild!.attrs, args: 'new.svg', options: [['id', 'arch'], ['role', 'right'], ['alt', 'The parts, all'], ['width', '600']] }));
+    expect(out).toBe('[[arch]]\n[.right]\n.How it *fits* together\nimage::new.svg["The parts, all",600]\n\nAfter.\n');
+  });
+
+  it('without a caption or a description: just the picture', () => {
+    const { doc } = load('image::a.png[]\n');
+    expect(doc.firstChild!.attrs).toMatchObject({ name: 'figure', args: 'a.png', options: [] });
+    expect(edited('', () => nodes.doc.create(null, nodes.md_directive.create({ name: 'figure', args: 'b.png', options: [['width', '50%']], fence: '' }, nodes.paragraph.create())))).toBe('image::b.png[,50%]');
+  });
+});

@@ -175,8 +175,36 @@ class Writer {
     return renderHeader(name, lang, args, options, fence);
   }
 
+  // A figure: its id and roles, its caption as its title, the picture's macro.
+  private figure(node: PMNode): string {
+    const options = node.attrs.options as [string, string][];
+    const get = (k: string) => options.find(([key]) => key === k)?.[1] ?? '';
+    const lines: string[] = [];
+    if (get('id')) lines.push(`[[${get('id')}]]`);
+    const roles = get('role').split(/\s+/).filter(Boolean);
+    const opts = get('options').split(',').filter(Boolean);
+    if (roles.length || opts.length) lines.push(renderAttrlist({ style: '', id: null, roles, opts, positional: [], named: [] }));
+    const caption = node.childCount ? serializeInline(node.firstChild!, { was: this.fresh ? undefined : this.map.get(node.firstChild!.attrs.sid)?.text }).replace(/\n/g, ' ') : '';
+    // Only the caption changed: the figure as written, with its title line for it.
+    const was = this.fresh ? undefined : this.map.get(node.attrs.sid);
+    if (was && was.node.attrs.args === node.attrs.args && JSON.stringify(was.node.attrs.options) === JSON.stringify(options)) {
+      const own = was.text.split('\n').filter((l) => !/^\.[^\s.]/.test(l));
+      const title = caption ? [`.${caption}`] : [];
+      const at = Math.max(0, own.length - 1); // just above the picture's line
+      return [...own.slice(0, at), ...title, ...own.slice(at)].join('\n');
+    }
+    if (caption) lines.push(`.${caption}`);
+    const quote = (v: string) => (/[,"\]=]|^\s|\s$/.test(v) ? `"${v.replace(/"/g, '\\"')}"` : v);
+    const positional = ['alt', 'width', 'height'].map(get);
+    while (positional.length && !positional[positional.length - 1]) positional.pop();
+    const named = options.filter(([k]) => !['id', 'role', 'options', 'alt', 'width', 'height'].includes(k)).map(([k, v]) => `${k}=${quote(v)}`);
+    lines.push(`image::${node.attrs.args}[${[...positional.map(quote), ...named].join(',')}]`);
+    return lines.join('\n');
+  }
+
   private directive(node: PMNode): string {
     const { name } = node.attrs as { name: string };
+    if (name === 'figure') return this.figure(node);
     let fence: string = node.attrs.fence;
     // Written as a paragraph (NOTE: text) while it's one paragraph.
     if (fence === '' && node.childCount === 1 && node.firstChild!.type.name === 'paragraph' && name !== 'open') {

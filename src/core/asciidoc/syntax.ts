@@ -96,6 +96,7 @@ export function parseAttrlist(inner: string): Attrlist | null {
 }
 
 // An attribute list's entries: `name=value`, or positional; values may be quoted.
+export const attributeTokens = (inner: string) => tokens(inner);
 function tokens(inner: string): { name?: string; value: string; quoted: boolean }[] | null {
   const out: { name?: string; value: string; quoted: boolean }[] = [];
   if (!inner.trim()) return out;

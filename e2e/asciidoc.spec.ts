@@ -50,6 +50,11 @@ test('shows an AsciiDoc page as formatted content, and leaves it as it is', asyn
   await expect(page.locator('.prose mark')).toHaveText('care');
   await expect(page.locator('.prose code.text-role')).toHaveText('install.sh');
   await expect(page.locator('.prose a', { hasText: 'the site' })).toBeVisible();
+  // A picture with a caption: a figure, showing it; with no description, a check says so.
+  const figure = page.locator('.directive-figure');
+  await expect(figure.locator('.directive-body')).toHaveText('The parts');
+  await expect.poll(() => figure.locator('img').evaluate((i: HTMLImageElement) => i.naturalWidth)).toBeGreaterThan(0);
+  await expect(page.getByRole('button', { name: /to check/ })).toBeVisible();
   await expect(page.locator('.statusbar .dialect')).toHaveText('AsciiDoc');
   await expect(page.locator('.save-status')).toHaveText('All changes saved');
   expect(file('guide.adoc')).toBe(original('guide.adoc'));

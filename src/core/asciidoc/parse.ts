@@ -31,6 +31,7 @@ import {
   isTitleLine,
   listItem,
   parseAttrlist,
+  attributeTokens,
   type Attrlist,
 } from './syntax.js';
 
@@ -425,6 +426,9 @@ class Reader {
         const header = readHeader(own.slice(0, seg.body - seg.start));
         if (!header) throw new Unsupported('header');
         const [, name, target, attrlist] = /^([A-Za-z][\w-]*)::(\S*?)\[(.*)\][ \t]*$/.exec(first)!;
+        // A picture: a figure, with its caption (its title) to edit.
+        const figure = name === 'image' && target ? this.figure(header, target, attrlist, src) : null;
+        if (figure) return figure;
         const list = parseAttrlist(attrlist);
         const options: [string, string][] = [];
         if (list && name === 'image') {
@@ -466,6 +470,27 @@ class Reader {
       case 'pagebreak':
         return this.raw('page-break', src);
     }
+  }
+
+  // image::file[description,width,height,…] under its title (the caption), its id and
+  // roles: the figure, its options those (id, role, alt, width, height and the rest).
+  private figure(header: BlockHeader, target: string, attrlist: string, src: string): PMNode | null {
+    const tokens = attributeTokens(attrlist);
+    const { attrs } = header;
+    if (!tokens || attrs.style || attrs.positional.length) return null;
+    const positional = tokens.filter((t) => t.name === undefined).map((t) => t.value);
+    const named = tokens.filter((t) => t.name !== undefined).map((t) => [t.name!, t.value] as [string, string]);
+    if (positional.length > 3) return null;
+    const options: [string, string][] = [];
+    const id = attrs.id ?? attrs.named.find(([k]) => k === 'id')?.[1] ?? named.find(([k]) => k === 'id')?.[1];
+    if (id) options.push(['id', id]);
+    const roles = [...attrs.roles, ...[...attrs.named, ...named].filter(([k]) => k === 'role').flatMap(([, v]) => v.split(/\s+/).filter(Boolean))];
+    if (roles.length) options.push(['role', roles.join(' ')]);
+    if (attrs.opts.length) options.push(['options', attrs.opts.join(',')]);
+    ['alt', 'width', 'height'].forEach((k, n) => positional[n] && options.push([k, positional[n]]));
+    for (const [k, v] of [...attrs.named, ...named]) if (!['id', 'role'].includes(k)) options.push([k, v]);
+    const caption = this.withSid('paragraph', {}, header.title ? parseInline(header.title) : [], header.title);
+    return this.withSid('md_directive', { name: 'figure', args: target, options, fence: '', header: null, headerKey: null }, [caption], src);
   }
 
   // The header's text, up to and with the delimiter line.
