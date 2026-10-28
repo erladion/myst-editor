@@ -13,7 +13,7 @@ import { gapsPlugin } from './gaps';
 import { checksPlugin } from './checks';
 import { changesPlugin } from './changes';
 import { schema } from '../../../core/schema';
-import { heading, insertCodeBlock, paragraph, toggleCode, toggleEm, toggleList, toggleStrike, toggleStrong } from './commands';
+import { definitionEnter, heading, insertCodeBlock, paragraph, toggleCode, toggleEm, toggleList, toggleStrike, toggleStrong } from './commands';
 import { problemsPlugin } from './problems';
 import { valePlugin } from './vale';
 import { conditionsPlugin } from './conditions';
@@ -64,7 +64,7 @@ const keys = keymap({
   'Mod-i': toggleEm,
   'Mod-e': toggleCode,
   'Mod-Shift-x': toggleStrike,
-  Enter: splitListItem(nodes.list_item),
+  Enter: chainCommands(definitionEnter, splitListItem(nodes.list_item)),
   Tab: sinkListItem(nodes.list_item),
   'Shift-Tab': liftListItem(nodes.list_item),
   'Shift-Enter': chainCommands(exitCode, insertHardBreak),

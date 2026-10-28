@@ -150,6 +150,37 @@ const nodes: Record<string, NodeSpec> = {
     toDOM: (node) => ['li', dataAttrs(node), 0],
   },
 
+  // Definition lists: items of terms and what they mean (descriptions of blocks: none,
+  // one, or in MyST several). `marker`: how the format writes the item's terms
+  // (AsciiDoc's "::").
+  definition_list: {
+    group: 'block',
+    content: 'definition_item+',
+    attrs: { ...sid },
+    parseDOM: [{ tag: 'dl', getAttrs: (dom) => fromData(dom as HTMLElement) }],
+    toDOM: (node) => ['dl', dataAttrs(node), 0],
+  },
+  definition_item: {
+    content: 'definition_term+ definition_desc*',
+    defining: true,
+    attrs: { ...sid, marker: { default: null as string | null } },
+    parseDOM: [{ tag: 'div[data-pm="definition_item"]', getAttrs: (dom) => fromData(dom as HTMLElement) }],
+    toDOM: (node) => ['div', dataAttrs(node, { class: 'dl-item' }), 0],
+  },
+  definition_term: {
+    content: 'inline*',
+    defining: true,
+    parseDOM: [{ tag: 'dt' }],
+    toDOM: () => ['dt', 0],
+  },
+  definition_desc: {
+    content: 'block+',
+    defining: true,
+    attrs: { ...sid },
+    parseDOM: [{ tag: 'dd', getAttrs: (dom) => fromData(dom as HTMLElement) }],
+    toDOM: (node) => ['dd', dataAttrs(node), 0],
+  },
+
   // Plain fenced/indented code and code-like directives (code-block, eval-rst, ...).
   // `directive` is false for plain fences; otherwise directiveAttrs apply.
   code_block: {

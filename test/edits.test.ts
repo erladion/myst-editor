@@ -176,3 +176,37 @@ describe('minimal diffs for edits', () => {
     expect(r.reparsed.toString()).toContain('md_directive');
   });
 });
+
+describe('Enter in a definition list', async () => {
+  const { definitionEnter } = await import('../src/renderer/src/editor/commands.js');
+  const { TextSelection } = await import('prosemirror-state');
+  const run = (state: EditorState) => {
+    let next = state;
+    definitionEnter(state, (tr) => (next = state.apply(tr)));
+    return next;
+  };
+  const at = (state: EditorState, type: string, end = true) => {
+    let pos = -1;
+    state.doc.descendants((n, p) => {
+      if (pos < 0 && n.type.name === type) pos = end ? p + n.nodeSize - 1 : p + 1;
+    });
+    return state.apply(state.tr.setSelection(TextSelection.create(state.doc, pos)));
+  };
+
+  it('goes from a term to its description, then to a new term', () => {
+    const { doc } = parseMyst('API\n: How programs talk.\n');
+    // At the end of the term: into the description.
+    let state = run(at(EditorState.create({ doc, schema }), 'definition_term'));
+    expect(state.selection.$from.parent.textContent).toBe('How programs talk.');
+    // A term without one gets one.
+    const bare = schema.nodes.doc.create(null, schema.nodes.definition_list.create(null, schema.nodes.definition_item.create(null, schema.nodes.definition_term.create(null, schema.text('SDK')))));
+    state = run(at(EditorState.create({ doc: bare, schema }), 'definition_term'));
+    expect(state.doc.firstChild!.firstChild!.childCount).toBe(2);
+    expect(state.selection.$from.parent.type.name).toBe('paragraph');
+    // Enter in the empty description: a new term instead.
+    state = run(state);
+    expect(state.doc.firstChild!.childCount).toBe(2);
+    expect(state.doc.firstChild!.firstChild!.childCount).toBe(1);
+    expect(state.selection.$from.parent.type.name).toBe('definition_term');
+  });
+});

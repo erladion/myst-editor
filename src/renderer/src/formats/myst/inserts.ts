@@ -80,6 +80,12 @@ export async function insertFigure(ctx: EditorContext, run: (cmd: Command) => vo
   run(insertBlock(nodes.md_directive.create({ name: 'figure', args: values.src, options, fence: newDirectiveFence(ctx.config) }, caption), 2));
 }
 
+// A term and its description, the cursor in the term.
+export function insertDefinitionList(): Command {
+  const item = nodes.definition_item.create(null, [nodes.definition_term.create(null, schema.text('Term')), nodes.definition_desc.create(null, nodes.paragraph.create(null, schema.text('What it means.')))]);
+  return insertBlock(nodes.definition_list.create(null, item), 3);
+}
+
 const VERSION_NOTES = [
   ['version-added', 'versionadded', 'New in version'],
   ['version-changed', 'versionchanged', 'Changed in version'],
@@ -141,6 +147,7 @@ export function mystInserts(ctx: EditorContext): InsertItem[] {
       label: 'Code from a file…',
       ask: asking('Code from a file', 'File', (v) => insertCard(ctx, 'literalinclude', v), { placeholder: '../examples/hello.py', help: FILE_HELP }),
     },
+    ...(mystConfig(ctx.config).extensions.includes('deflist') ? [{ id: 'definition-list', group: 'Structure', label: 'Definition list', palette: 'Definition list', command: insertDefinitionList() } satisfies InsertItem] : []),
     { id: 'list-table', group: 'Structure', label: 'List table', command: insertCard(ctx, 'list-table', 'Caption', [['header-rows', '1']], LIST_TABLE) },
     { id: 'csv-table', group: 'Structure', label: 'CSV table', command: insertCard(ctx, 'csv-table', 'Caption', [['header-rows', '1']], 'Name, Value\nfirst, 1') },
     { id: 'raw-html', group: 'Structure', label: 'Raw HTML', command: insertCodeDirective(ctx, 'raw', 'html') },

@@ -211,3 +211,39 @@ export async function editLink(ctx: EditorContext, state: EditorState, run: (cmd
     return true;
   });
 }
+
+// Enter in a definition list: from a term to its description (made if it has none);
+// in an empty paragraph ending an item's last description, to a new term after it.
+export const definitionEnter: Command = (state, dispatch) => {
+  const { $from, empty } = state.selection;
+  if (!empty) return false;
+  const parent = $from.parent;
+  if (parent.type === nodes.definition_term) {
+    if ($from.parentOffset < parent.content.size) return false; // splits the term as text does
+    const item = $from.node(-1);
+    const after = $from.after();
+    const next = item.childAfter(after - $from.start(-1)).node;
+    if (next?.type === nodes.definition_desc) {
+      dispatch?.(state.tr.setSelection(TextSelection.near(state.doc.resolve(after + 1))).scrollIntoView());
+      return true;
+    }
+    const desc = nodes.definition_desc.create(null, nodes.paragraph.create());
+    const tr = state.tr.insert(after, desc);
+    dispatch?.(tr.setSelection(TextSelection.create(tr.doc, after + 2)).scrollIntoView());
+    return true;
+  }
+  // An empty last paragraph of the last description: a new term instead.
+  if (parent.type !== nodes.paragraph || parent.content.size || $from.depth < 3) return false;
+  const desc = $from.node(-1);
+  const item = $from.node(-2);
+  if (desc.type !== nodes.definition_desc || item.type !== nodes.definition_item) return false;
+  if ($from.index(-1) !== desc.childCount - 1 || $from.index(-2) !== item.childCount - 1) return false;
+  const itemEnd = $from.after(-2);
+  let tr = state.tr;
+  // The empty paragraph goes (its description too, if that's all it had).
+  tr = desc.childCount === 1 ? tr.delete($from.before(-1), $from.after(-1)) : tr.delete($from.before(), $from.after());
+  const at = tr.mapping.map(itemEnd);
+  tr = tr.insert(at, nodes.definition_item.create(null, nodes.definition_term.create()));
+  dispatch?.(tr.setSelection(TextSelection.create(tr.doc, at + 2)).scrollIntoView());
+  return true;
+};

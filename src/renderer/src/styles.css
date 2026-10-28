@@ -859,6 +859,22 @@ button.toc-toggle:hover {
   color: var(--fg-muted);
 }
 
+.prose dl {
+  margin: 0.6em 0;
+}
+
+.prose dt {
+  font-weight: 600;
+}
+
+.prose dd {
+  margin: 0 0 0.5em 1.6em;
+}
+
+.prose dd > :first-child {
+  margin-top: 0;
+}
+
 .prose ul,
 .prose ol {
   padding-left: 1.6em;

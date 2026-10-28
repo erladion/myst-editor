@@ -72,3 +72,37 @@ describe('line breaks in an edited paragraph', () => {
     expect(saveDocument(next, map)).toEqual({ text: 'First  \nline.\n\na  \nb\n', verified: true });
   });
 });
+
+describe('definition lists', () => {
+  const text = 'Term one\n: The *first* term.\n\nTerm two\n: Second.\n: Another meaning.\n';
+
+  it('are read as terms and descriptions, and written back as they were', () => {
+    const { doc, map } = loadDocument(text);
+    const list = doc.firstChild!;
+    expect(list.type.name).toBe('definition_list');
+    expect(list.childCount).toBe(2);
+    expect(list.child(1).childCount).toBe(3); // a term, two descriptions
+    expect(saveDocument(doc, map)).toEqual({ text, verified: true });
+  });
+
+  it('edited, are written as definition lists', () => {
+    const { doc, map } = loadDocument(text);
+    let at = 0;
+    doc.descendants((n, pos) => {
+      if (!at && n.type.name === 'definition_term') at = pos + n.nodeSize - 1;
+    });
+    const next = doc.replace(at, at, new Slice(Fragment.from(schema.text(' (edited)')), 0, 0));
+    expect(saveDocument(next, map)).toEqual({ text: 'Term one (edited)\n: The *first* term.\n\nTerm two\n: Second.\n: Another meaning.\n', verified: true });
+  });
+
+  it('made in the editor (pasted, say), are written so', () => {
+    const { map } = loadDocument('');
+    const item = nodes.definition_item.create(null, [nodes.definition_term.create(null, schema.text('API')), nodes.definition_desc.create(null, nodes.paragraph.create(null, schema.text('How programs talk.')))]);
+    expect(saveDocument(nodes.doc.create(null, nodes.definition_list.create(null, item)), map)).toEqual({ text: 'API\n: How programs talk.', verified: true });
+  });
+
+  it('with descriptions of several blocks: kept as written', () => {
+    const loose = 'Term\n: First paragraph.\n\n  Second paragraph.\n';
+    expect(loadDocument(loose).doc.firstChild!.type.name).toBe('raw_block');
+  });
+});

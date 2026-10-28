@@ -273,6 +273,8 @@ class Context {
         return this.table(md, src);
       case 'footnoteDefinition':
         return this.raw('footnote', src);
+      case 'definitionList':
+        return this.definitionList(md, src);
       case 'blockBreak':
         return this.raw('block-break', src);
       default:
@@ -455,6 +457,31 @@ class Context {
     const pretty = lines.length > 1 && lines.every((l) => l.trimEnd().length === lines[0].trimEnd().length);
     const ruleSpaces = /\|\s+:?-/.test(lines[1] ?? '');
     return { rows: pmRows, attrs: { pretty, ruleSpaces } };
+  }
+
+  // Term, then ": description" lines. Each description one paragraph (a loose one,
+  // of several blocks, stays as written).
+  private definitionList(md: MdNode, src: string): PMNode {
+    const items: PMNode[] = [];
+    let terms: PMNode[] = [];
+    let descs: PMNode[] = [];
+    const flush = () => {
+      if (terms.length) items.push(schema.node('definition_item', null, [...terms, ...descs]));
+      terms = [];
+      descs = [];
+    };
+    for (const child of md.children ?? []) {
+      if (child.type === 'definitionTerm') {
+        if (descs.length) flush();
+        terms.push(schema.node('definition_term', null, inline(child.children)));
+      } else if (child.type === 'definitionDescription') {
+        if (!terms.length || (child.children ?? []).some((c: MdNode) => ['paragraph', 'list', 'code', 'blockquote', 'mystDirective', 'heading', 'table'].includes(c.type))) throw new Unsupported();
+        descs.push(schema.node('definition_desc', null, [schema.node('paragraph', null, inline(child.children))]));
+      } else throw new Unsupported();
+    }
+    flush();
+    if (!items.length) throw new Unsupported();
+    return this.withSid('definition_list', {}, items, src);
   }
 
   private list(md: MdNode, src: string): PMNode {

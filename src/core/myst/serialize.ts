@@ -132,6 +132,9 @@ class Writer {
       case 'table':
         return this.table(node);
 
+      case 'definition_list':
+        return this.definitionList(node);
+
       default:
         throw new Error(`Cannot serialize block node ${node.type.name}`);
     }
@@ -206,6 +209,23 @@ class Writer {
     });
     for (let g = open.length - 1; g >= 0; g--) out.push(open[g].end);
     return out.join('\n');
+  }
+
+  // Term lines, then ": description" lines, a blank line between items.
+  private definitionList(node: PMNode): string {
+    const items: string[] = [];
+    node.forEach((item) => {
+      const lines: string[] = [];
+      item.forEach((part) => {
+        if (part.type.name === 'definition_term') lines.push(inlineMarkdown(part, this.map.style).replace(/\n/g, ' '));
+        else {
+          const text = part.childCount === 1 && part.firstChild!.type.name === 'paragraph' ? inlineMarkdown(part.firstChild!, this.map.style) : this.container(part, undefined);
+          lines.push(text.split('\n').map((l, k) => (k ? `  ${l}` : `: ${l}`)).join('\n'));
+        }
+      });
+      items.push(lines.join('\n'));
+    });
+    return items.join('\n\n');
   }
 
   // `swap`: with the other marker than the list's own (see container).
