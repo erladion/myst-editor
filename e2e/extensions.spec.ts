@@ -162,10 +162,10 @@ test('new capabilities go into the capabilities file, from the condition dialog'
   await dialog.getByLabel('New capability').fill('CapabilityW');
   if (process.env.ROW_SHOTS) await dialog.screenshot({ path: join(process.env.ROW_SHOTS, '6-new-capability.png') });
   await dialog.getByRole('button', { name: 'Add to capabilities.json' }).click();
-  // In the file, in its shape (one line, under product.capabilities), and ticked.
+  // In the file, in its shape (one line, under product.capabilities, spaced as it was), and ticked.
   await expect(dialog.getByRole('checkbox', { name: 'CapabilityW' })).toBeChecked();
   if (process.env.ROW_SHOTS) await dialog.screenshot({ path: join(process.env.ROW_SHOTS, '7-added.png') });
-  expect(caps()).toBe('{"product":{"capabilities":["CapabilityX","CapabilityY","CapabilityZ","CapabilityW"]}}\n');
+  expect(caps()).toBe('{"product": {"capabilities": ["CapabilityX", "CapabilityY", "CapabilityZ", "CapabilityW"]}}\n');
   await dialog.getByRole('button', { name: 'Make conditional' }).click();
   await saved();
   expect(changes().added).toEqual(['<!-- if: CapabilityW -->', '<!-- endif -->']);
