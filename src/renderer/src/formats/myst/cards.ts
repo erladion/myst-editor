@@ -4,6 +4,7 @@ import { safeHtml } from '../../editor/html';
 import type { Cards } from '../editing';
 import { fieldsForm, fieldsPreview } from './fields';
 import { frontMatterForm, frontMatterPreview } from './frontmatter';
+import { toctreeForm } from './toctree';
 
 const LABELS: Record<string, string> = {
   frontmatter: 'Page settings',
@@ -35,4 +36,5 @@ export const mystCards: Cards = {
   comment: (source) => source.replace(/^%\s?/gm, ''),
   preview: (kind, source, assetUrl) => (kind === 'frontmatter' ? frontMatterPreview(source) : kind === 'fieldlist' ? fieldsPreview(source) : kind === 'table' || kind === 'definitionList' || kind === 'footnote' ? markdownPreview(source, assetUrl) : null),
   form: (kind, source) => (kind === 'fieldlist' ? fieldsForm(source) : kind === 'frontmatter' ? frontMatterForm(source) : null),
+  directiveForm: (name, source) => (name === 'toctree' ? toctreeForm(source) : null),
 };
