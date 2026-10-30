@@ -175,19 +175,38 @@ function FieldsForm({ request, cancel }: { request: Extract<Request, { kind: 'fi
           ) : (
             <>
               <div className={f.browse ? 'row' : undefined}>
-                <input
-                  id={`field-${f.key}`}
-                  value={values[f.key]}
-                  placeholder={f.placeholder}
-                  autoFocus={i === 0}
-                  aria-describedby={f.help ? `help-${f.key}` : undefined}
-                  list={f.suggestions ? `suggest-${f.key}` : undefined}
-                  onChange={(e) => set(f.key, e.target.value)}
-                />
+                {f.lines ? (
+                  <textarea
+                    id={`field-${f.key}`}
+                    className="source-input"
+                    rows={f.lines}
+                    value={values[f.key]}
+                    placeholder={f.placeholder}
+                    autoFocus={i === 0}
+                    aria-describedby={f.help ? `help-${f.key}` : undefined}
+                    onChange={(e) => set(f.key, e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                        e.preventDefault();
+                        e.currentTarget.form?.requestSubmit();
+                      }
+                    }}
+                  />
+                ) : (
+                  <input
+                    id={`field-${f.key}`}
+                    value={values[f.key]}
+                    placeholder={f.placeholder}
+                    autoFocus={i === 0}
+                    aria-describedby={f.help ? `help-${f.key}` : undefined}
+                    list={f.suggestions ? `suggest-${f.key}` : undefined}
+                    onChange={(e) => set(f.key, e.target.value)}
+                  />
+                )}
                 {f.browse && (
                   <button type="button" onClick={async () => {
                     const picked = await f.browse!();
-                    if (picked !== null) set(f.key, picked);
+                    if (picked !== null) set(f.key, f.lines ? `${values[f.key].replace(/\n*$/, '')}${values[f.key].trim() ? '\n' : ''}${picked}` : picked);
                   }}>
                     Choose…
                   </button>

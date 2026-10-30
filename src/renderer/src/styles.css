@@ -3789,6 +3789,7 @@ kbd {
 
 .prose table.field-list th,
 .prose table.field-list td {
+  white-space: pre-line;
   border: none;
   padding: 1px 1em 1px 0;
 }

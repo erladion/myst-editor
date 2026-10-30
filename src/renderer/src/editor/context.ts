@@ -17,6 +17,8 @@ export interface Field {
   suggestions?: Suggestion[] | ((values: Record<string, string>) => Suggestion[]);
   // A "Choose…" button next to the field, filling it in (null: cancelled).
   browse?: () => Promise<string | null>;
+  // A value of several lines, in a box this many lines high ("Choose…" adds a line).
+  lines?: number;
 }
 
 export interface EditorUi {

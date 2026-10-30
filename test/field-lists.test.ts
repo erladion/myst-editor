@@ -21,7 +21,16 @@ describe('a field list', () => {
     expect(form.fields.map((f) => [f.label, f.value])).toEqual([['author', 'Me'], ['date', '2026'], ['Another field', '']]);
     expect(form.source({ f0: 'You', f1: '2026', new: 'status: draft' })).toBe(':author: You\n:date:   2026\n:status: draft');
     expect(form.source({ f0: '', f1: '2026', new: '' })).toBe(':date:   2026');
-    // A value over lines: edited as written.
-    expect(fieldsForm(':abstract: One\n  two')).toBeNull();
+  });
+
+  it('edits a value over lines in a box of lines, keeping their indentation among them', () => {
+    const form = fieldsForm(':abstract: One\n   two\n     - three\n:date: 2026')!;
+    expect(form.fields[0]).toMatchObject({ label: 'abstract', value: 'One\ntwo\n  - three' });
+    expect(form.fields[0].lines).toBeGreaterThan(1);
+    // Untouched: as written.
+    expect(form.source({ f0: 'One\ntwo\n  - three\n', f1: '2026', new: '' })).toBe(':abstract: One\n   two\n     - three\n:date: 2026');
+    expect(form.source({ f0: 'One\nTwo\n  - three', f1: '2026', new: '' })).toBe(':abstract: One\n   Two\n     - three\n:date: 2026');
+    // A value of one line made two: indented under it.
+    expect(form.source({ f0: 'One\ntwo\n  - three', f1: '2026\nor later', new: '' })).toBe(':abstract: One\n   two\n     - three\n:date: 2026\n  or later');
   });
 });

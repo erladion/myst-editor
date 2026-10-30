@@ -49,6 +49,13 @@ export interface SourceSyntax {
   image(path: string): string; // a picture added there
 }
 
+// A form a card is edited with, in place of its source: its fields, and the source they make.
+export interface CardForm {
+  title: string;
+  fields: Field[];
+  source(values: Record<string, string>): string;
+}
+
 // Blocks kept as written, shown as cards.
 export interface Cards {
   label(kind: string): string; // a kind of block kept as written, for the writer
@@ -56,9 +63,10 @@ export interface Cards {
   comment(source: string): string; // a comment's text, without its markers
   // How a block of this kind looks, if the format can show it (now, or once it's made).
   preview(kind: string, source: string, assetUrl: (src: string) => string): DocumentFragment | Promise<DocumentFragment> | null;
-  // A form to edit a block of this kind with, in place of its source: its fields,
-  // and the source they make.
-  form?(kind: string, source: string): { title: string; fields: Field[]; source(values: Record<string, string>): string } | null;
+  // A form to edit a block of this kind with, in place of its source.
+  form?(kind: string, source: string): CardForm | null;
+  // One for a directive (a block the format has a name for) shown as a card.
+  directiveForm?(name: string, source: string): CardForm | null;
 }
 
 // Inline roles that refer to something else.

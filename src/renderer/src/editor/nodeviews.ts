@@ -284,7 +284,16 @@ abstract class CardView implements NodeView {
   protected abstract render(): void;
   protected abstract editTitle(): string;
 
-  protected async edit() {
+  protected edit(): void | Promise<void> {
+    return this.editSource();
+  }
+
+  // Whether `edit` opens a form: the card offers its source as well.
+  protected hasForm() {
+    return false;
+  }
+
+  protected async editSource() {
     const source = await this.ctx.ui.editSource({
       title: this.editTitle(),
       source: this.node.attrs.source,
@@ -296,7 +305,14 @@ abstract class CardView implements NodeView {
   // `preview`: whether the build's rendering may stand in for `body`.
   protected card(cls: string, title: Node[], body: Node[], preview = true) {
     setOwnClass(this.dom, `card ${cls}`);
-    const header = el('div', { class: 'card-header' }, ...title, el('span', { class: 'spacer' }), button('Edit…', 'Edit the source of this block', () => this.edit()));
+    const header = el(
+      'div',
+      { class: 'card-header' },
+      ...title,
+      el('span', { class: 'spacer' }),
+      ...(this.hasForm() ? [button('Source…', 'Edit the source of this block', () => void this.editSource())] : []),
+      button('Edit…', this.hasForm() ? 'Edit this block' : 'Edit the source of this block', () => void this.edit()),
+    );
     if (this.previewId) previewListeners.delete(this.previewId);
     this.previewId = null;
     this.shown = this.pending = null;
@@ -381,6 +397,22 @@ class OpaqueDirectiveView extends CardView {
 
   protected editTitle() {
     return editingFor(this.ctx.config).cards.editTitle(this.node.attrs.name);
+  }
+
+  private form() {
+    return editingFor(this.ctx.config).cards.directiveForm?.(this.node.attrs.name, this.node.attrs.source) ?? null;
+  }
+
+  protected hasForm() {
+    return !!this.form();
+  }
+
+  // The format's form for it, if it has one.
+  protected async edit() {
+    const form = this.form();
+    if (!form) return this.editSource();
+    const values = await this.ctx.ui.editFields({ title: form.title, fields: form.fields, submit: 'Save' });
+    if (values) replaceWithSource(this.view, this.getPos, this.node, form.source(values), this.ctx);
   }
 
   update(node: PMNode, decorations: readonly Decoration[]) {
@@ -488,6 +520,10 @@ class RawBlockView extends CardView {
     return `Edit ${editingFor(this.ctx.config).cards.label(this.node.attrs.kind).toLowerCase()}`;
   }
 
+  protected hasForm() {
+    return !/^condition-/.test(this.node.attrs.kind) && !!editingFor(this.ctx.config).cards.form?.(this.node.attrs.kind, this.node.attrs.source);
+  }
+
   protected async edit() {
     const settings = this.ctx.config.editor.conditions;
     // A form the format has for blocks of this kind.
@@ -497,7 +533,7 @@ class RawBlockView extends CardView {
       if (values) replaceWithSource(this.view, this.getPos, this.node, form.source(values), this.ctx);
       return;
     }
-    if (!settings || !/^condition-/.test(this.node.attrs.kind)) return super.edit();
+    if (!settings || !/^condition-/.test(this.node.attrs.kind)) return this.editSource();
     const marker = markersOf(settings).block.read(this.node.attrs.source);
     if (marker?.kind !== 'start') return;
     const result = await this.ctx.ui.editCondition({ expr: marker.expr, settings, allowRemove: true });
