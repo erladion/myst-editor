@@ -40,6 +40,7 @@ export class SourceMap {
   merge(other: SourceMap) {
     for (const [sid, entry] of other.entries) this.entries.set(sid, entry);
     for (const [cell, text] of other.cells) this.cells.set(cell, text);
+    for (const [row, line] of other.rows) this.rows.set(row, line);
   }
 
   // Table cells' original text (between the pipes, spans and escapes included), so an
@@ -53,6 +54,17 @@ export class SourceMap {
 
   cellSource(cell: PMNode): string | undefined {
     return this.cells.get(cell);
+  }
+
+  // And rows' lines, for the rows nobody touched (and the style of those edited).
+  private rows = new Map<PMNode, string>();
+
+  recordRow(row: PMNode, line: string) {
+    this.rows.set(row, line);
+  }
+
+  rowSource(row: PMNode): string | undefined {
+    return this.rows.get(row);
   }
 
   record(sid: string, node: PMNode, text: string, container: ContainerEntry | undefined, line: number) {

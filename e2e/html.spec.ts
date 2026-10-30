@@ -65,3 +65,24 @@ test('shows line breaks, formatting and lists, in text and tables', async () => 
   await expect(page.locator('.save-status')).toHaveText('All changes saved', { timeout: 10_000 });
   expect(readFileSync(join(ctx.project, 'docs', 'html.md'), 'utf8')).toBe(PAGE.replace('H<sub>2</sub>O.', 'H<sub>2</sub>O. Done.'));
 });
+
+test('a list in a table cell: new items on Enter, made from its lines by the list button', async () => {
+  const { page } = ctx;
+  const file = () => readFileSync(join(ctx.project, 'docs', 'html.md'), 'utf8');
+  const saved = () => expect(page.locator('.save-status')).toHaveText('All changes saved', { timeout: 10_000 });
+  const cells = page.locator('.prose td');
+  // Enter at the end of an item: a new one, typed in.
+  await cells.nth(5).getByText('beta').click();
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('gamma');
+  await expect(cells.nth(5).locator('.html-li-marker')).toHaveText(['1.', '2.', '3.']);
+  await saved();
+  expect(file()).toContain('| C | <ol><li>alpha</li><li>beta</li><li>gamma</li></ol> |');
+  // A cell of lines made a list, by the bulleted list button.
+  await cells.nth(1).getByText('one').click();
+  await page.getByRole('button', { name: /^Bulleted list/ }).click();
+  await expect(cells.nth(1).locator('.html-li-marker')).toHaveText(['•', '•']);
+  await saved();
+  expect(file()).toContain('| A | <ul><li>one</li><li>two</li></ul> |');
+});

@@ -418,7 +418,13 @@ class Context {
       }
     }
     // Copied once every group's end marker is known.
-    const withConds = rows.map((row, r) => (conds[r]?.length ? row.type.create({ conds: conds[r].map((c) => ({ ...c })) }, row.content) : row));
+    const withConds = rows.map((row, r) => {
+      if (!conds[r]?.length) return row;
+      const copy = row.type.create({ conds: conds[r].map((c) => ({ ...c })) }, row.content);
+      const line = this.map.rowSource(row);
+      if (line !== undefined) this.map.recordRow(copy, line);
+      return copy;
+    });
     return this.withSid('table', attrs, withConds, src);
   }
 
@@ -478,6 +484,10 @@ class Context {
       return schema.node('table_row', null, cells);
     });
     const lines = src.split('\n').filter((l) => l.trim());
+    pmRows.forEach((row, r) => {
+      const line = lines[r === 0 ? 0 : r + 1];
+      if (line !== undefined) this.map.recordRow(row, line);
+    });
     // GFM drops cells beyond the header's width before we see them: count in the source.
     const cellCount = (line: string) => line.trim().replace(/^\|/, '').replace(/\|$/, '').split(/(?<!\\)\|/).length;
     if (lines.some((l) => cellCount(l) > cellCount(lines[0]))) throw new Unsupported();

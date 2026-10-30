@@ -2,7 +2,8 @@
 // with a little HTML, such as `<br>` or a `<ul>` list inside a table cell. The source
 // is never changed; this only decides how it's displayed.
 import type { Node as PMNode } from 'prosemirror-model';
-import { Plugin, type Transaction } from 'prosemirror-state';
+import { Plugin, TextSelection, type Command, type EditorState, type Transaction } from 'prosemirror-state';
+import { schema } from '../../../core/schema';
 import { Decoration, DecorationSet } from 'prosemirror-view';
 
 // Elements shown as themselves. Anything else is unwrapped (its text kept), and
@@ -207,4 +208,103 @@ export function lineTagOf(decorations: readonly Decoration[]): LineTag | null {
     if (spec.htmlLine) return spec.htmlLine;
   }
   return null;
+}
+
+// ---- editing HTML lists written in a paragraph or a table cell (<ul><li>…</li></ul>) ----
+
+const tag = (value: string) => schema.nodes.html_inline.create({ value });
+const tagOf = (n: PMNode | null | undefined) => (n?.type.name === 'html_inline' ? inlineTag(n.attrs.value) : null);
+
+// Whether the cursor is inside an HTML list's item (in its paragraph).
+function inHtmlItem(state: EditorState): boolean {
+  const { $from, empty } = state.selection;
+  if (!empty || !$from.parent.isTextblock) return false;
+  let open = 0;
+  $from.parent.forEach((child, offset) => {
+    if (offset + child.nodeSize > $from.parentOffset) return;
+    const t = tagOf(child);
+    if (t?.name === 'li') open += t.kind === 'open' ? 1 : t.kind === 'close' ? -1 : 0;
+  });
+  return open > 0;
+}
+
+// Enter in an item: a new item after it, the text after the cursor in it. (In an
+// empty item: nothing, so Enter does what it would.)
+export const splitHtmlItem: Command = (state, dispatch) => {
+  const { $from, empty } = state.selection;
+  if (!empty || !$from.parent.isTextblock) return false;
+  let at = $from.pos;
+  if (!inHtmlItem(state)) {
+    // Just after an item's end (</li></ul> show as nothing): at its end.
+    let index = $from.index();
+    let pos = $from.pos;
+    let end: number | null = null;
+    while (index > 0) {
+      const t = tagOf($from.parent.child(index - 1));
+      if (t?.kind !== 'close' || !['li', 'ul', 'ol'].includes(t.name)) break;
+      pos -= $from.parent.child(index - 1).nodeSize;
+      index--;
+      if (t.name === 'li') end = pos;
+    }
+    if (end === null) return false;
+    at = end;
+  } else if (tagOf($from.nodeBefore)?.name === 'li' && tagOf($from.nodeAfter)?.kind === 'close') return false;
+  if (dispatch) {
+    const tr = state.tr.insert(at, [tag('</li>'), tag('<li>')]);
+    dispatch(tr.setSelection(TextSelection.create(tr.doc, at + 2)).scrollIntoView());
+  }
+  return true;
+};
+
+// Backspace at the start of an item (not the first): it joins the one before.
+export const joinHtmlItems: Command = (state, dispatch) => {
+  const { $from, empty } = state.selection;
+  if (!empty) return false;
+  const before = $from.nodeBefore;
+  const index = $from.index();
+  const prev = index >= 2 ? $from.parent.child(index - 2) : null;
+  if (tagOf(before)?.name !== 'li' || tagOf(before)?.kind !== 'open' || tagOf(prev)?.name !== 'li' || tagOf(prev)?.kind !== 'close') return false;
+  dispatch?.(state.tr.delete($from.pos - 2, $from.pos).scrollIntoView());
+  return true;
+};
+
+// A list in a table cell that can't hold one (a Markdown table's): its text made an
+// HTML list (<ul><li>…</li></ul>), each line an item; or, in one, back to its text.
+export function toggleHtmlList(ordered: boolean): Command {
+  return (state, dispatch) => {
+    const { $from } = state.selection;
+    const cellDepth = [...Array($from.depth + 1).keys()].reverse().find((d) => /^table_(cell|header)$/.test($from.node(d).type.name));
+    if (cellDepth === undefined || !$from.parent.isTextblock) return false;
+    const para = $from.parent;
+    const start = $from.start();
+    const list = ordered ? 'ol' : 'ul';
+    let has = false;
+    para.forEach((c) => (has ||= ['ul', 'ol'].includes(tagOf(c)?.name ?? '')));
+    if (!dispatch) return true;
+    let tr = state.tr;
+    if (has) {
+      // Back to its text: items become lines (<br>).
+      const steps: { from: number; to: number; with: PMNode[] }[] = [];
+      let first = true;
+      para.forEach((c, offset) => {
+        const t = tagOf(c);
+        if (!t || !['ul', 'ol', 'li'].includes(t.name)) return;
+        const at = start + offset;
+        const opensItem = t.name === 'li' && t.kind === 'open';
+        steps.push({ from: at, to: at + c.nodeSize, with: opensItem && !first ? [tag('<br>')] : [] });
+        if (opensItem) first = false;
+      });
+      for (const s of steps.reverse()) tr = tr.replaceWith(s.from, s.to, s.with);
+    } else {
+      // Each line (<br>) an item.
+      const end = start + para.content.size;
+      tr = tr.insert(end, [tag('</li>'), tag(`</${list}>`)]);
+      para.forEach((c, offset) => {
+        if (tagOf(c)?.name === 'br') tr = tr.replaceWith(tr.mapping.map(start + offset), tr.mapping.map(start + offset + c.nodeSize), [tag('</li>'), tag('<li>')]);
+      });
+      tr = tr.insert(start, [tag(`<${list}>`), tag('<li>')]);
+    }
+    dispatch(tr.scrollIntoView());
+    return true;
+  };
 }

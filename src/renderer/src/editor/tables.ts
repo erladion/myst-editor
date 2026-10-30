@@ -2,7 +2,7 @@
 // store (Markdown's: a line each, aligned as their column), and the commands behind
 // the table toolbar.
 import type { Node as PMNode } from 'prosemirror-model';
-import { Plugin, TextSelection, type Command, type EditorState, type Transaction } from 'prosemirror-state';
+import { Plugin, PluginKey, TextSelection, type Command, type EditorState, type Transaction } from 'prosemirror-state';
 import { keymap } from 'prosemirror-keymap';
 import {
   TableMap,
@@ -20,7 +20,9 @@ import {
   splitCell,
   tableEditing,
 } from 'prosemirror-tables';
+import { chainCommands } from 'prosemirror-commands';
 import { schema } from '../../../core/schema';
+import { joinHtmlItems, splitHtmlItem } from './html';
 
 const { nodes } = schema;
 
@@ -54,7 +56,9 @@ const noBreakInCell: Command = (state) => isInTable(state) && !inCellBlocks(stat
 export const tableKeys = keymap({
   Tab: goToNextCell(1),
   'Shift-Tab': goToNextCell(-1),
-  Enter: nextRow,
+  // In an HTML list in a cell: a new item; else the next row.
+  Enter: chainCommands(splitHtmlItem, nextRow),
+  Backspace: joinHtmlItems,
   'Shift-Enter': noBreakInCell,
 });
 
@@ -128,7 +132,11 @@ function normalizeTable(tr: Transaction, table: PMNode, tablePos: number): Trans
 // paragraphs, or blocks, aligned on their own.
 export type CellKind = 'line' | 'blocks';
 
-export const tablePlugins = (cells: CellKind = 'line') => [tableEditing(), tableKeys, ...(cells === 'line' ? [normalizeCells] : [])];
+// The page's kind of cells, for commands that depend on it.
+export const cellKind = new PluginKey<CellKind>('cellKind');
+const cellKindPlugin = (cells: CellKind) => new Plugin<CellKind>({ key: cellKind, state: { init: () => cells, apply: (_tr, value) => value } });
+
+export const tablePlugins = (cells: CellKind = 'line') => [cellKindPlugin(cells), tableEditing(), tableKeys, ...(cells === 'line' ? [normalizeCells] : [])];
 
 // The cell the selection is in, if it's one: its position and node.
 function cellAt(state: EditorState): { pos: number; node: PMNode } | null {

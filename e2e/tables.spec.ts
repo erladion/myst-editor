@@ -133,11 +133,9 @@ test.describe('with span roles configured', () => {
     await page.getByRole('button', { name: 'Delete ▾' }).click();
     await page.getByRole('menuitem', { name: 'Delete row' }).click();
     await saved(page);
-    // "Basic" was the widest text in its column, so the column narrows with it.
-    expect(changes(original)).toEqual({
-      removed: ['| Plan  | Price |', '|-------|-------|', '| Basic | Free  |'],
-      added: ['| Plan | Price |', '|------|-------|'],
-    });
+    // Only that row goes: the others stay as written (still lined up, as wide as
+    // they were).
+    expect(changes(original)).toEqual({ removed: ['| Basic | Free  |'], added: [] });
   });
 
   test('inserts a new table of the size chosen on the grid', async () => {

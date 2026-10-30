@@ -8,7 +8,7 @@ import { MarkdownSerializerState, defaultMarkdownSerializer } from 'prosemirror-
 import { schema, type RowCondition } from '../schema.js';
 import { SourceMap, type ContainerEntry, type InlineStyle } from '../sourcemap.js';
 import { headerKey, renderHeader, fenceFor } from '../directive.js';
-import { hardBreakStyle } from './parse.js';
+import { hardBreakStyle, parseMyst } from './parse.js';
 
 export interface SerializeOptions {
   // Ignore the source map and serialize everything (used to test the serializer).
@@ -82,13 +82,19 @@ class Writer {
 
     switch (node.type.name) {
       case 'paragraph': {
-        // Line breaks written like the paragraph's own were, else like the page's.
-        const own = this.fresh ? null : hardBreakStyle(this.map.get(node.attrs.sid)?.text ?? '');
-        return inlineMarkdown(node, own ? { ...this.map.style, hardBreak: own } : this.map.style);
+        // Line breaks written like the paragraph's own were, else like the page's; its
+        // lines as they were, where they say the same.
+        const was = this.fresh ? undefined : this.map.get(node.attrs.sid)?.text;
+        const own = was === undefined ? null : hardBreakStyle(was);
+        const text = inlineMarkdown(node, own ? { ...this.map.style, hardBreak: own } : this.map.style);
+        return was === undefined ? text : keepLines(text, was, this.map.style);
       }
 
       case 'heading': {
-        const text = inlineMarkdown(node, this.map.style);
+        // Its title as written while it says the same.
+        const was = this.fresh || node.attrs.setext ? undefined : /^ {0,3}#{1,6}[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*$/.exec(this.map.get(node.attrs.sid)?.text ?? '')?.[1];
+        const fresh = inlineMarkdown(node, this.map.style);
+        const text = was !== undefined && !fresh.includes('\n') && sameLine(fresh, was, definitions(this.map.style)) ? was : fresh;
         if (node.attrs.setext && node.attrs.level <= 2) {
           const last = text.split('\n').pop()!;
           return `${text}\n${(node.attrs.level === 1 ? '=' : '-').repeat(Math.max(3, last.length))}`;
@@ -138,8 +144,12 @@ class Writer {
       case 'table':
         return this.table(node);
 
-      case 'definition_list':
-        return this.definitionList(node);
+      case 'definition_list': {
+        // Its lines as they were, where they say the same.
+        const text = this.definitionList(node);
+        const was = this.fresh ? undefined : this.map.get(node.attrs.sid)?.text;
+        return was === undefined ? text : keepLines(text, was, this.map.style);
+      }
 
       default:
         throw new Error(`Cannot serialize block node ${node.type.name}`);
@@ -204,23 +214,53 @@ class Writer {
     const textWidth = content.map((w) => (pretty ? (ruleSpaces ? Math.max(3, w) : Math.max(1, w)) : 0));
     const ruleWidth = textWidth.map((w) => (pretty ? (ruleSpaces ? w : w + 2) : 3));
     const rule = aligns.map((a, c) => (a ? ALIGN_RULE[a](ruleWidth[c]) : '-'.repeat(ruleWidth[c])));
-    const line = (cells: string[]) => `| ${cells.map((t, c) => t.padEnd(textWidth[c])).join(' | ')} |`;
-    const ruleLine = ruleSpaces ? line(rule) : `|${rule.join('|')}|`;
+    const padded = (cells: string[]) => `| ${cells.map((t, c) => t.padEnd(textWidth[c])).join(' | ')} |`;
+    const freshRule = ruleSpaces ? padded(rule) : `|${rule.join('|')}|`;
     // Rows in conditions go between their markers: a group's start before its first
     // row, its end after its last (inner groups inside outer ones).
-    const out = [line(rows[0]), ruleLine];
-    let open: RowCondition[] = [];
-    rows.slice(1).forEach((cells, i) => {
-      const conds: RowCondition[] = node.child(i + 1).attrs.conds;
-      let keep = 0;
-      while (keep < open.length && keep < conds.length && open[keep].id === conds[keep].id) keep++;
-      for (let g = open.length - 1; g >= keep; g--) out.push(open[g].end);
-      for (let g = keep; g < conds.length; g++) out.push(conds[g].start);
-      open = conds;
-      out.push(line(cells));
-    });
-    for (let g = open.length - 1; g >= 0; g--) out.push(open[g].end);
-    return out.join('\n');
+    const write = (line: (cells: string[], r: number) => string, ruleLine: string) => {
+      const out = [line(rows[0], 0), ruleLine];
+      let open: RowCondition[] = [];
+      rows.slice(1).forEach((cells, i) => {
+        const conds: RowCondition[] = node.child(i + 1).attrs.conds;
+        let keep = 0;
+        while (keep < open.length && keep < conds.length && open[keep].id === conds[keep].id) keep++;
+        for (let g = open.length - 1; g >= keep; g--) out.push(open[g].end);
+        for (let g = keep; g < conds.length; g++) out.push(conds[g].start);
+        open = conds;
+        out.push(line(cells, i + 1));
+      });
+      for (let g = open.length - 1; g >= 0; g--) out.push(open[g].end);
+      return out;
+    };
+    // An edited table of the same columns: the rows nobody touched as they were, and
+    // edited ones in their style (their pipes, their padding). A padded table whose
+    // edited text no longer fits its column is padded anew, all of it.
+    const was = this.fresh ? undefined : this.map.get(node.attrs.sid);
+    if (was && was.node.type === node.type) {
+      const markers = new Set<string>();
+      node.forEach((row) => (row.attrs.conds as RowCondition[]).forEach((c) => (markers.add(c.start), markers.add(c.end))));
+      const lines = was.text.split('\n').filter((l) => l.trim() && !markers.has(l));
+      const wasAligns: (string | null)[] = [];
+      let wasCols = 0;
+      was.node.firstChild?.forEach((c) => {
+        wasCols += c.attrs.colspan;
+        wasAligns.push(c.attrs.align);
+      });
+      if (lines.length >= 2 && wasCols === ncols && wasAligns.length === ncols && JSON.stringify(wasAligns) === JSON.stringify(aligns)) {
+        let fits = true;
+        const out = write((cells, r) => {
+          const own = this.map.rowSource(node.child(r));
+          if (own !== undefined) return own;
+          const model = lines[r === 0 ? 0 : Math.min(r + 1, lines.length - 1)];
+          const styled = restyle(model, cells, pretty);
+          if (styled === null || (pretty && styled.trimEnd().length !== model.trimEnd().length)) fits = false;
+          return styled ?? padded(cells);
+        }, lines[1]);
+        if (fits) return out.join('\n');
+      }
+    }
+    return write(padded, freshRule).join('\n');
   }
 
   // Term lines, then ": description" lines, a blank line between items.
@@ -416,6 +456,148 @@ const inlineOptions = {
   // `$` starts inline math; `<` and `&` could start HTML or an entity.
   escapeExtraCharacters: /\$|<(?=[A-Za-z/!?])|&(?=#?\w+;)/g,
 };
+
+// A table row written like `model` (another row of the table, as written): its
+// indentation and outer pipes, each cell's spaces; in a padded table, padded to the
+// cell's width where it fits. Null if `model` doesn't have as many cells.
+function restyle(model: string, cells: string[], padded: boolean): string | null {
+  const m = /^(\s*)(\|?)(.*?)((?<!\\)\|?)\s*$/.exec(model);
+  if (!m) return null;
+  const [, indent, lead, body, trail] = m;
+  const segments = body.split(/(?<!\\)\|/);
+  if (segments.length !== cells.length) return null;
+  const out = cells.map((text, i) => {
+    const seg = segments[i];
+    const left = /^\s*/.exec(seg)![0] || (lead || i > 0 ? ' ' : '');
+    const last = i === cells.length - 1 && !trail;
+    const written = left + text;
+    if (last) return written;
+    // (Its space after the text: as the cell it replaces had, or one.)
+    if (padded) return written.length < seg.length ? written.padEnd(seg.length) : `${written} `;
+    return `${written}${/\s*$/.exec(seg)![0] || ' '}`;
+  });
+  return `${indent}${lead}${out.join('|')}${trail}`;
+}
+
+// The page's link definitions, for reading a line of it on its own.
+const definitions = (style: InlineStyle) => [...style.refs].map(([url, r]) => `[${r.label}]: <${url}>${r.title ? ` "${r.title.replace(/"/g, '\\"')}"` : ''}`).join('\n');
+
+const withoutSids = (json: unknown): unknown => JSON.parse(JSON.stringify(json, (k, v) => (k === 'sid' ? undefined : v)));
+
+// A line's inline content, read as a line in the middle of a paragraph (its
+// indentation and what would start a block there mean nothing); null if it can't be.
+function lineForm(line: string, defs: string): string | null {
+  try {
+    const { doc } = parseMyst(`x ${line.trimStart()}${defs ? `\n\n${defs}` : ''}`);
+    const first = doc.firstChild;
+    if (first?.type.name !== 'paragraph') return null;
+    return JSON.stringify(first.content.toJSON());
+  } catch {
+    return null;
+  }
+}
+
+const sameLine = (a: string, b: string, defs = '') => {
+  const f = lineForm(a, defs);
+  return f !== null && f === lineForm(b, defs);
+};
+
+// `line` (written anew, reading as `form`) with each piece where it differs from
+// `was` (the line it replaces) put back as `was` had it, where the line still reads
+// the same: ``code`` stays ``code``, and only what was typed changes.
+function respell(line: string, was: string, form: string, defs: string): string {
+  const hunks = charDiff(was, line);
+  const changes = hunks.filter((h) => h.kind === 'change').length;
+  if (!changes || changes > 8) return line;
+  const build = (useOld: Set<number>) => hunks.map((h, i) => (h.kind === 'same' ? h.text : useOld.has(i) ? h.old : h.new)).join('');
+  const changed = hunks.flatMap((h, i) => (h.kind === 'change' ? [i] : []));
+  // Usually one piece was typed: all the others as they were.
+  for (const typed of changed) {
+    const candidate = build(new Set(changed.filter((i) => i !== typed)));
+    if (lineForm(candidate, defs) === form) return candidate;
+  }
+  // Else piece by piece.
+  const useOld = new Set<number>();
+  hunks.forEach((h, i) => {
+    if (h.kind !== 'change') return;
+    useOld.add(i);
+    if (lineForm(build(useOld), defs) !== form) useOld.delete(i);
+  });
+  return build(useOld);
+}
+
+type Hunk = { kind: 'same'; text: string } | { kind: 'change'; old: string; new: string };
+
+// The pieces two short strings share, and those they don't (a longest common
+// subsequence, by characters).
+function charDiff(a: string, b: string): Hunk[] {
+  if (a.length * b.length > 250_000) return [{ kind: 'change', old: a, new: b }];
+  const n = a.length;
+  const m = b.length;
+  const lcs: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) lcs[i][j] = a[i] === b[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+  const out: Hunk[] = [];
+  const push = (kind: 'same' | 'old' | 'new', ch: string) => {
+    const last = out[out.length - 1];
+    if (kind === 'same') {
+      if (last?.kind === 'same') last.text += ch;
+      else out.push({ kind: 'same', text: ch });
+      return;
+    }
+    if (last?.kind !== 'change') out.push({ kind: 'change', old: '', new: '' });
+    const h = out[out.length - 1] as { kind: 'change'; old: string; new: string };
+    if (kind === 'old') h.old += ch;
+    else h.new += ch;
+  };
+  let i = 0;
+  let j = 0;
+  while (i < n || j < m) {
+    if (i < n && j < m && a[i] === b[j]) {
+      push('same', a[i]);
+      i++;
+      j++;
+    } else if (j < m && (i >= n || lcs[i][j + 1] >= lcs[i + 1][j])) push('new', b[j++]);
+    else push('old', a[i++]);
+  }
+  return out;
+}
+
+// `text` (a block written anew) with its lines as `was` had them, in order, where one
+// there says the same: an edit rewrites only the lines it's on. Kept only if the
+// block still reads as `text` does.
+function keepLines(text: string, was: string, style: InlineStyle): string {
+  const defs = definitions(style);
+  const old = was.split('\n');
+  const forms = old.map((l) => lineForm(l, defs));
+  let from = 0;
+  const kept = text
+    .split('\n')
+    .map((line) => {
+      if (old[from] === line) return old[from++];
+      const f = lineForm(line, defs);
+      const at = f === null ? -1 : forms.indexOf(f, from);
+      if (at >= 0) {
+        from = at + 1;
+        return old[at];
+      }
+      // The edited line: as the line it replaces was spelled, but for the edit.
+      if (f !== null && from < old.length && (forms.indexOf(f, from) < 0)) {
+        const revised = respell(line, old[from], f, defs);
+        if (revised !== line) {
+          from++;
+          return revised;
+        }
+      }
+      return line;
+    })
+    .join('\n');
+  if (kept === text) return text;
+  const whole = (t: string) => {
+    const { doc } = parseMyst(`${t}${defs ? `\n\n${defs}` : ''}`);
+    return JSON.stringify(withoutSids(doc.firstChild?.toJSON()));
+  };
+  return whole(kept) === whole(text) ? kept : text;
+}
 
 function inlineMarkdown(textblock: PMNode, style: InlineStyle, inCell = false): string {
   const para = schema.node('doc', null, [schema.node('paragraph', null, textblock.content)]);
