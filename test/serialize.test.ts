@@ -101,8 +101,26 @@ describe('definition lists', () => {
     expect(saveDocument(nodes.doc.create(null, nodes.definition_list.create(null, item)), map)).toEqual({ text: 'API\n: How programs talk.', verified: true });
   });
 
-  it('with descriptions of several blocks: kept as written', () => {
-    const loose = 'Term\n: First paragraph.\n\n  Second paragraph.\n';
-    expect(loadDocument(loose).doc.firstChild!.type.name).toBe('raw_block');
+  it('with descriptions of several blocks: blocks, edited like a list item’s', () => {
+    const loose = 'Term\n\n: First paragraph.\n\n  - one\n  - two\n\n  ```py\n  x = 1\n  ```\n\nOther\n  ~ Plain.\n';
+    const { doc, map } = loadDocument(loose);
+    const list = doc.firstChild!;
+    expect(list.type.name).toBe('definition_list');
+    const desc = list.child(0).child(1);
+    expect(desc.attrs).toMatchObject({ marker: null, loose: true });
+    expect([0, 1, 2].map((i) => desc.child(i).type.name)).toEqual(['paragraph', 'bullet_list', 'code_block']);
+    expect(list.child(1).child(1).attrs).toMatchObject({ marker: '  ~ ', loose: false });
+    expect(saveDocument(doc, map).text).toBe(loose);
+    // Typing in one of its blocks: that line, the rest as it was.
+    let pos = -1;
+    doc.descendants((n, p) => void (n.isText && n.text === 'two' && (pos = p)));
+    const edited = doc.replace(pos + 3, pos + 3, new Slice(Fragment.from(schema.text('!')), 0, 0));
+    expect(saveDocument(edited, map)).toEqual({ text: loose.replace('- two', '- two!'), verified: true });
+    const plain = doc.replace(doc.content.size - 5, doc.content.size - 5, new Slice(Fragment.from(schema.text('!')), 0, 0));
+    expect(saveDocument(plain, map).text).toBe(loose.replace('Plain.', 'Plain!.'));
+  });
+
+  it('with lines that aren’t its parts’ (lazy ones): kept as written', () => {
+    expect(loadDocument('Term\n: First.\n\n  - one\nlazy\n').doc.firstChild!.type.name).toBe('raw_block');
   });
 });

@@ -322,11 +322,14 @@ class Writer {
     node.forEach((item) => {
       const lines: string[] = [];
       item.forEach((part) => {
-        if (part.type.name === 'definition_term') lines.push(inlineMarkdown(part, this.map.style).replace(/\n/g, ' '));
-        else {
-          const text = part.childCount === 1 && part.firstChild!.type.name === 'paragraph' ? inlineMarkdown(part.firstChild!, this.map.style) : this.container(part, undefined);
-          lines.push(text.split('\n').map((l, k) => (k ? `  ${l}` : `: ${l}`)).join('\n'));
-        }
+        if (part.type.name === 'definition_term') return void lines.push(inlineMarkdown(part, this.map.style).replace(/\n/g, ' '));
+        if (part.attrs.loose && lines.length) lines.push('');
+        const original = this.unchanged(part);
+        if (original !== undefined) return void lines.push(original);
+        const marker: string = part.attrs.marker ?? ': ';
+        const indent = ' '.repeat(marker.length);
+        const text = part.childCount === 1 && part.firstChild!.type.name === 'paragraph' ? inlineMarkdown(part.firstChild!, this.map.style) : this.container(part, this.containerEntry(part));
+        lines.push(text.split('\n').map((l, k) => (k ? (l ? indent + l : '') : marker + l)).join('\n'));
       });
       items.push(lines.join('\n'));
     });

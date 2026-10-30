@@ -57,6 +57,25 @@ describe('a list table', () => {
   });
 
   it('with an option the editor can’t keep: as written', () => {
-    expect(loadDocument('```{list-table}\n:stub-columns: 1\n\n* - a\n  - b\n```\n', DEFAULT_CONFIG).doc.firstChild!.type.name).toBe('opaque_directive');
+    expect(loadDocument('```{list-table}\n:class-row: x\n\n* - a\n  - b\n```\n', DEFAULT_CONFIG).doc.firstChild!.type.name).toBe('opaque_directive');
+  });
+
+  it('with stub columns: a table, its first columns shown as headings', () => {
+    const page = '```{list-table}\n:stub-columns: 1\n\n* - a\n  - b\n```\n';
+    const { doc, map } = loadDocument(page, DEFAULT_CONFIG);
+    expect(doc.firstChild!.type.name).toBe('table');
+    expect(saveDocument(doc, map, DEFAULT_CONFIG).text).toBe(page);
+    const dom = (schema.nodes.table.spec.toDOM!(doc.firstChild!) as unknown as [string, Record<string, string>])[1];
+    expect(dom.class).toBe('stub-columns-1');
+  });
+
+  it('with a paragraph’s lazy line in a cell: the cell’s, written as it was', () => {
+    const page = '```{list-table}\n* - a\n  - one\n  two\n* - c\n  - d\n```\n';
+    const { doc, map } = loadDocument(page, DEFAULT_CONFIG);
+    expect(doc.firstChild!.type.name).toBe('table');
+    expect(doc.firstChild!.child(0).child(1).textContent).toMatch(/^one\s+two$/);
+    expect(saveDocument(doc, map, DEFAULT_CONFIG).text).toBe(page);
+    // In a code block a lazy line isn't one: as written.
+    expect(loadDocument('```{list-table}\n* - a\n  - ~~~\n    x\n  y\n    ~~~\n```\n', DEFAULT_CONFIG).doc.firstChild!.type.name).toBe('opaque_directive');
   });
 });

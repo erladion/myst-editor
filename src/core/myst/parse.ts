@@ -26,7 +26,7 @@ export const MARKDOWN_DIRECTIVES = new Set([
 
 // What a {list-table} may say for the editor to edit it: other options (stub columns,
 // say) keep it as written.
-const LIST_TABLE_OPTIONS = new Set(['header-rows', 'widths', 'width', 'name', 'class', 'align', 'label']);
+const LIST_TABLE_OPTIONS = new Set(['header-rows', 'stub-columns', 'widths', 'width', 'name', 'class', 'align', 'label']);
 
 // Whether a table is a {list-table} (its header is the directive's).
 export const isListTable = (node: { attrs: Record<string, unknown> }) => typeof node.attrs.header === 'string' && /^\s*(`{3,}|~{3,}|:{3,})\{list-table\}/.test(node.attrs.header);
@@ -79,6 +79,21 @@ export interface ParseOptions {
 
 // A field list: :name: value lines, values going on over indented lines.
 export const FIELD = /^:([^:\s][^:]*?):(?:[ \t]+(.*))?$/;
+
+// Whether these lines leave a code fence open.
+function openFence(lines: string[]): boolean {
+  let fence: string | null = null;
+  for (const l of lines) {
+    const m = /^ {0,3}(`{3,}|~{3,})/.exec(l);
+    if (!m) continue;
+    if (!fence) fence = m[1];
+    else if (m[1][0] === fence[0] && m[1].length >= fence.length && !l.trim().slice(m[1].length)) fence = null;
+  }
+  return fence !== null;
+}
+
+// What makes a definition list's description one of blocks, not a line of text.
+const BLOCK_CHILDREN = new Set(['paragraph', 'list', 'code', 'blockquote', 'mystDirective', 'heading', 'table', 'math', 'thematicBreak', 'html']);
 
 // A link reference definition on a line of its own: [name]: url "title".
 export const DEFINITION = /^ {0,3}\[((?:[^\]\\^]|\\.)(?:[^\]\\]|\\.)*)\]:[ \t]*(<[^>\n]*>|\S+)(?:[ \t]+("[^"]*"|'[^']*'|\([^)]*\)))?[ \t]*$/;
@@ -426,6 +441,10 @@ class Context {
       else if (line.length - line.trimStart().length >= cur.textCol) {
         cell.lines.push(line.slice(cur.textCol));
         cur.end = k;
+      } else if (!next && cell.lines[cell.lines.length - 1]?.trim() && !openFence(cell.lines)) {
+        // A paragraph's lazy line, less indented than the cell's text.
+        cell.lines.push(line.trimStart());
+        cur.end = k;
       } else throw new Unsupported();
     });
     if (!rows.length || rows.some((r) => r.cells.length !== rows[0].cells.length)) throw new Unsupported();
@@ -635,9 +654,12 @@ class Context {
     return { rows: pmRows, attrs: { pretty, ruleSpaces } };
   }
 
-  // Term, then ": description" lines. Each description one paragraph (a loose one,
-  // of several blocks, stays as written).
+  // Term, then ": description" lines. A description of one paragraph is read as one;
+  // one of several blocks (loose), as blocks, like a list item's.
   private definitionList(md: MdNode, src: string): PMNode {
+    const lines = src.split('\n');
+    const kids: MdNode[] = md.children ?? [];
+    const listLine = this.line;
     const items: PMNode[] = [];
     let terms: PMNode[] = [];
     let descs: PMNode[] = [];
@@ -646,17 +668,49 @@ class Context {
       terms = [];
       descs = [];
     };
-    for (const child of md.children ?? []) {
+    // Its parts' lines, found in order: a term's line, a description's from its marker.
+    let at = 0;
+    const next = () => {
+      while (at < lines.length && lines[at].trim() === '') at++;
+      if (at >= lines.length) throw new Unsupported();
+      return at;
+    };
+    for (const child of kids) {
       if (child.type === 'definitionTerm') {
         if (descs.length) flush();
+        if (/^[ \t]*[:~][ \t]/.test(lines[next()])) throw new Unsupported();
+        at++;
         terms.push(schema.node('definition_term', null, inline(child.children)));
-      } else if (child.type === 'definitionDescription') {
-        if (!terms.length || (child.children ?? []).some((c: MdNode) => ['paragraph', 'list', 'code', 'blockquote', 'mystDirective', 'heading', 'table'].includes(c.type))) throw new Unsupported();
-        descs.push(schema.node('definition_desc', null, [schema.node('paragraph', null, inline(child.children))]));
-      } else throw new Unsupported();
+        continue;
+      }
+      if (child.type !== 'definitionDescription' || !terms.length) throw new Unsupported();
+      const start = next();
+      const m = /^([ \t]*)([:~])([ \t]+)/.exec(lines[start]);
+      if (!m) throw new Unsupported();
+      const pad = m[3].length <= 4 ? m[3].length : 1;
+      const marker = m[1] + m[2] + ' '.repeat(pad);
+      const col = marker.length;
+      // Its lines: those indented under its marker, and blank ones among them.
+      let end = start;
+      for (let j = start + 1; j < lines.length; j++) {
+        if (lines[j].trim() === '') continue;
+        if (/^[ \t]*/.exec(lines[j])![0].length < col) break;
+        end = j;
+      }
+      at = end + 1;
+      const attrs = { marker: marker === ': ' ? null : marker, loose: start > 0 && lines[start - 1].trim() === '' };
+      if (!(child.children ?? []).some((c: MdNode) => BLOCK_CHILDREN.has(c.type))) {
+        descs.push(schema.node('definition_desc', attrs, [schema.node('paragraph', null, inline(child.children))]));
+        continue;
+      }
+      const inner = [lines[start].slice(m[0].length), ...lines.slice(start + 1, end + 1).map((l) => dedent(l, col))].join('\n');
+      this.line = listLine + start;
+      descs.push(this.containerNode('definition_desc', attrs, inner, lines.slice(start, end + 1).join('\n')));
+      this.line = listLine;
     }
     flush();
-    if (!items.length) throw new Unsupported();
+    // Lines it has that aren't its parts' (lazy lines, say): kept as written.
+    if (!items.length || lines.slice(at).some((l) => l.trim())) throw new Unsupported();
     return this.withSid('definition_list', {}, items, src);
   }
 

@@ -3815,3 +3815,11 @@ kbd {
   border: none;
   padding: 1px 1em 1px 0;
 }
+
+/* A list-table's stub columns: headings down its side. */
+.prose table.stub-columns-1 td:nth-child(-n + 1),
+.prose table.stub-columns-2 td:nth-child(-n + 2),
+.prose table.stub-columns-3 td:nth-child(-n + 3) {
+  font-weight: 600;
+  background: var(--bg-soft);
+}

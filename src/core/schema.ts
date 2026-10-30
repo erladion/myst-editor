@@ -187,10 +187,12 @@ const nodes: Record<string, NodeSpec> = {
     parseDOM: [{ tag: 'dt' }],
     toDOM: () => ['dt', 0],
   },
+  // `marker`: how it starts, as written (MyST's ": ", "  ~ "; its lines after the first
+  // indented as far); `loose`: a blank line before it.
   definition_desc: {
     content: 'block+',
     defining: true,
-    attrs: { ...sid },
+    attrs: { ...sid, marker: { default: null as string | null }, loose: { default: false } },
     parseDOM: [{ tag: 'dd', getAttrs: (dom) => fromData(dom as HTMLElement) }],
     toDOM: (node) => ['dd', dataAttrs(node), 0],
   },
@@ -307,7 +309,10 @@ const nodes: Record<string, NodeSpec> = {
     parseDOM: [{ tag: 'table', getAttrs: (dom) => fromData(dom as HTMLElement) }],
     toDOM: (node) => {
       const caption = tableCaption(node.attrs.header);
-      return caption ? ['table', dataAttrs(node), ['caption', { contenteditable: 'false' }, caption], ['tbody', 0]] : ['table', dataAttrs(node), ['tbody', 0]];
+      // A list-table's first columns, if it makes them headings (:stub-columns: n).
+      const stubs = typeof node.attrs.header === 'string' ? Number(/^:stub-columns:[ \t]+(\d)[ \t]*$/m.exec(node.attrs.header)?.[1] ?? 0) : 0;
+      const attrs = dataAttrs(node, stubs ? { class: `stub-columns-${Math.min(stubs, 3)}` } : {});
+      return caption ? ['table', attrs, ['caption', { contenteditable: 'false' }, caption], ['tbody', 0]] : ['table', attrs, ['tbody', 0]];
     },
   },
   table_row: {
