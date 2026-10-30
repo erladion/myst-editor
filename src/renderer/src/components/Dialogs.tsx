@@ -1,5 +1,5 @@
 // Modal dialogs, opened imperatively through the EditorUi interface.
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type FormEvent } from 'react';
+import { forwardRef, useImperativeHandle, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import type { EditorUi, Field } from '../editor/context';
 import { isCapabilityName, type ConditionsDef, type OptionDef } from '../../../core/editor-config';
 import { describe, parseCondition, parseFor, unknownNames } from '../../../core/conditions';
@@ -65,7 +65,8 @@ export const DialogHost = forwardRef<DialogApi>(function DialogHost(_props, ref)
 
 function Modal({ request }: { request: Request }) {
   const cancel = () => (request.kind === 'confirm' ? request.resolve(false) : request.resolve(null));
-  useEffect(() => {
+  // Before the dialog shows: a key pressed as soon as it's there closes it.
+  useLayoutEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && cancel();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
