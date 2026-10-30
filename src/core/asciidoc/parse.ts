@@ -542,7 +542,7 @@ class Reader {
       }
       return this.raw('passthrough', src);
     }
-    if (d === '|===') {
+    if (/^[|!,:]={3,}$/.test(d)) {
       try {
         // A cell of style a: its blocks, read as the page's are (on their own lines).
         const readBlocks = (text: string, line: number) => {
@@ -551,8 +551,8 @@ class Reader {
           this.line = was;
           return nodes;
         };
-        const rows = tableRows(header, own.slice(body + 1, -1), this.map, !!this.opts.conditions, readBlocks);
-        return this.withSid('table', { header: body ? own.slice(0, body).join('\n') : null }, rows, src);
+        const rows = tableRows(header, own.slice(body + 1, -1), this.map, !!this.opts.conditions, readBlocks, d[0]);
+        return this.withSid('table', { header: body ? own.slice(0, body).join('\n') : null, fence: d === '|===' ? null : d }, rows, src);
       } catch (e) {
         if (!(e instanceof Unsupported)) throw e;
       }

@@ -9,12 +9,14 @@ import { parseInline, serializeInline, Unsupported } from './inline.js';
 import type { BlockHeader } from './parse.js';
 import type { RowCondition } from '../schema.js';
 import { readCondition } from './conditions.js';
+import { isAttributeLine, parseAttrlist } from './syntax.js';
 
 // Numbers the groups of rows inside a condition.
 let rowGroups = 0;
 
 type Align = 'left' | 'center' | 'right' | null;
 interface Cell {
+  group?: object; // the copies of a 2* cell share one
   text: string; // as written, between its separators (over lines, if it goes on)
   line: number; // which of the table's lines it starts on
   end: number; // and ends on
@@ -35,8 +37,8 @@ const SPEC = /(^|[ \t])((\d+)\*)?((?:(\d+)(?:\.(\d+))?|\.(\d+))\+)?([<^>])?(\.[<
 const ALIGNS: Record<string, Align> = { '<': 'left', '^': 'center', '>': 'right' };
 const ALIGN_MARKS: Record<string, string> = { left: '<', center: '^', right: '>' };
 // Table options the editor's tables can carry (as written, in their header).
-const OPTIONS = new Set(['header', 'noheader', 'autowidth', 'rotate', 'breakable', 'unbreakable']);
-const NAMED = new Set(['cols', 'options', 'opts', 'frame', 'grid', 'stripes', 'width', 'float', 'align', 'caption', 'title', 'id', 'role']);
+const OPTIONS = new Set(['header', 'noheader', 'footer', 'autowidth', 'rotate', 'breakable', 'unbreakable']);
+const NAMED = new Set(['cols', 'options', 'opts', 'frame', 'grid', 'stripes', 'width', 'float', 'align', 'caption', 'title', 'id', 'role', 'format', 'separator']);
 
 // The columns `cols` says ("3", "1,2,1", "2*,1", "1,2a"): how many, and each one's
 // style. Null if the editor can't keep one.
@@ -53,11 +55,11 @@ function columnsOf(cols: string): { count: number; styles: (string | null)[] } |
 
 // A line's cells: the text between separators and the spec in front of each; and
 // `lead`, the text before the first, going on from the cell on the lines above.
-function cellsOf(line: string): { lead: string; cells: { spec: string; text: string }[] } {
+function cellsOf(line: string, sep: string): { lead: string; cells: { spec: string; text: string }[] } {
   const bars: number[] = [];
   for (let i = 0; i < line.length; i++) {
-    if (line[i] === '\\' && line[i + 1] === '|') i++;
-    else if (line[i] === '|') bars.push(i);
+    if (line[i] === '\\' && line[i + 1] === sep) i++;
+    else if (line[i] === sep) bars.push(i);
   }
   if (!bars.length) return { lead: line, cells: [] };
   const pieces = [line.slice(0, bars[0]), ...bars.map((b, k) => line.slice(b + 1, k + 1 < bars.length ? bars[k + 1] : line.length))];
@@ -73,13 +75,19 @@ function cellsOf(line: string): { lead: string; cells: { spec: string; text: str
   return { lead: pieces[0], cells: pieces.slice(1).map((text, k) => ({ spec: specs[k], text })) };
 }
 
+// A cell's separator escaped in its text (\| in a table of |, \! in one of !), and not.
+const escaped = (text: string, sep: string) => text.replace(new RegExp(`(?<!\\\\)\\${sep}`, 'g'), `\\${sep}`);
+const unescaped = (text: string, sep: string) => text.replaceAll(`\\${sep}`, sep);
+
 // What a cell's spec says; Unsupported for what the editor can't keep.
-function specOf(spec: string): Pick<Cell, 'colspan' | 'rowspan' | 'align' | 'style'> {
+// `copies`: how many cells it is (2*: the same in two).
+function specOf(spec: string): Pick<Cell, 'colspan' | 'rowspan' | 'align' | 'style'> & { copies: number } {
   const m = SPEC.exec(spec)!;
-  if (m[2]) throw new Unsupported('duplicated cell');
   if (m[10] && !STYLES.has(m[10])) throw new Unsupported('cell style');
   const style = (m[9] ?? '') + (m[10] ?? '');
-  return { colspan: m[5] ? Number(m[5]) : 1, rowspan: Number(m[6] ?? m[7] ?? 1), align: m[8] ? ALIGNS[m[8]] : null, style: style || null };
+  const copies = m[3] ? Number(m[3]) : 1;
+  if (copies < 1) throw new Unsupported('duplicated cell');
+  return { colspan: m[5] ? Number(m[5]) : 1, rowspan: Number(m[6] ?? m[7] ?? 1), align: m[8] ? ALIGNS[m[8]] : null, style: style || null, copies };
 }
 
 // A cell's style letter: its own, or its column's.
@@ -91,17 +99,21 @@ export type ReadBlocks = (text: string, line: number) => PMNode[];
 
 // The rows of the table in `lines` (between its delimiters), with `header` read from
 // the lines before it.
-export function tableRows(header: BlockHeader, lines: string[], map: SourceMap, conditions: boolean, readBlocks: ReadBlocks): PMNode[] {
+// `sep`: what's between its cells (| or, in a cell, !).
+export function tableRows(header: BlockHeader, lines: string[], map: SourceMap, conditions: boolean, readBlocks: ReadBlocks, sep = '|'): PMNode[] {
   const { attrs } = header;
   const named = new Map(attrs.named);
   if (attrs.style || attrs.positional.length || attrs.named.some(([k]) => !NAMED.has(k))) throw new Unsupported('table attributes');
   const opts = [...attrs.opts, ...[named.get('options'), named.get('opts')].flatMap((v) => v?.split(',').map((o) => o.trim()) ?? [])];
   if (opts.some((o) => !OPTIONS.has(o))) throw new Unsupported('table options');
+  const data = dataFormat(header, sep);
+  if (data) return dataRows(lines, data, opts, named.has('cols') ? (columnsOf(named.get('cols')!)?.count ?? null) : null, map);
+  if (named.has('format') || named.has('separator') || sep === ',' || sep === ':') throw new Unsupported('table format');
   const cells: Cell[] = [];
   let firstLine = -1;
   let firstCount = 0;
   let blankAfterFirst = false;
-  let cell: Cell | null = null; // the one the lines go on with
+  let cell: Cell[] = []; // the one the lines go on with (and its copies, of a 2* spec)
   let marked = false; // a condition's marker (or a comment) since its last line
   const comments: number[] = []; // the comment lines
   // Conditions between rows (ifdef::[] lines): each row knows those it's in.
@@ -118,7 +130,7 @@ export function tableRows(header: BlockHeader, lines: string[], map: SourceMap, 
     }
     if (!line.trim()) {
       if (firstLine >= 0 && k === firstLine + 1) blankAfterFirst = true;
-      if (cell) cell.text += '\n';
+      for (const c of cell) c.text += '\n';
       return;
     }
     // A comment line: Asciidoctor leaves it out. Between rows it stays where it is.
@@ -128,22 +140,28 @@ export function tableRows(header: BlockHeader, lines: string[], map: SourceMap, 
       marked = true;
       return;
     }
-    const { lead, cells: own } = cellsOf(line);
+    const { lead, cells: own } = cellsOf(line, sep);
     if (lead.trim()) {
       // Text going on from the cell above (not over a condition's marker).
-      if (!cell || marked) throw new Unsupported('table line');
-      cell.text += `\n${lead}`;
-      cell.end = k;
+      if (!cell.length || marked) throw new Unsupported('table line');
+      for (const c of cell) {
+        c.text += `\n${lead}`;
+        c.end = k;
+      }
     }
     if (!own.length) return;
+    const specs = own.map((c) => specOf(c.spec));
     if (firstLine < 0) {
       firstLine = k;
-      firstCount = own.length;
+      firstCount = specs.reduce((n, s) => n + s.copies, 0);
     }
-    for (const c of own) {
-      cell = { text: c.text, line: k, end: k, conds: [...open], ...specOf(c.spec), col: 0 };
-      cells.push(cell);
-    }
+    // A cell of 2* is two of the same (written as one again while its row isn't edited).
+    own.forEach((c, n) => {
+      const { copies, ...spec } = specs[n];
+      const group = copies > 1 ? {} : undefined;
+      cell = Array.from({ length: copies }, () => ({ group, text: c.text, line: k, end: k, conds: [...open], ...spec, col: 0 }));
+      cells.push(...cell);
+    });
     marked = false;
   });
   if (open.length) throw new Unsupported('condition without an end');
@@ -173,6 +191,8 @@ export function tableRows(header: BlockHeader, lines: string[], map: SourceMap, 
     }
   }
   if (row.length || taken.length > rows.length) throw new Unsupported('incomplete row');
+  // A 2* cell's copies in one row (not going on into the next).
+  for (const [r, cells] of rows.entries()) if (cells.some((c) => c.group && rows.some((o, rr) => rr !== r && o.some((x) => x.group === c.group)))) throw new Unsupported('copies over rows');
   // A row is in one set of conditions; the header row in none.
   if (rows.some((r) => r.some((c) => c.conds.length !== r[0].conds.length || c.conds.some((g, i) => g !== r[0].conds[i])))) throw new Unsupported('condition inside a row');
   // The first row is the header: by its options, or by being alone on the first line
@@ -192,7 +212,7 @@ export function tableRows(header: BlockHeader, lines: string[], map: SourceMap, 
         const head = k === 0 && headerRow;
         const type = head ? 'table_header' : 'table_cell';
         const raw = c.text.trimEnd();
-        const text = raw.trim().replace(/\\\|/g, '|');
+        const text = unescaped(raw.trim(), sep);
         let content: PMNode[];
         // Of style a (the header row's cells are text whatever their column's style):
         // the blocks in it, read as the page's are. On the lines below its bar, from the
@@ -200,7 +220,7 @@ export function tableRows(header: BlockHeader, lines: string[], map: SourceMap, 
         const letter = head ? null : letterOf(c.style, columns!.styles[c.col] ?? null);
         if (letter === 'l') {
           // Literal: its lines as they are, from the first that has something.
-          const lines = raw.replace(/^(?:[ \t]*\n)*/, '').replace(/^[ \t]+(?=\S)/, (sp) => (/^[ \t]*\S/.test(raw) ? '' : sp)).replace(/\\\|/g, '|').split('\n');
+          const lines = raw.replace(/^(?:[ \t]*\n)*/, '').replace(/^[ \t]+(?=\S)/, (sp) => (/^[ \t]*\S/.test(raw) ? '' : sp)).split('\n').map((l) => unescaped(l, sep));
           const inline: PMNode[] = [];
           lines.forEach((l, i) => {
             if (i > 0) inline.push(schema.node('soft_break'));
@@ -210,7 +230,7 @@ export function tableRows(header: BlockHeader, lines: string[], map: SourceMap, 
         } else if (letter === 'a') {
           const lead = /^[ \t]*\S/.test(raw) ? /^[ \t]*/.exec(raw)![0] : /^(?:[ \t]*\n)*/.exec(raw)![0];
           const at = c.line + (lead.match(/\n/g)?.length ?? 0);
-          const body = raw.slice(lead.length).replace(/\\\|/g, '|');
+          const body = unescaped(raw.slice(lead.length), sep);
           const blocks = body ? readBlocks(body, at) : [];
           content = [schema.node('cell_blocks', null, blocks.length ? blocks : [schema.node('paragraph')])];
         } else {
@@ -222,6 +242,7 @@ export function tableRows(header: BlockHeader, lines: string[], map: SourceMap, 
         const style = letter === 'a' ? (c.style ?? '').replace(/a$/, '') || null : c.style;
         const node = schema.node(type, { colspan: c.colspan, rowspan: c.rowspan, align: c.align, style }, content);
         map.recordCell(node, raw);
+        if (c.group) copiesOf.set(node, c.group);
         return node;
       }),
     );
@@ -230,7 +251,8 @@ export function tableRows(header: BlockHeader, lines: string[], map: SourceMap, 
     const last = cells[cells.length - 1].end;
     if (first > end && !cells.some((c) => c.line < first)) {
       // Between each cell and the one before: a space, or the line breaks (and blank lines).
-      const breaks = cells.map((c, n) => (n === 0 || c.line === cells[n - 1].end ? ' ' : '\n'.repeat(c.line - cells[n - 1].end)));
+      // (Copies of a 2* cell are on its line: written apart, under one over lines.)
+      const breaks = cells.map((c, n) => (n === 0 || c.line === cells[n - 1].end ? ' ' : c.line < cells[n - 1].end ? '\n' : '\n'.repeat(c.line - cells[n - 1].end)));
       const between = (from: number, to: number) => lines.slice(from, to).filter((l) => !(conditions && readCondition(l))).map((l) => `${l}\n`).join('');
       const trailing = k === rows.length - 1 ? between(last + 1, lines.length) : '';
       written.set(row, { text: lines.slice(first, last + 1).join('\n'), gap: between(end + 1, first), trail: trailing, breaks });
@@ -240,11 +262,135 @@ export function tableRows(header: BlockHeader, lines: string[], map: SourceMap, 
   });
 }
 
+// ---- tables of data: comma-, delimiter- or tab-separated values ---------------------
+
+interface DataFormat {
+  format: 'csv' | 'dsv' | 'tsv';
+  sep: string;
+}
+
+// A table's values' format: by its fence (,=== :===) or its format attribute; null for
+// one of cells (|===).
+function dataFormat(header: BlockHeader | null, fenceSep: string): DataFormat | null {
+  const named = new Map(header?.attrs.named ?? []);
+  const format = named.get('format')?.toLowerCase() ?? (fenceSep === ',' ? 'csv' : fenceSep === ':' ? 'dsv' : null);
+  if (format !== 'csv' && format !== 'dsv' && format !== 'tsv') return null;
+  const given = named.get('separator');
+  const sep = given ?? (format === 'csv' ? ',' : format === 'dsv' ? ':' : '\t');
+  if ([...sep].length !== 1 || sep === '"') throw new Unsupported('separator');
+  return { format, sep };
+}
+
+// A line's values, as written (quotes and all) and as read; null if a quote goes on past it.
+function valuesOf(line: string, { format, sep }: DataFormat): { written: string; text: string }[] | null {
+  const out: { written: string; text: string }[] = [];
+  let i = 0;
+  for (;;) {
+    const start = i;
+    let text = '';
+    if (format !== 'dsv' && line.slice(i).trimStart().startsWith('"')) {
+      // "a value, quoted", "" for a quote in it.
+      i = line.indexOf('"', i) + 1;
+      for (;;) {
+        const q = line.indexOf('"', i);
+        if (q < 0) return null;
+        text += line.slice(i, q);
+        if (line[q + 1] === '"') {
+          text += '"';
+          i = q + 2;
+        } else {
+          i = q + 1;
+          break;
+        }
+      }
+      const rest = line.indexOf(sep, i);
+      const tail = rest < 0 ? line.slice(i) : line.slice(i, rest);
+      if (tail.trim()) return null;
+      i = rest < 0 ? line.length : rest;
+    } else {
+      while (i < line.length && line[i] !== sep) i += format === 'dsv' && line[i] === '\\' && line[i + 1] === sep ? 2 : 1;
+      text = line.slice(start, i).trim();
+      if (format === 'dsv') text = text.replaceAll(`\\${sep}`, sep);
+    }
+    out.push({ written: line.slice(start, i), text: text.trim() });
+    if (i >= line.length) return out;
+    i++; // the separator
+  }
+}
+
+// A value as the format writes it: quoted where it must be (csv), its separators
+// escaped (dsv).
+function writeValue(text: string, { format, sep }: DataFormat): string {
+  if (format === 'dsv') return text.replaceAll(sep, `\\${sep}`);
+  const plain = text.replace(/\t/g, format === 'tsv' ? ' ' : '\t');
+  return /["\n]|^\s|\s$/.test(plain) || plain.includes(sep) ? `"${plain.replace(/"/g, '""')}"` : plain;
+}
+
+function dataRows(lines: string[], data: DataFormat, opts: string[], cols: number | null, map: SourceMap): PMNode[] {
+  const rows: { line: number; values: { written: string; text: string }[] }[] = [];
+  for (const [k, line] of lines.entries()) {
+    if (!line.trim()) continue;
+    if (/^\/\/(?!\/\/)/.test(line) || /^(?:ifdef|ifndef|ifeval|endif)::/.test(line)) throw new Unsupported('line in a table of values');
+    const values = valuesOf(line, data);
+    if (!values) throw new Unsupported('value over lines');
+    rows.push({ line: k, values });
+  }
+  const ncols = cols ?? rows[0]?.values.length ?? 0;
+  if (!rows.length || rows.some((r) => r.values.length !== ncols)) throw new Unsupported('values in a row');
+  // A header row: by its options, or by being the first line with a blank line after it.
+  const headerRow = !opts.includes('noheader') && (opts.includes('header') || (rows[0].line === 0 && rows.length > 1 && rows[1].line > 1 && !lines[1].trim()));
+  return rows.map((r, k) => {
+    const cells = r.values.map((v) => {
+      const node = schema.node(k === 0 && headerRow ? 'table_header' : 'table_cell', null, [schema.node('paragraph', null, parseInline(v.text))]);
+      map.recordCell(node, v.written);
+      return node;
+    });
+    const row = schema.node('table_row', null, cells);
+    const before = k === 0 ? 0 : rows[k - 1].line + 1;
+    const after = k === rows.length - 1 ? lines.slice(r.line + 1).map((l) => `${l}\n`).join('') : '';
+    written.set(row, { text: lines[r.line], gap: lines.slice(before, r.line).map((l) => `${l}\n`).join(''), trail: after, breaks: [] });
+    return row;
+  });
+}
+
+// Its rows: those untouched as they were, others a line of values each.
+function writeData(node: PMNode, map: SourceMap | null, original: PMNode | undefined, data: DataFormat, fence: string): string {
+  const header = node.attrs.header as string | null;
+  const explicit = /%header|options=["']?[^"'\]]*\bheader/.test(header ?? '');
+  const before = (k: number) => (map && original && k < original.childCount ? written.get(original.child(k)) : undefined);
+  let out = `${header ? `${header}\n` : ''}${fence}\n`;
+  node.forEach((row, _o, k) => {
+    const own = map ? written.get(row) : undefined;
+    let gap = (own ?? before(k))?.gap ?? '';
+    // A header row without %header: the first line, a blank line after it.
+    if (k === 1 && !explicit && node.firstChild!.firstChild?.type.name === 'table_header' && !gap) gap = '\n';
+    const text =
+      own?.text ??
+      (() => {
+        const values: string[] = [];
+        row.forEach((cell) => {
+          const kept = map?.cellSource(cell);
+          if (kept !== undefined) return void values.push(kept);
+          const parts: string[] = [];
+          cell.forEach((p) => p.isTextblock && parts.push(serializeInline(p, { inCell: true }).trim()));
+          values.push(writeValue(parts.join(' ').replace(/\s*\n\s*/g, ' '), data));
+        });
+        return values.join(data.sep);
+      })();
+    out += `${gap}${text}\n`;
+  });
+  const last = node.childCount - 1;
+  const trail = (map ? written.get(node.child(last)) : undefined)?.trail ?? before(original ? original.childCount - 1 : -1)?.trail ?? '';
+  return `${out}${trail}${fence}`;
+}
+
 // Rows as they were written, and the lines between each and the row before it (blank
 // lines, or none): untouched rows are written so again.
 // `trail`: for the last, the lines after it.
 // `breaks`: what's before each of its cells: a space, or line breaks.
 const written = new WeakMap<PMNode, { text: string; gap: string; trail: string; breaks: string[] }>();
+// Cells read from one of 2*: written as one again while they're as they were.
+const copiesOf = new WeakMap<PMNode, object>();
 
 // Whether a cell holds blocks (it's written as one of style a).
 const holdsBlocks = (cell: PMNode) => {
@@ -274,6 +420,11 @@ function columnsOfCells(node: PMNode): Map<PMNode, number> {
 // the lines between rows as they were. `original`: the table as read, if it was.
 // `writeBlocks`: the blocks of a cell that holds them, as the page's are written.
 export function writeTable(node: PMNode, map: SourceMap | null, original: PMNode | undefined, writeBlocks: (cell: PMNode) => string): string {
+  const fence = (node.attrs.fence as string | null) ?? '|===';
+  const sep = fence[0];
+  const named = ((node.attrs.header as string | null)?.split('\n') ?? []).flatMap((l) => (isAttributeLine(l) ? (parseAttrlist(l.trim().slice(1, -1))?.named ?? []) : []));
+  const data = dataFormat({ title: '', attrs: { style: '', id: null, roles: [], opts: [], positional: [], named } }, sep);
+  if (data) return writeData(node, map, original, data, fence);
   let ncols = 0;
   node.firstChild?.forEach((c) => (ncols += c.attrs.colspan));
   const header = headerWithColumns(node.attrs.header as string | null, ncols);
@@ -282,7 +433,7 @@ export function writeTable(node: PMNode, map: SourceMap | null, original: PMNode
   const cellColumns = columnsOfCells(node);
   const before = (k: number) => (map && original && k < original.childCount ? written.get(original.child(k)) : undefined);
   const firstWritten = before(0)?.text ?? (original ? undefined : '| ');
-  const spaced = firstWritten === undefined || /\|\s/.test(firstWritten);
+  const spaced = firstWritten === undefined || new RegExp(`\\${sep}\\s`).test(firstWritten);
   // A cell's text as written (with the spaces after its bar), or written anew: spaced
   // like the cell it replaced, or the table's first.
   const cellText = (cell: PMNode, k: number, n: number) => {
@@ -291,7 +442,7 @@ export function writeTable(node: PMNode, map: SourceMap | null, original: PMNode
     // Blocks: as on the page, on the line of the cell's spec if the cell they replaced
     // was written so (and they don't start indented), else under it.
     if (holdsBlocks(cell)) {
-      const body = writeBlocks(cell).replace(/(?<!\\)\|/g, '\\|');
+      const body = escaped(writeBlocks(cell), sep);
       const replaced = map && original && k < original.childCount && n < original.child(k).childCount ? map.cellSource(original.child(k).child(n)) : undefined;
       const onLine = replaced !== undefined && /^[ \t]*\S/.test(replaced) && !/^\s/.test(body);
       return onLine ? /^[ \t]*/.exec(replaced!)![0] + body : `\n${body}`;
@@ -305,7 +456,7 @@ export function writeTable(node: PMNode, map: SourceMap | null, original: PMNode
         p.forEach((n) => (text += n.isText ? n.text! : n.type.name === 'soft_break' || n.type.name === 'hard_break' ? '\n' : n.textContent));
         lines.push(text);
       });
-      const text = lines.join('\n').replace(/(?<!\\)\|/g, '\\|');
+      const text = escaped(lines.join('\n'), sep);
       const replaced = map && original && k < original.childCount && n < original.child(k).childCount ? map.cellSource(original.child(k).child(n)) : undefined;
       const lead = replaced !== undefined && /^[ \t]*\S/.test(replaced) && !/^\s/.test(text) ? /^[ \t]*/.exec(replaced)![0] : text.includes('\n') || /^\s/.test(text) ? '\n' : spaced ? ' ' : '';
       return text ? lead + text : '';
@@ -313,9 +464,9 @@ export function writeTable(node: PMNode, map: SourceMap | null, original: PMNode
     // Text: its paragraphs, a blank line between them.
     const parts: string[] = [];
     // (Its lines as the cell it replaced had them, where they say the same.)
-    const was = map && original && k < original.childCount && n < original.child(k).childCount ? map.cellSource(original.child(k).child(n))?.trim().replace(/\\\|/g, '|') : undefined;
+    const was = map && original && k < original.childCount && n < original.child(k).childCount ? map.cellSource(original.child(k).child(n))?.trim().replaceAll(`\\${sep}`, sep) : undefined;
     cell.forEach((p) => parts.push(serializeInline(p, { inCell: true, was }).trim()));
-    const text = parts.filter(Boolean).join('\n\n').replace(/(?<!\\)\|/g, '\\|');
+    const text = escaped(parts.filter(Boolean).join('\n\n'), sep);
     const replaced = map && original && k < original.childCount && n < original.child(k).childCount ? map.cellSource(original.child(k).child(n)) : undefined;
     const pad = replaced !== undefined ? /^\s*/.exec(replaced)![0] : spaced ? ' ' : '';
     return text ? pad + text : '';
@@ -332,7 +483,7 @@ export function writeTable(node: PMNode, map: SourceMap | null, original: PMNode
     else if (!holdsBlocks(cell) && column === 'a' && !letter) style += 'd';
     return span + (align ? ALIGN_MARKS[align] : '') + style;
   };
-  const cellOut = (cell: PMNode, k: number, n: number) => `${spec(cell)}|${cellText(cell, k, n)}`;
+  const cellOut = (cell: PMNode, k: number, n: number) => `${spec(cell)}${sep}${cellText(cell, k, n)}`;
   const explicit = /%header|options=["']?[^"'\]]*\bheader/.test(header ?? '');
   const parts: { gap: string; text: string; header: boolean }[] = [];
   let firstOverLines = false;
@@ -362,12 +513,23 @@ export function writeTable(node: PMNode, map: SourceMap | null, original: PMNode
       // Without cols, the first line's cells are the columns: the first row on it.
       const firstRow = k === 0 && !colsOf;
       if (firstRow && cells.slice(0, -1).some((c) => c.includes('\n'))) firstOverLines = true;
-      text = cells
-        .map((c, n) => {
-          if (n === 0) return c;
+      // The copies of a 2* cell, still as they were: one cell again.
+      const shown: number[] = [];
+      const count = new Map<number, number>();
+      row.forEach((c, _p, n) => {
+        const last = shown[shown.length - 1];
+        const group = copiesOf.get(c);
+        if (last !== undefined && group && group === copiesOf.get(row.child(last)) && !anew[n] && !anew[last] && cells[n] === cells[last]) count.set(last, (count.get(last) ?? 1) + 1);
+        else shown.push(n);
+      });
+      text = shown
+        .map((n, i) => {
+          const c = count.has(n) ? `${count.get(n)}*${cells[n]}` : cells[n];
+          if (i === 0) return c;
           if (firstRow) return ' ' + c;
+          const p = shown[i - 1];
           const before = breaks[n] ?? breaks[breaks.length - 1] ?? ' ';
-          const own = (anew[n - 1] && holdsBlocks(row.child(n - 1))) || (anew[n] && holdsBlocks(row.child(n))) || (!pattern && cells[n - 1].includes('\n'));
+          const own = (anew[p] && holdsBlocks(row.child(p))) || (anew[n] && holdsBlocks(row.child(n))) || (!pattern && cells[p].includes('\n'));
           return (before === ' ' && own ? '\n' : before) + c;
         })
         .join('');
@@ -387,7 +549,7 @@ export function writeTable(node: PMNode, map: SourceMap | null, original: PMNode
   let head = header;
   const more = [headerOverLines ? '%header' : '', firstOverLines ? `cols="${ncols}*"` : ''].filter(Boolean);
   if (more.length) head = `${header ? `${header}\n` : ''}[${more.join(',')}]`;
-  let out = `${head ? `${head}\n` : ''}|===\n`;
+  let out = `${head ? `${head}\n` : ''}${fence}\n`;
   let open: RowCondition[] = [];
   const markers = (conds: RowCondition[]) => {
     let keep = 0;
@@ -403,7 +565,7 @@ export function writeTable(node: PMNode, map: SourceMap | null, original: PMNode
   // The lines after the last row, as they were.
   const last = node.childCount - 1;
   const trail = (map ? written.get(node.child(last)) : undefined)?.trail ?? before(original ? original.childCount - 1 : -1)?.trail ?? '';
-  return `${out}${trail}|===`;
+  return `${out}${trail}${fence}`;
 }
 
 // The header, its `cols` as many as the table's columns now are.
