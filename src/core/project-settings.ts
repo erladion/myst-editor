@@ -1,4 +1,4 @@
-// Project Settings' changes to a .mysteditor.toml: written into its text (see
+// Project Settings' changes to a .wysie.toml: written into its text (see
 // toml-edit.ts), so the rest of the file stays as the project wrote it.
 import { ensureTomlTable, removeTomlTableIfEmpty, setTomlKey, tomlAt, type TomlValue } from './toml-edit.js';
 import type { CoverPart, CoverPlace } from './editor-config.js';

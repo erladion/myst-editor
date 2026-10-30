@@ -5,6 +5,7 @@ import type { AppMenuItem, MenuCommand } from '../shared/api.js';
 import { current, toWindow } from './state.js';
 import { updateSettings, type Theme } from './settings.js';
 import { titleBar } from './window.js';
+import { PRODUCT } from '../shared/product.js';
 
 // Settings.recent, for the File → Open Recent menu.
 let recentFolders: string[] = [];
@@ -169,7 +170,7 @@ export function buildMenu(theme: Theme = nativeTheme.themeSource) {
       submenu: [
         { id: 'shortcuts', label: 'Keyboard Shortcuts', click: () => send('shortcuts') },
         { type: 'separator' },
-        { id: 'about', label: 'About MyST Editor', click: () => send('about') },
+        { id: 'about', label: `About ${PRODUCT.name}`, click: () => send('about') },
       ],
     },
   ];
@@ -183,7 +184,7 @@ export function registerMenuIpc() {
     emacsKeys = !!on;
     buildMenu();
   });
-  ipcMain.handle('app-menu', () => (titleBar.custom ? { menu: menuModel(), title: current.win?.getTitle() ?? 'MyST Editor' } : null));
+  ipcMain.handle('app-menu', () => (titleBar.custom ? { menu: menuModel(), title: current.win?.getTitle() ?? PRODUCT.name } : null));
   // The menus for the command palette, whoever draws the title bar (items are clicked
   // with app-menu-click, as the title bar's are).
   ipcMain.handle('menu-commands', () => menuModel());

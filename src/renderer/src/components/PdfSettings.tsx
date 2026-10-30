@@ -1,4 +1,4 @@
-// Project Settings' PDF section ([pdf] in .mysteditor.toml): paper, the cover (see
+// Project Settings' PDF section ([pdf] in .wysie.toml): paper, the cover (see
 // CoverDesigner), the headers and footers (on a sketch of a page), numbering and the
 // contents' depth, and the stylesheets.
 import { useEffect, useMemo, useState } from 'react';

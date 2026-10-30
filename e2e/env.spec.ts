@@ -29,7 +29,7 @@ test('builds with the project’s variables and the writer’s own, which win', 
   // The project's variable is listed; the writer overrides it and adds another.
   await page.locator('.chip-button', { hasText: /Built in/ }).click();
   const dialog = page.getByRole('dialog', { name: 'Sphinx' });
-  await expect(dialog.getByRole('region', { name: 'Environment variables' })).toContainText('HIDE_CONFIGURE1 (from .mysteditor.toml)');
+  await expect(dialog.getByRole('region', { name: 'Environment variables' })).toContainText('HIDE_CONFIGURE1 (from the project’s settings file)');
   await dialog.getByRole('button', { name: 'Edit variables…' }).click();
   await dialog.getByRole('button', { name: 'Use another value' }).click();
   await dialog.getByLabel('Value').fill('0');

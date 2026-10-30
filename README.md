@@ -1,4 +1,7 @@
-# MyST Editor
+# Wysie
+
+*Formerly MyST Editor: its settings, its `.mysteditor.toml` files and its `mysteditor`
+command keep working.*
 
 A WYSIWYG editor for Sphinx documentation written in MyST Markdown, for writers who
 shouldn't have to see Markdown syntax. Only what you change is saved; the rest of
@@ -6,17 +9,17 @@ every file stays exactly as written.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset=".github/showcase-dark.png">
-  <img alt="MyST Editor: a page being edited as formatted text, with the Sphinx build of it alongside" src=".github/showcase.png">
+  <img alt="Wysie: a page being edited as formatted text, with the Sphinx build of it alongside" src=".github/showcase.png">
 </picture>
 
 Downloads: [releases](https://github.com/erladion/myst-editor/releases).
 
 ## Install
 
-- **RHEL 9, Rocky/Alma, Fedora:** `sudo dnf install ./MyST-Editor-<version>-x86_64.rpm`
-- **Debian, Ubuntu, Mint:** `sudo apt install ./MyST-Editor-<version>-amd64.deb`
+- **RHEL 9, Rocky/Alma, Fedora:** `sudo dnf install ./Wysie-<version>-x86_64.rpm`
+- **Debian, Ubuntu, Mint:** `sudo apt install ./Wysie-<version>-amd64.deb`
 - **Other Linux:** the AppImage (needs `libfuse2`, or run it with `--appimage-extract-and-run`).
-- **Windows:** `MyST-Editor-Setup-<version>.exe`. It's unsigned, so Windows warns the
+- **Windows:** `Wysie-Setup-<version>.exe`. It's unsigned, so Windows warns the
   first time (**More info → Run anyway**). On managed PCs, run it as administrator.
 
 Git features need `git` (Git for Windows on Windows).
@@ -121,11 +124,11 @@ so `@media print` rules apply and `@media screen` ones don't.
 **PDF from the command line (CI):** the same PDF, without a window:
 
 ```sh
-mysteditor --export-pdf docs --output manual.pdf
-mysteditor --export-pdf . --project guides/admin --output admin.pdf
+wysie --export-pdf docs --output manual.pdf
+wysie --export-pdf . --project guides/admin --output admin.pdf
 ```
 
-`--export-pdf` takes the folder with `conf.py` (and its `.mysteditor.toml`), or a
+`--export-pdf` takes the folder with `conf.py` (and its `.wysie.toml`), or a
 folder with Sphinx projects under it and `--project` to say which (settings files are
 then layered from that folder down, as in the app). Sphinx runs in an environment set
 up from the project's requirements, as the app does (cached between runs in the app's
@@ -133,7 +136,7 @@ data folder, or in `MYSTEDITOR_SPHINX_DATA`), or in `--python <path>`, one that 
 has Sphinx and MyST-Parser. `--fail-on-warning` exits with 1 when Sphinx or the
 settings warn about anything (the PDF is still made). Progress goes to stdout,
 warnings and errors to stderr; the exit code is 0 for a PDF, 1 when it failed and 2
-for a mistake in the options. `mysteditor --export-pdf --help` lists the options.
+for a mistake in the options. `wysie --export-pdf --help` lists the options.
 
 On Linux without a display, put Chromium's `--ozone-platform=headless` first (or run
 it under `xvfb-run`). Ubuntu 24.04 blocks the user namespaces Chromium's sandbox uses,
@@ -148,9 +151,9 @@ kept. In GitHub Actions:
   env:
     GH_TOKEN: ${{ github.token }}
   run: |
-    gh release download v0.25.0 --repo erladion/myst-editor --pattern '*.AppImage' --output mysteditor.AppImage
-    chmod +x mysteditor.AppImage
-    ./mysteditor.AppImage --appimage-extract-and-run --ozone-platform=headless --no-sandbox \
+    gh release download v0.25.0 --repo erladion/myst-editor --pattern '*.AppImage' --output wysie.AppImage
+    chmod +x wysie.AppImage
+    ./wysie.AppImage --appimage-extract-and-run --ozone-platform=headless --no-sandbox \
       --export-pdf docs --output manual.pdf | grep -v '^/tmp/appimage_extracted_'
 ```
 
@@ -194,8 +197,9 @@ leaves these keys alone; fields in dialogs keep their usual keys.
 
 ## Project settings
 
-A `.mysteditor.toml` next to `conf.py` (or at the top of the folder, for all its
-projects) tells the editor about the project's own extensions. It's reloaded when
+A `.wysie.toml` next to `conf.py` (or at the top of the folder, for all its
+projects) tells the editor about the project's own extensions (a `.mysteditor.toml`, its
+earlier name, is read the same way). It's reloaded when
 saved, and mistakes show as "Settings: N problems" in the status bar. Everything is
 optional. **File → Project Settings…** turns conditional content on or off and sets it
 up, writing into this file without touching the rest of it.
@@ -299,7 +303,7 @@ dialog: they're written into the capabilities file.
   cells hold one line.
 - The Insert menu offers the standard MyST and Sphinx directives. Ones from
   extensions or themes (sphinx-design's tabs and grids, margin notes, your own) show
-  in pages, but are only in the menu once declared in `.mysteditor.toml`.
+  in pages, but are only in the menu once declared in `.wysie.toml`.
 - Search all pages finds text; replacing is one page at a time (Ctrl+F). In the
   formatted view, find skips blocks shown as cards (the Markdown view finds those).
 - Syntax an extension finds in the raw text (say `[[...]]`), rather than through a
@@ -332,6 +336,6 @@ package and publishes them:
 ```sh
 npm version 0.6.0 --no-git-tag-version
 git commit -am "Release 0.6.0"
-git tag -a v0.6.0 -m "MyST Editor 0.6.0"
+git tag -a v0.6.0 -m "Wysie 0.6.0"
 git push origin master v0.6.0
 ```

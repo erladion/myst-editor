@@ -52,7 +52,7 @@ export class FolderWatcher {
     this.watchers.set(this.root, watcher);
   }
 
-  // A directory that's skipped (files are never skipped here: .mysteditor.toml counts).
+  // A directory that's skipped (files are never skipped here: .wysie.toml counts).
   private async skippedDir(parent: string, name: string): Promise<boolean> {
     try {
       if (!(await fs.stat(join(parent, name))).isDirectory()) return false;

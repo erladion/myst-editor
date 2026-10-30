@@ -16,7 +16,7 @@ test('the menus are in the title bar, and do what the menu does', async () => {
   ctx = await launch();
   const { app, page } = ctx;
   await expect(page.locator('.titlebar-menu > button')).toHaveText(['File', 'Edit', 'View', 'Help']);
-  await expect(page.locator('.titlebar-title')).toHaveText('project — MyST Editor');
+  await expect(page.locator('.titlebar-title')).toHaveText('project — Wysie');
 
   // An item runs its command.
   await top('Edit').click();

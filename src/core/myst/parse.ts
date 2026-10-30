@@ -47,7 +47,7 @@ const SPHINX_DIALECT = { smartquotes: false, citations: false, strikethrough: tr
 
 export interface ParseOptions {
   extensions?: Record<string, boolean>;
-  // Project-specific directives (from .mysteditor.toml), overriding the built-in lists.
+  // Project-specific directives (from .wysie.toml), overriding the built-in lists.
   directives?: Record<string, 'markdown' | 'text' | 'none'>;
   // Keywords of block condition markers, e.g. ["if", "endif"].
   conditionKeywords?: [string, string];

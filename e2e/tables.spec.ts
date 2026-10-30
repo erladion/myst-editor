@@ -178,6 +178,6 @@ test('without span roles, merging is explained instead of offered', async () => 
   ctx = await launch();
   const { page } = ctx;
   await cell(page, 'blue').locator('code').click();
-  await expect(page.getByRole('toolbar', { name: 'Table' })).toContainText('Merging cells needs span roles in .mysteditor.toml');
+  await expect(page.getByRole('toolbar', { name: 'Table' })).toContainText('Merging cells needs span roles in the project’s settings');
   await expect(page.getByRole('button', { name: 'Merge cells' })).toHaveCount(0);
 });

@@ -13,6 +13,7 @@ import { makePdf, pdfName } from './pdf/export.js';
 import { loadSettings } from './settings.js';
 import { SphinxManager } from './sphinx/manager.js';
 import { managerPaths } from './sphinx/service.js';
+import { PRODUCT } from '../shared/product.js';
 
 const say = (text: string) => process.stdout.write(`${text}\n`);
 const warn = (text: string) => process.stderr.write(`${text}\n`);
@@ -24,12 +25,12 @@ export async function runCli(opts: CliOptions): Promise<number> {
   try {
     p = await openProject(folder);
   } catch {
-    warn(`mysteditor: there’s no folder at ${folder}`);
+    warn(`${PRODUCT.command}: there’s no folder at ${folder}`);
     return 2;
   }
   const chosen = chooseProject(p.projects, p.root, opts.project);
   if (typeof chosen === 'string') {
-    warn(`mysteditor: ${chosen}`);
+    warn(`${PRODUCT.command}: ${chosen}`);
     return 2;
   }
   const project = chosen;
@@ -50,12 +51,12 @@ export async function runCli(opts: CliOptions): Promise<number> {
     say(`Saved ${pages} page${pages === 1 ? '' : 's'} as ${output}`);
     const count = warnings.length + problems.length;
     if (opts.failOnWarning && count) {
-      warn(`mysteditor: ${count} warning${count === 1 ? '' : 's'} (--fail-on-warning)`);
+      warn(`${PRODUCT.command}: ${count} warning${count === 1 ? '' : 's'} (--fail-on-warning)`);
       return 1;
     }
     return 0;
   } catch (e) {
-    warn(`mysteditor: ${plain(e)}`);
+    warn(`${PRODUCT.command}: ${plain(e)}`);
     return 1;
   } finally {
     builder.dispose();

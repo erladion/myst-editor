@@ -54,7 +54,7 @@ export interface FilesChanged {
   changed: string[]; // files whose content changed on disk (not by us)
 }
 
-// The folder's projects or their settings changed (conf.py, .mysteditor.toml, ...).
+// The folder's projects or their settings changed (conf.py, .wysie.toml, ...).
 export interface ProjectChanged {
   project: ProjectInfo;
 }
@@ -123,7 +123,7 @@ export interface MystApi {
   recentFolders(): Promise<string[]>;
   // File → Open Recent asked for a folder.
   onOpenFolderPath(cb: (folder: string) => void): () => void;
-  // Environment variables for a project's Sphinx builds: from its .mysteditor.toml,
+  // Environment variables for a project's Sphinx builds: from its .wysie.toml,
   // and the writer's own for the opened folder (which win). Setting them rebuilds.
   sphinxEnv(project: string): Promise<{ project: Record<string, string>; yours: Record<string, string> }>;
   setSphinxEnv(vars: Record<string, string>): Promise<void>;
@@ -149,7 +149,7 @@ export interface MystApi {
   // Add a capability to the capabilities file (relative to the opened folder).
   addCapability(path: string, key: string | null, name: string): Promise<{ ok: true } | { ok: false; message: string }>;
   // Project Settings, for a project (null: pages outside every project): what its
-  // .mysteditor.toml files set up, and changes to the one it uses.
+  // .wysie.toml files set up, and changes to the one it uses.
   projectSettings(projectId: string | null): Promise<ProjectSettingsInfo>;
   saveProjectSettings(projectId: string | null, patch: { conditions?: ConditionsPatch; pdf?: PdfPatch }): Promise<{ ok: true } | { ok: false; message: string }>;
   // A file for the settings: a capabilities file picked (or made, with an empty list),

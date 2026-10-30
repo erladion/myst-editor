@@ -1,4 +1,4 @@
-// File → Project Settings: what a project uses, saved in its .mysteditor.toml (so it
+// File → Project Settings: what a project uses, saved in its .wysie.toml (so it
 // applies to everyone working on it): conditional content, and the PDF's layout.
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { CONDITION_PALETTE, type ConditionsDef } from '../../../core/editor-config';

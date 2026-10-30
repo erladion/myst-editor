@@ -1,5 +1,5 @@
 // File → Project Settings: turning conditional content on and off, and its settings,
-// written into the project's .mysteditor.toml.
+// written into the project's settings file (.wysie.toml, or an existing .mysteditor.toml).
 import { expect, test } from '@playwright/test';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -7,7 +7,8 @@ import { launch, type App } from './helpers';
 
 let ctx: App;
 const page = () => ctx.page;
-const toml = () => readFileSync(join(ctx.project, 'docs', '.mysteditor.toml'), 'utf8');
+// The project's settings: a new file is .wysie.toml; the fixtures' own keep their earlier name.
+const toml = () => readFileSync(join(ctx.project, 'docs', existsSync(join(ctx.project, 'docs', '.wysie.toml')) ? '.wysie.toml' : '.mysteditor.toml'), 'utf8');
 
 async function openSettings() {
   await ctx.app.evaluate(({ Menu }) => Menu.getApplicationMenu()!.getMenuItemById('project-settings')!.click());
@@ -85,7 +86,7 @@ test('changes the markers and colours', async () => {
 test('sets up conditional content in a project without settings', async () => {
   ctx = await launch();
   await page().getByRole('button', { name: 'Not now' }).click();
-  const settings = join(ctx.project, 'docs', '.mysteditor.toml');
+  const settings = join(ctx.project, 'docs', '.wysie.toml');
   const caps = join(ctx.project, 'docs', 'products.json');
   // The file dialog, answered.
   await ctx.app.evaluate(({ dialog }, path) => {
@@ -93,7 +94,7 @@ test('sets up conditional content in a project without settings', async () => {
   }, caps);
 
   const dialog = await openSettings();
-  await expect(dialog).toContainText('Saved in docs/.mysteditor.toml (a new file)');
+  await expect(dialog).toContainText('Saved in docs/.wysie.toml (a new file)');
   await expect(dialog.getByRole('checkbox', { name: 'Conditional content' })).not.toBeChecked();
   await dialog.getByRole('checkbox', { name: 'Conditional content' }).check();
   await dialog.getByRole('button', { name: 'New…' }).click();
@@ -118,7 +119,7 @@ test('sets up conditional content in a project without settings', async () => {
 test('sets up the PDF: paper, cover, headers and footers', async () => {
   ctx = await launch({ fixture: 'fixture-showcase' });
   await page().getByRole('button', { name: 'Not now' }).click();
-  const settings = join(ctx.project, 'docs', '.mysteditor.toml');
+  const settings = join(ctx.project, 'docs', '.wysie.toml');
   // The file dialog, answered with each of these in turn.
   const pick = (name: string) =>
     ctx.app.evaluate(({ dialog }, path) => {

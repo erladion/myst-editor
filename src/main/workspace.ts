@@ -8,7 +8,7 @@ import { buildInputsOf, isBuildInput, isMarker, listDocuments, openProject, read
 import { FolderWatcher } from './watch.js';
 import type { ProjectInfo } from '../shared/api.js';
 import type { BuildInfo } from '../shared/build.js';
-import { SETTINGS_FILE } from '../core/editor-config.js';
+import { isSettingsFile } from '../core/editor-config.js';
 import { isPage } from '../core/format.js';
 import { current, requireProject, toWindow } from './state.js';
 import { loadSettings, updateSettings } from './settings.js';
@@ -16,6 +16,7 @@ import { setRecentFolders } from './menu.js';
 import { setWindowTitle } from './window.js';
 import { checkServer, refreshGit, resetGit } from './git/service.js';
 import { buildFor, forgetChangesInBuilds, rebuildFresh, startBuilders } from './builders/service.js';
+import { PRODUCT } from '../shared/product.js';
 
 let watcher: FolderWatcher | null = null;
 
@@ -53,7 +54,7 @@ async function useProject(folder: string): Promise<ProjectInfo> {
   resetGit();
   startWatching(project);
   setTimeout(() => void checkServer(), 2000);
-  setWindowTitle(`${project.name} — MyST Editor`);
+  setWindowTitle(`${project.name} — ${PRODUCT.name}`);
   const root = project.root;
   await updateSettings((s) => ({ ...s, lastProject: root, recent: [root, ...(s.recent ?? []).filter((r) => r !== root)].slice(0, 10) }));
   setRecentFolders((await loadSettings()).recent ?? []);
@@ -206,16 +207,16 @@ function startWatching(p: ProjectInfo) {
     refreshGit();
     // Our own saves request builds directly; these are changes made outside the app.
     if (changed.some((rel) => isBuildInput(rel.split('/').pop()!))) p.buildInputs = await buildInputsOf(p.root);
-    for (const rel of changed) if (!rel.endsWith(SETTINGS_FILE)) buildFor(p, rel, true);
+    for (const rel of changed) if (!isSettingsFile(rel)) buildFor(p, rel, true);
     // conf.py, editor settings and capabilities files change how pages are read.
-    const settings = (rel: string) => isMarker(rel) || /(^|\/)\.mysteditor\.toml$/.test(rel) || (rel.endsWith('.json') && isBuildInput(rel.split('/').pop()!));
+    const settings = (rel: string) => isMarker(rel) || isSettingsFile(rel) || (rel.endsWith('.json') && isBuildInput(rel.split('/').pop()!));
     if (changed.some(settings)) await refreshProject(p);
   };
   const w = new FolderWatcher(p.root, unwatchedDir, (rel) => {
     // Hidden files are ignored, except the editor's own settings.
     const parts = rel.split('/');
     const name = parts[parts.length - 1];
-    if ((name.startsWith('.') && name !== SETTINGS_FILE) || UNWATCHED_DIRS.has(name)) return;
+    if ((name.startsWith('.') && !isSettingsFile(name)) || UNWATCHED_DIRS.has(name)) return;
     pending.add(rel);
     clearTimeout(timer);
     // One flush at a time, so a slow one can't overlap the next.
@@ -229,7 +230,7 @@ export function stopWatching() {
   watcher?.close();
 }
 
-// The project folder from the command line (`mysteditor ./docs`), if given.
+// The project folder from the command line (`wysie ./docs`), if given.
 function folderFromArgs(): string | null {
   const args = process.argv.slice(app.isPackaged ? 1 : 2).filter((a) => !a.startsWith('-'));
   for (const a of args) {

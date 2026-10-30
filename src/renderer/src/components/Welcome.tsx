@@ -2,6 +2,7 @@
 // opens (which takes a while for a large folder), what's happening.
 import type { ReactNode } from 'react';
 import type { OpenProgress } from '../../../shared/api';
+import { PRODUCT } from '../../../shared/product';
 
 export function OpeningCard({ opening }: { opening: OpenProgress | null }) {
   if (!opening) return null;
@@ -35,7 +36,7 @@ export function Welcome({ opening, starting, recentFolders, onChoose, onClone, o
       <OpeningCard opening={opening} />
       {!starting && !opening && (
         <div className="welcome-card">
-          <h1>MyST Editor</h1>
+          <h1>{PRODUCT.name}</h1>
           <p>Edit your Sphinx documentation as formatted pages. Your Markdown files are saved exactly as written, apart from what you change.</p>
           <button type="button" className="primary large" onClick={onChoose}>
             Open documentation folder

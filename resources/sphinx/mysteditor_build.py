@@ -1,4 +1,4 @@
-"""Build a Sphinx project for MyST Editor and report what the editor needs as JSON.
+"""Build a Sphinx project for Wysie and report what the editor needs as JSON.
 
 Run with the project's environment's Python:
 

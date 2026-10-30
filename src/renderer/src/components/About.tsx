@@ -1,6 +1,7 @@
 // Help → About: the app's version, and what it runs on (for bug reports).
 import { useEffect, useState } from 'react';
 import type { AboutInfo } from '../../../shared/api';
+import { PRODUCT } from '../../../shared/product';
 
 const api = window.myst;
 
@@ -24,13 +25,13 @@ export function AboutDialog({ builtWith, onClose }: { builtWith: { name: string;
     : [];
   const copy = async () => {
     if (!info) return;
-    await navigator.clipboard.writeText([`MyST Editor ${info.version}`, ...rows.map(([k, v]) => `${k}: ${v}`)].join('\n'));
+    await navigator.clipboard.writeText([`${PRODUCT.name} ${info.version}`, ...rows.map(([k, v]) => `${k}: ${v}`)].join('\n'));
     setCopied(true);
   };
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal about" role="dialog" aria-modal="true" aria-label="About MyST Editor">
-        <h2>MyST Editor</h2>
+      <div className="modal about" role="dialog" aria-modal="true" aria-label={`About ${PRODUCT.name}`}>
+        <h2>{PRODUCT.name}</h2>
         <p className="about-version">{info ? `Version ${info.version}` : ' '}</p>
         <p className="muted">Edit Sphinx documentation written in MyST Markdown as formatted pages.</p>
         <dl className="about-details">

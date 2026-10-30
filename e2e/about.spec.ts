@@ -16,12 +16,12 @@ test('Help → About shows the version, and copies the details', async () => {
   const { app, page } = ctx;
   const { version } = JSON.parse(readFileSync(join(import.meta.dirname, '..', 'package.json'), 'utf8'));
   await app.evaluate(({ Menu }) => Menu.getApplicationMenu()!.getMenuItemById('about')!.click());
-  const dialog = page.getByRole('dialog', { name: 'About MyST Editor' });
+  const dialog = page.getByRole('dialog', { name: 'About Wysie' });
   await expect(dialog.locator('.about-version')).toHaveText(`Version ${version}`);
   await expect(dialog.locator('dt')).toContainText(['Electron', 'Chromium', 'Node', 'System']);
   await dialog.getByRole('button', { name: 'Copy details' }).click();
   await expect(dialog.getByRole('button', { name: 'Copied' })).toBeVisible();
-  expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toMatch(new RegExp(`^MyST Editor ${version.replace(/\./g, '\\.')}\r?\nElectron: `)); // CRLF on Windows
+  expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toMatch(new RegExp(`^Wysie ${version.replace(/\./g, '\\.')}\r?\nElectron: `)); // CRLF on Windows
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
 });

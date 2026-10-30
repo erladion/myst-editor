@@ -16,7 +16,7 @@ export interface MystConfig {
   fromConfPy: boolean;
   // numfig = True: figures and tables are numbered, and {numref} works.
   numfig?: boolean;
-  // The project's own directives, roles and conditions, from .mysteditor.toml.
+  // The project's own directives, roles and conditions, from .wysie.toml.
   editor: EditorConfig;
 }
 

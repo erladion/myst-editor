@@ -80,7 +80,7 @@ export function ViewAsMenu({ settings, viewAs, onViewAs }: { settings: Condition
               {c}
             </label>
           ))}
-          {!capabilities.length && <small className="muted pad">No capabilities file is set in .mysteditor.toml.</small>}
+          {!capabilities.length && <small className="muted pad">No capabilities file is set in the project’s settings file.</small>}
         </div>
       )}
     </div>
@@ -256,8 +256,8 @@ export function Toolbar({ view, ctx, onMarkdown, previewAvailable, previewOpen, 
             <Btn label="Split cell" title="Split a merged cell" cmd={splitCell} wide />
           </>
         ) : (
-          <span className="tb-hint" title="Set colspan_role and rowspan_role under [tables] in .mysteditor.toml to write merged cells the way your project's extension expects">
-            Merging cells needs span roles in .mysteditor.toml
+          <span className="tb-hint" title="Set colspan_role and rowspan_role under [tables] in the project’s settings file (.wysie.toml) to write merged cells the way your project's extension expects">
+            Merging cells needs span roles in the project’s settings
           </span>
         )}
         {editingFor(ctx.config).cells === 'blocks' && (

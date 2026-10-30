@@ -9,7 +9,7 @@ import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { Buffer } from 'node:buffer';
 import { DEFAULT_CONFIG, readConfPy } from '../core/project-config.js';
 import { isPage, pageFormat } from '../core/format.js';
-import { loadEditorConfig, SETTINGS_FILE, type SettingsSource } from '../core/editor-config.js';
+import { loadEditorConfig, SETTINGS_FILES, type SettingsSource } from '../core/editor-config.js';
 import type { PageMatches, ProjectInfo, Project } from '../shared/api.js';
 
 // Directories whose changes never matter to the app: hidden ones (.git, .venv),
@@ -163,13 +163,15 @@ export function isBuildInput(name: string): boolean {
   return name.endsWith('.py') || (name.endsWith('.json') && !/^(package(-lock)?|tsconfig|composer)\.json$/.test(name));
 }
 
-// The .mysteditor.toml files that apply to `dir`, from the opened folder down.
+// The .wysie.toml files that apply to `dir`, from the opened folder down.
 export function settingsSources(root: string, dir: string, read?: Set<string>): SettingsSource[] {
   const dirs = [dir];
   for (let d = dir; d !== root && d.startsWith(root + sep); ) dirs.unshift((d = dirname(d)));
   const sources: SettingsSource[] = [];
   for (const d of dirs) {
-    const path = join(d, SETTINGS_FILE);
+    // The folder's settings file: under the app's name, or an earlier one.
+    const path = SETTINGS_FILES.map((name) => join(d, name)).find((p) => existsSync(p));
+    if (!path) continue;
     let text: string;
     try {
       text = readFileSync(path, 'utf8');

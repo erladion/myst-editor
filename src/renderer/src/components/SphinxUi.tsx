@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { usable, type EnvironmentChoice, type PythonCandidate } from '../../../shared/sphinx';
 import { type BuildState, type BuildWarning } from '../../../shared/build';
 import { usePanelHeight } from './PanelResize';
+import { PRODUCT } from '../../../shared/product';
 
 interface TrustProps {
   state: BuildState;
@@ -103,7 +104,7 @@ export function EnvironmentDialog({ state, projects, onUse, onClose }: Environme
             <span>
               <strong>Private environment</strong>
               <small>
-                Set up by MyST Editor: downloads Python and the packages from {requirements}. Needs internet the first time
+                Set up by {PRODUCT.name}: downloads Python and the packages from {requirements}. Needs internet the first time
                 {offline ? ', which this computer doesn’t have' : ''}.
               </small>
             </span>
@@ -216,7 +217,7 @@ export function SphinxDialog({ state, project, projectId, onChangeEnvironment, o
 
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-// Environment variables the build gets: the project's (from .mysteditor.toml, shared
+// Environment variables the build gets: the project's (from .wysie.toml, shared
 // with everyone) and the writer's own (kept in the app, for this folder), which win.
 function EnvVars({ projectId, editing, onEditing }: { projectId: string; editing: boolean; onEditing: (e: boolean) => void }) {
   const [vars, setVars] = useState<{ project: Record<string, string>; yours: Record<string, string> } | null>(null);
@@ -242,7 +243,7 @@ function EnvVars({ projectId, editing, onEditing }: { projectId: string; editing
                 </dt>
                 <dd>
                   <code>{value}</code>{' '}
-                  <span className="muted">{from === 'project' ? '(from .mysteditor.toml)' : name in vars.project ? '(yours, instead of the project’s)' : '(yours)'}</span>
+                  <span className="muted">{from === 'project' ? '(from the project’s settings file)' : name in vars.project ? '(yours, instead of the project’s)' : '(yours)'}</span>
                 </dd>
               </div>
             ))}
@@ -287,7 +288,7 @@ function EnvVars({ projectId, editing, onEditing }: { projectId: string; editing
               <code>
                 {name}={value}
               </code>{' '}
-              <span className="muted">from .mysteditor.toml</span>{' '}
+              <span className="muted">from the project’s settings file</span>{' '}
               {!names.includes(name) && (
                 <button type="button" className="link-button" onClick={() => setRows((r) => [...r, [name, value]])}>
                   Use another value

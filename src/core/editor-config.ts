@@ -1,4 +1,4 @@
-// Per-project editor settings from `.mysteditor.toml`: how to present a project's own
+// Per-project editor settings from `.wysie.toml`: how to present a project's own
 // directives and roles, and its conditional-content markers.
 //
 //   [directives.company-callout]
@@ -62,7 +62,10 @@
 import { parse as parseToml } from 'smol-toml';
 import { appendToJson, jsonLike } from './json-edit.js';
 
-export const SETTINGS_FILE = '.mysteditor.toml';
+// The name new settings files get; a folder's may also have an earlier name (see
+// shared/product.ts).
+export { SETTINGS_FILES, isSettingsFile } from '../shared/product.js';
+export const SETTINGS_FILE = '.wysie.toml';
 
 export type Tone = 'note' | 'info' | 'tip' | 'warning' | 'danger' | 'neutral';
 const TONES: Tone[] = ['note', 'info', 'tip', 'warning', 'danger', 'neutral'];

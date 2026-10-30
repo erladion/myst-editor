@@ -1,7 +1,9 @@
-appId: io.github.erladion.mysteditor
-productName: MyST Editor
-executableName: mysteditor
-artifactName: MyST-Editor-${version}-${arch}.${ext}
+# The app's name (see src/shared/product.ts). It was MyST Editor: the packages replace
+# that one's, and `mysteditor` still runs it.
+appId: io.github.erladion.wysie
+productName: Wysie
+executableName: wysie
+artifactName: Wysie-${version}-${arch}.${ext}
 directories:
   output: release
   buildResources: build
@@ -34,9 +36,15 @@ win:
 nsis:
   oneClick: true
   perMachine: false
-  artifactName: MyST-Editor-Setup-${version}.${ext}
-  shortcutName: MyST Editor
+  artifactName: Wysie-Setup-${version}.${ext}
+  shortcutName: Wysie
 deb:
+  # Installed in place of the MyST Editor package, with its command kept.
+  afterInstall: build/linux/after-install.tpl
+  afterRemove: build/linux/after-remove.tpl
+  fpm:
+    - --replaces=mysteditor
+    - --conflicts=mysteditor
   # The libraries Electron links against, by Debian/Ubuntu package name. Since
   # Debian 13 and Ubuntu 24.04 some are named …t64; either name will do.
   depends:
@@ -100,6 +108,10 @@ rpm:
     - 'libasound.so.2()(64bit)'
     - 'libatspi.so.0()(64bit)'
     - xdg-utils
+  afterInstall: build/linux/after-install.tpl
+  afterRemove: build/linux/after-remove.tpl
   fpm:
     # Don't claim /usr/lib/.build-id entries other Electron apps also ship.
     - --rpm-rpmbuild-define=_build_id_links none
+    # Installed in place of the MyST Editor package (it's obsoleted).
+    - --replaces=mysteditor

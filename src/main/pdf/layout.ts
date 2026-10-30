@@ -1,6 +1,6 @@
 // What the PDF export does to the one-page build (mysteditor_build.py --pdf) before
 // Chromium prints it: a cover, one table of contents, each chapter on a new page,
-// headers and footers ([pdf] in .mysteditor.toml), and links that work in a single
+// headers and footers ([pdf] in .wysie.toml), and links that work in a single
 // document. Runs in the page, as a script.
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';

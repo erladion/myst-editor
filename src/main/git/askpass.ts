@@ -11,8 +11,9 @@ import { randomBytes } from 'node:crypto';
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:net';
 import { join } from 'node:path';
+import { PRODUCT } from '../../shared/product.js';
 
-const HELPER = `// Written by MyST Editor: forwards a git/ssh question to the app.
+const HELPER = `// Written by ${PRODUCT.name}: forwards a git/ssh question to the app.
 const net = require('net');
 const question = process.argv.slice(2).join(' ');
 let reply = '';

@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AppMenuItem } from '../../../shared/api';
 import icon from '../../../../build/icon.png';
+import { PRODUCT } from '../../../shared/product';
 
 const api = window.myst;
 
@@ -23,7 +24,7 @@ type Active = { inSub: boolean; index: number } | null;
 
 export function TitleBar() {
   const [menu, setMenu] = useState<AppMenuItem[] | null>(null);
-  const [title, setTitle] = useState('MyST Editor');
+  const [title, setTitle] = useState<string>(PRODUCT.name);
   // The open menu, the open submenu in it (index of its item), and the highlighted item.
   const [open, setOpen] = useState<number | null>(null);
   const [sub, setSub] = useState<number | null>(null);

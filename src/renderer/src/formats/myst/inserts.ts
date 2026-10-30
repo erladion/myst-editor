@@ -39,7 +39,7 @@ export function insertDirective(ctx: EditorContext, name: string, args = ''): Co
   return insertBlock(node, 2);
 }
 
-// A directive declared in .mysteditor.toml, with its options' defaults.
+// A directive declared in .wysie.toml, with its options' defaults.
 export function insertProjectDirective(ctx: EditorContext, name: string, def: DirectiveDef): Command {
   const fence = newDirectiveFence(ctx.config);
   const options = Object.entries(def.options)

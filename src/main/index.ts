@@ -25,9 +25,12 @@ import { registerGitIpc } from './git/ipc.js';
 import { startAskPass, stopAskPass } from './git/service.js';
 import { registerSphinxIpc } from './sphinx/service.js';
 import { registerBuildIpc, stopBuilders } from './builders/service.js';
+import { adoptPreviousSettings } from './previous-names.js';
+import { PRODUCT } from '../shared/product.js';
 
 // Lets tests (and portable setups) keep settings out of the real profile.
 if (process.env.MYSTEDITOR_USER_DATA) app.setPath('userData', process.env.MYSTEDITOR_USER_DATA);
+else adoptPreviousSettings(app.getPath('appData'), app.getPath('userData'));
 
 const cli = parseCliArgs(process.argv);
 if (cli) {
@@ -36,12 +39,12 @@ if (cli) {
   app.on('window-all-closed', () => {});
   app.disableHardwareAcceleration();
   if ('error' in cli) {
-    process.stderr.write(`mysteditor: ${cli.error}\n\n${USAGE}\n`);
+    process.stderr.write(`${PRODUCT.command}: ${cli.error}\n\n${USAGE}\n`);
     app.exit(2);
   } else if ('help' in cli) {
     process.stdout.write(`${USAGE}\n`);
     app.exit(0);
-  } else void app.whenReady().then(() => runCli(cli).then((code) => app.exit(code), (e) => (process.stderr.write(`mysteditor: ${e}\n`), app.exit(1))));
+  } else void app.whenReady().then(() => runCli(cli).then((code) => app.exit(code), (e) => (process.stderr.write(`${PRODUCT.command}: ${e}\n`), app.exit(1))));
 } else startApp();
 
 function startApp() {

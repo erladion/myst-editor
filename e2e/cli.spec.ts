@@ -85,13 +85,13 @@ test('warnings are printed, and with --fail-on-warning fail it', async () => {
   const { code, err } = await run(dir, '--export-pdf', 'repo/docs', '--output', 'manual.pdf', '--fail-on-warning');
   expect(code).toBe(1);
   expect(err).toMatch(/getting-started\/install\.md:\d+: warning: undefined label: 'no-such-target'/);
-  expect(err).toContain('mysteditor: 1 warning (--fail-on-warning)');
+  expect(err).toContain('wysie: 1 warning (--fail-on-warning)');
   expect(existsSync(join(dir, 'manual.pdf'))).toBe(true); // made all the same
 });
 
 test('a mistake in the options is explained', async () => {
   const { code, err } = await run(workDir(), '--export-pdf', 'docs', '--ouput', 'a.pdf');
   expect(code).toBe(2);
-  expect(err).toContain('mysteditor: unknown option --ouput');
-  expect(err).toContain('Usage: mysteditor --export-pdf <folder> [options]');
+  expect(err).toContain('wysie: unknown option --ouput');
+  expect(err).toContain('Usage: wysie --export-pdf <folder> [options]');
 });

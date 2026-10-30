@@ -12,6 +12,7 @@ import { checkOnFocus } from './git/service.js';
 import { current, toWindow } from './state.js';
 import type { Settings } from './settings.js';
 import type { TableMenuItem } from '../shared/api.js';
+import { PRODUCT } from '../shared/product.js';
 
 // The window's colour before the page has drawn, matching the theme (no white flash).
 const windowBackground = () => (nativeTheme.shouldUseDarkColors ? '#17191d' : '#ffffff');
@@ -110,7 +111,7 @@ export function createWindow() {
     width: 1280,
     height: 860,
     show: false,
-    title: 'MyST Editor',
+    title: PRODUCT.name,
     ...(process.platform === 'linux' ? { icon } : {}),
     ...(titleBar.custom ? { titleBarStyle: 'hidden' as const, titleBarOverlay: { ...titleBarColors(), height: TITLE_BAR_HEIGHT } } : {}),
     backgroundColor: windowBackground(),

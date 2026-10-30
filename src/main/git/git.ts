@@ -5,6 +5,7 @@ import { existsSync, promises as fs } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { Branches, GitChange, GitOperation, GitStatus } from '../../shared/git.js';
 import { run, type RunResult } from '../sphinx/run.js';
+import { PRODUCT } from '../../shared/product.js';
 
 export interface FileCommit {
   commit: string;
@@ -362,7 +363,7 @@ export class Git {
 
 
 // The name of the stash holding changes left on a branch when switching away.
-const leftOn = (branch: string) => `left on ${branch} (MyST Editor)`;
+const leftOn = (branch: string) => `left on ${branch} (${PRODUCT.name})`;
 
 function changeKind(xy: string): GitChange['kind'] {
   if (xy.includes('D')) return 'deleted';

@@ -1,4 +1,4 @@
-// Project Settings: the window's view of a project's .mysteditor.toml, and its
+// Project Settings: the window's view of a project's .wysie.toml, and its
 // changes to it (written into the file's text, see core/project-settings.ts).
 import { dialog, ipcMain } from 'electron';
 import { existsSync, promises as fs, realpathSync } from 'node:fs';

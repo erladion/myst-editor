@@ -1,7 +1,9 @@
 // The command line's PDF export (see cli.ts): which options it was given.
 //
-//   mysteditor --export-pdf <folder> [--project <dir>] [--output <file>]
+//   wysie --export-pdf <folder> [--project <dir>] [--output <file>]
 //              [--python <path>] [--fail-on-warning]
+
+import { PRODUCT } from '../shared/product.js';
 
 export interface CliOptions {
   folder: string; // the folder with conf.py, or one with Sphinx projects under it
@@ -11,10 +13,10 @@ export interface CliOptions {
   failOnWarning: boolean;
 }
 
-export const USAGE = `Usage: mysteditor --export-pdf <folder> [options]
+export const USAGE = `Usage: ${PRODUCT.command} --export-pdf <folder> [options]
 
 Makes a PDF of a Sphinx project, as File → Export PDF does, without a window.
-<folder> is the one with conf.py (and its .mysteditor.toml), or a folder with
+<folder> is the one with conf.py (and its ${PRODUCT.settingsFile}), or a folder with
 Sphinx projects under it, with --project to say which.
 
 Options:
