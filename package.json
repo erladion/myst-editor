@@ -1,7 +1,7 @@
 {
   "name": "wysie",
   "productName": "Wysie",
-  "version": "0.25.0",
+  "version": "0.26.0",
   "description": "WYSIWYG editor for Sphinx + MyST Markdown",
   "author": "erladion",
   "license": "UNLICENSED",
@@ -72,5 +72,5 @@
     "electron-winstaller": false
   },
   "desktopName": "wysie.desktop",
-  "homepage": "https://github.com/erladion/myst-editor"
+  "homepage": "https://github.com/erladion/wysie"
 }

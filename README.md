@@ -12,7 +12,7 @@ every file stays exactly as written.
   <img alt="Wysie: a page being edited as formatted text, with the Sphinx build of it alongside" src=".github/showcase.png">
 </picture>
 
-Downloads: [releases](https://github.com/erladion/myst-editor/releases).
+Downloads: [releases](https://github.com/erladion/wysie/releases).
 
 ## Install
 
@@ -151,7 +151,7 @@ kept. In GitHub Actions:
   env:
     GH_TOKEN: ${{ github.token }}
   run: |
-    gh release download v0.25.0 --repo erladion/myst-editor --pattern '*.AppImage' --output wysie.AppImage
+    gh release download v0.26.0 --repo erladion/wysie --pattern '*.AppImage' --output wysie.AppImage
     chmod +x wysie.AppImage
     ./wysie.AppImage --appimage-extract-and-run --ozone-platform=headless --no-sandbox \
       --export-pdf docs --output manual.pdf | grep -v '^/tmp/appimage_extracted_'
