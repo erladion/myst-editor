@@ -55,7 +55,7 @@ test('conditions among a toctree’s entries are named and striped, and dimmed b
   await inside.screenshot({ path: test.info().outputPath('toc-view-as.png') });
 
   // Edited, a toctree inside a condition keeps its stripe.
-  await around.getByRole('button', { name: 'Edit…' }).click();
+  await around.getByRole('button', { name: 'Source…' }).click();
   const dialog = page.getByRole('dialog', { name: 'Edit {toctree} block' });
   await dialog.locator('textarea').fill('```{toctree}\n:caption: Around\n\nother\nmore\n```');
   await dialog.getByRole('button', { name: 'Save' }).click();
