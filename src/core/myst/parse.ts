@@ -79,6 +79,11 @@ export interface ParseOptions {
 
 // A field list: :name: value lines, values going on over indented lines.
 export const FIELD = /^:([^:\s][^:]*?):(?:[ \t]+(.*))?$/;
+
+// A link reference definition on a line of its own: [name]: url "title".
+export const DEFINITION = /^ {0,3}\[((?:[^\]\\^]|\\.)(?:[^\]\\]|\\.)*)\]:[ \t]*(<[^>\n]*>|\S+)(?:[ \t]+("[^"]*"|'[^']*'|\([^)]*\)))?[ \t]*$/;
+// Lines no block owns: link definitions, if they're all that.
+const orphan = (lines: string[]): MdNode => ({ type: lines.every((l) => DEFINITION.test(l)) ? 'definitions' : 'orphan' });
 export const isFieldList = (src: string) => {
   const lines = src.split('\n');
   return FIELD.test(lines[0]) && lines.every((l) => FIELD.test(l) || /^[ \t]+\S/.test(l));
@@ -215,7 +220,7 @@ class Context {
         }
         let k = j;
         while (k + 1 <= limit && lines[k + 1].trim() !== '') k++;
-        segs.push({ node: { type: 'orphan' }, start: j, end: k });
+        segs.push({ node: orphan(lines.slice(j, k + 1)), start: j, end: k });
         j = k + 1;
       }
     }
@@ -231,7 +236,7 @@ class Context {
         }
         let k = j;
         while (k + 1 <= first && lines[k + 1].trim() !== '') k++;
-        pre.push({ node: { type: 'orphan' }, start: j, end: k });
+        pre.push({ node: orphan(lines.slice(j, k + 1)), start: j, end: k });
         j = k + 1;
       }
       segs.unshift(...pre);

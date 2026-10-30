@@ -2,6 +2,7 @@
 import { createTokenizer } from 'myst-parser';
 import { safeHtml } from '../../editor/html';
 import type { Cards } from '../editing';
+import { definitionsForm, definitionsPreview } from './definitions';
 import { fieldsForm, fieldsPreview } from './fields';
 import { frontMatterForm, frontMatterPreview } from './frontmatter';
 import { toctreeForm } from './toctree';
@@ -16,6 +17,7 @@ const LABELS: Record<string, string> = {
   'block-break': 'Cell break',
   'block-attributes': 'Attributes',
   fieldlist: 'Fields',
+  definitions: 'Link targets',
 };
 
 let tokenizer: ReturnType<typeof createTokenizer> | null = null;
@@ -34,7 +36,12 @@ export const mystCards: Cards = {
   label: (kind) => LABELS[kind] ?? 'Markdown',
   editTitle: (name) => `Edit {${name}} block`,
   comment: (source) => source.replace(/^%\s?/gm, ''),
-  preview: (kind, source, assetUrl) => (kind === 'frontmatter' ? frontMatterPreview(source) : kind === 'fieldlist' ? fieldsPreview(source) : kind === 'table' || kind === 'definitionList' || kind === 'footnote' ? markdownPreview(source, assetUrl) : null),
-  form: (kind, source) => (kind === 'fieldlist' ? fieldsForm(source) : kind === 'frontmatter' ? frontMatterForm(source) : null),
+  preview(kind, source, assetUrl) {
+    if (kind === 'frontmatter') return frontMatterPreview(source);
+    if (kind === 'fieldlist') return fieldsPreview(source);
+    if (kind === 'definitions') return definitionsPreview(source);
+    return kind === 'table' || kind === 'definitionList' || kind === 'footnote' ? markdownPreview(source, assetUrl) : null;
+  },
+  form: (kind, source) => (kind === 'fieldlist' ? fieldsForm(source) : kind === 'frontmatter' ? frontMatterForm(source) : kind === 'definitions' ? definitionsForm(source) : null),
   directiveForm: (name, source) => (name === 'toctree' ? toctreeForm(source) : null),
 };
