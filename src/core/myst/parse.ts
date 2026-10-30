@@ -162,6 +162,9 @@ class Context {
         // `+++` block break: the marker line is its own block, children are siblings.
         add({ type: 'blockBreak' }, pos.start.line - 1, pos.start.line - 1);
         (node.children ?? []).forEach(visit);
+      } else if (node.type === 'math' && pos && /^\\begin\{/.test(node.value ?? '')) {
+        // An amsmath environment: myst-parser ends it a line early.
+        add(node, pos.start.line - 1, pos.start.line - 1 + String(node.value).split('\n').length - 1);
       } else if (pos) {
         add(node, pos.start.line - 1, pos.end.line - 1);
       }
@@ -297,6 +300,8 @@ class Context {
       }
 
       case 'math': {
+        // \begin{equation} … \end{equation} (amsmath): the environment, as written.
+        if (/^\\begin\{([\w*]+)\}[\s\S]*\\end\{\1\}$/.test(src.trim())) return this.withSid('math_block', { label: '', fence: '\\begin' }, textContent(src.trim()), src);
         if (!src.trimStart().startsWith('$$')) throw new Unsupported();
         return this.withSid('math_block', { label: md.label ?? '' }, textContent(md.value), src);
       }

@@ -128,6 +128,8 @@ class Writer {
 
       case 'math_block': {
         if (node.attrs.directive) return this.directive(node, node.textContent);
+        // An amsmath environment: as it is.
+        if (node.attrs.fence === '\\begin' && /^\\begin\{/.test(node.textContent)) return node.textContent;
         return `$$\n${node.textContent}\n$$${node.attrs.label ? ` (${node.attrs.label})` : ''}`;
       }
 
