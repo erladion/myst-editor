@@ -18,6 +18,8 @@ export interface MystConfig {
   numfig?: boolean;
   // myst_substitutions: what {{ name }} stands for, where it's a string.
   substitutions?: Record<string, string>;
+  // conf.py's extensions, for the directives they bring (sphinx_design, say).
+  sphinxExtensions?: string[];
   // The project's own directives, roles and conditions, from .wysie.toml.
   editor: EditorConfig;
 }
@@ -50,7 +52,15 @@ export function readConfPy(source: string): MystConfig {
   for (const m of source.matchAll(/myst_enable_extensions\s*\.\s*extend\(\s*[[({]([^\])}]*)[\])}]\s*\)/g)) {
     strings(m[1]).forEach((e) => extensions.add(e));
   }
-  return { format: 'myst', extensions: [...extensions], fromConfPy: true, numfig: /^\s*numfig\s*=\s*True\b/m.test(source), substitutions: substitutionsOf(source), editor: EMPTY_EDITOR_CONFIG };
+  return { format: 'myst', extensions: [...extensions], fromConfPy: true, numfig: /^\s*numfig\s*=\s*True\b/m.test(source), substitutions: substitutionsOf(source), sphinxExtensions: sphinxExtensionsOf(source), editor: EMPTY_EDITOR_CONFIG };
+}
+
+// extensions = ["myst_parser", "sphinx_design", ...], and those appended.
+function sphinxExtensionsOf(source: string): string[] {
+  const out = new Set<string>();
+  for (const m of source.matchAll(/^\s*extensions\s*\+?=\s*[[(]([^\])]*)[\])]/gm)) for (const e of m[1].matchAll(/["']([\w.]+)["']/g)) out.add(e[1]);
+  for (const m of source.matchAll(/^\s*extensions\s*\.\s*append\(\s*["']([\w.]+)["']\s*\)/gm)) out.add(m[1]);
+  return [...out];
 }
 
 // myst_substitutions = {"product": "Widget", ...}: its string values.

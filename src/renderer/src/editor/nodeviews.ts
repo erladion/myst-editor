@@ -1,6 +1,7 @@
 // Node views: how MyST constructs look and behave in the editor.
 import type { Node as PMNode } from 'prosemirror-model';
 import { TextSelection } from 'prosemirror-state';
+import { NO_BODY_DIRECTIVES } from '../../../core/myst/parse';
 import type { Decoration, EditorView, NodeView, NodeViewConstructor, ViewMutationRecord } from 'prosemirror-view';
 import { splitDirective } from '../../../core/directive';
 import { loadDocument } from '../../../core/document';
@@ -113,7 +114,7 @@ class DirectiveView implements NodeView {
     const { name, args, options } = this.node.attrs;
     const info = editingFor(this.ctx.config).block(name, this.ctx.config.editor);
     // A picture has no contents to write in.
-    setOwnClass(this.dom, `directive tone-${info.tone} directive-${name}${name === 'image' && !this.node.childCount ? ' directive-no-body' : ''}`);
+    setOwnClass(this.dom, `directive tone-${info.tone} directive-${name}${NO_BODY_DIRECTIVES.has(name) && !this.node.childCount ? ' directive-no-body' : ''}`);
     // Rebuild the header unless only the argument changed while the writer is typing it.
     const key = JSON.stringify([name, options]);
     if (key === this.rendered && this.argInput) {

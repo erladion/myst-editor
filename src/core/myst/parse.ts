@@ -20,7 +20,14 @@ export const MARKDOWN_DIRECTIVES = new Set([
   'versionadded', 'versionchanged', 'deprecated', 'versionremoved',
   'figure', 'table', 'dropdown', 'topic', 'sidebar', 'margin', 'epigraph', 'pull-quote', 'highlights',
   'tab-set', 'tab-item', 'grid', 'grid-item', 'grid-item-card', 'card', 'div', 'container',
+  // sphinx-togglebutton, sphinx-exercise, sphinx-design's buttons.
+  'toggle', 'exercise', 'solution', 'button-ref', 'button-link',
 ]);
+
+// Directives with nothing in them, edited as blocks of their own: a picture, a
+// rubric, sphinx-exercise's markers around an exercise or solution written as the
+// page's own blocks.
+export const NO_BODY_DIRECTIVES = new Set(['image', 'rubric', 'exercise-start', 'exercise-end', 'solution-start', 'solution-end']);
 
 // A footnote definition's last line: it goes on over indented lines (blank lines
 // between them), and lines going on from its paragraph that don't start a block.
@@ -162,7 +169,7 @@ class Context {
         // `+++` block break: the marker line is its own block, children are siblings.
         add({ type: 'blockBreak' }, pos.start.line - 1, pos.start.line - 1);
         (node.children ?? []).forEach(visit);
-      } else if (node.type === 'math' && pos && /^\\begin\{/.test(node.value ?? '')) {
+      } else if (node.type === 'math' && pos && /^\s*\\begin\{/.test(lines[pos.start.line - 1] ?? '')) {
         // An amsmath environment: myst-parser ends it a line early.
         add(node, pos.start.line - 1, pos.start.line - 1 + String(node.value).split('\n').length - 1);
       } else if (pos) {
@@ -385,9 +392,9 @@ class Context {
     if (markdown && d.closing) {
       return this.containerNode('md_directive', { ...common, fence: d.fence }, d.body ?? '', src, d.header.split('\n').length);
     }
-    // A picture: a block of its own, like a figure without a caption (one with content
-    // isn't one Sphinx reads: as written).
-    if (d.name === 'image' && !declared && d.closing && !(d.body ?? '').trim()) {
+    // A picture, a rubric, a marker: a block of its own (one with content isn't one
+    // Sphinx reads: as written).
+    if (NO_BODY_DIRECTIVES.has(d.name) && !declared && d.closing && !(d.body ?? '').trim()) {
       return this.withSid('md_directive', { ...common, fence: d.fence }, [], src);
     }
     if (d.name === 'math' && d.closing && !declared) {

@@ -52,6 +52,11 @@ async function insertFootnote(ctx: EditorContext, run: (cmd: Command) => void) {
   });
 }
 
+// A directive with nothing in it (a rubric): a block of its own.
+export function insertEmptyDirective(ctx: EditorContext, name: string, args: string): Command {
+  return insertBlock(nodes.md_directive.create({ name, args, fence: newDirectiveFence(ctx.config) }), 1);
+}
+
 export function insertDirective(ctx: EditorContext, name: string, args = ''): Command {
   const node = nodes.md_directive.create({ name, args, fence: newDirectiveFence(ctx.config) }, nodes.paragraph.create());
   return insertBlock(node, 2);
@@ -139,6 +144,9 @@ export function mystInserts(ctx: EditorContext): InsertItem[] {
   const asking = (title: string, label: string, insert: (value: string) => Command, more: { placeholder?: string; help?: string } = {}) => (run: (cmd: Command) => void) =>
     void insertAsking(ctx, run, { title, label, insert, ...more });
   const projectDirectives = Object.entries(ctx.config.editor.directives).filter(([, d]) => d.insert);
+  // Whether conf.py loads the extension (or there's no conf.py: all offered).
+  const config = mystConfig(ctx.config);
+  const uses = (ext: string) => !config.fromConfPy || (config.sphinxExtensions ?? []).includes(ext);
   return [
     ...CALLOUT_CHOICES.map((n): InsertItem => {
       const titled = n === 'admonition';
@@ -166,6 +174,21 @@ export function mystInserts(ctx: EditorContext): InsertItem[] {
     { id: 'equation', group: 'Blocks', label: 'Equation', palette: 'Equation', command: insertMath(ctx) },
     { id: 'collapsible', group: 'Blocks', label: 'Dropdown', palette: 'Dropdown', command: insertDirective(ctx, 'dropdown', 'Click to expand') },
     { id: 'divider', group: 'Blocks', label: 'Divider', palette: 'Divider', command: insertDivider },
+    { id: 'rubric', group: 'Text', label: 'Rubric…', palette: 'Rubric…', ask: asking('Insert rubric', 'Text', (v) => insertEmptyDirective(ctx, 'rubric', v), { help: 'A heading that isn’t in the contents.' }) },
+    // Directives of conf.py's extensions.
+    ...(uses('sphinx_togglebutton') ? [{ id: 'toggle', group: 'Blocks' as const, label: 'Toggle', palette: 'Toggle', command: insertDirective(ctx, 'toggle') }] : []),
+    ...(uses('sphinx_exercise')
+      ? [
+          { id: 'exercise', group: 'Blocks' as const, label: 'Exercise', palette: 'Exercise', command: insertDirective(ctx, 'exercise') },
+          { id: 'solution', group: 'Blocks' as const, label: 'Solution…', palette: 'Solution…', ask: asking('Insert solution', 'Exercise', (v) => insertDirective(ctx, 'solution', v), { help: 'The label of the exercise it solves.' }) },
+        ]
+      : []),
+    ...(uses('sphinx_design')
+      ? [
+          { id: 'button-ref', group: 'Inline' as const, label: 'Button to a page…', palette: 'Button to a page…', ask: asking('Insert button', 'Page or label', (v) => insertDirective(ctx, 'button-ref', v)) },
+          { id: 'button-link', group: 'Inline' as const, label: 'Button to a link…', palette: 'Button to a link…', ask: asking('Insert button', 'URL', (v) => insertDirective(ctx, 'button-link', v), { placeholder: 'https://' }) },
+        ]
+      : []),
     { id: 'topic', group: 'Text', label: 'Topic', command: insertDirective(ctx, 'topic', 'Title') },
     { id: 'sidebar', group: 'Text', label: 'Sidebar', command: insertDirective(ctx, 'sidebar', 'Title') },
     {
