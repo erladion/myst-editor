@@ -56,6 +56,14 @@ export interface CardForm {
   source(values: Record<string, string>): string;
 }
 
+export interface Media {
+  kind: 'video' | 'audio';
+  title: string | null;
+  src?: string;
+  site?: string;
+  id?: string;
+}
+
 // Blocks kept as written, shown as cards.
 export interface Cards {
   label(kind: string): string; // a kind of block kept as written, for the writer
@@ -67,6 +75,9 @@ export interface Cards {
   form?(kind: string, source: string): CardForm | null;
   // Links whose address a block's new source changes (a link target's, say): from, to.
   relink?(kind: string, before: string, after: string): [string, string][];
+  // What a directive plays, if it's a video or a sound: a file of the project's (`src`,
+  // as written), or one on a site (YouTube, say: `site`, and its id there).
+  media?(name: string, args: string, source: string): Media | null;
   // One for a directive (a block the format has a name for) shown as a card.
   directiveForm?(name: string, source: string): CardForm | null;
 }

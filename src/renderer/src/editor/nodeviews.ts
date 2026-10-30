@@ -9,7 +9,7 @@ import { loadDocument } from '../../../core/document';
 import type { EditorContext } from './context';
 import { ICONS } from './tones';
 import { splitRoleValue } from '../formats/myst/directives';
-import { editingFor } from '../formats/editing';
+import { editingFor, type Media } from '../formats/editing';
 import { renderMath } from './math';
 import { describe, markersOf, parseCondition, unknownNames } from '../../../core/conditions';
 import { condStripes, conditionColor, conditionsKey, exprVisible, removeCondition, tocConditionsOf } from './conditions';
@@ -489,6 +489,19 @@ class OpaqueDirectiveView extends CardView {
     return { items, conditional };
   }
 
+  // A video or a sound: its player, for a file of the project's; what it is, for one on a site.
+  private renderMedia(media: Media) {
+    const label = el('span', { class: 'card-label' }, media.kind === 'video' ? 'Video' : 'Audio');
+    const title = media.title ? [el('span', { class: 'muted' }, media.title)] : [];
+    if (!media.src) {
+      const what = `${media.kind === 'video' ? 'A video' : 'A recording'} on ${media.site}: ${media.id}`;
+      return this.card(`card-directive card-media`, [label, ...title], [el('div', { class: 'card-note' }, what, el('br'), 'It plays in the built page.')]);
+    }
+    const player = el(media.kind, { class: 'card-player', src: this.ctx.assetUrl(media.src), controls: '', preload: 'metadata' });
+    player.addEventListener('error', () => player.replaceWith(el('div', { class: 'missing' }, `Can’t play ${media.src}: not found, or not a video or sound`)));
+    return this.card(`card-directive card-media`, [label, el('code', {}, media.src), ...title], [el('div', { class: 'card-media-preview' }, player)]);
+  }
+
   // The file's lines it shows, as Sphinx picks them (its options), numbered if it says so.
   private renderLiteralInclude() {
     const { args, options, source } = this.node.attrs as { args: string; options: [string, string][]; source: string };
@@ -537,6 +550,9 @@ class OpaqueDirectiveView extends CardView {
     }
 
     if (name === 'literalinclude') return this.renderLiteralInclude();
+
+    const media = editingFor(this.ctx.config).cards.media?.(name, args, source);
+    if (media) return this.renderMedia(media);
 
     if (name === 'toctree') {
       const caption = options.find(([k]: string[]) => k === 'caption')?.[1];

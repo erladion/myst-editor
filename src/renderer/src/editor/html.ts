@@ -12,7 +12,7 @@ const ALLOWED = new Set([
   'a', 'abbr', 'b', 'blockquote', 'br', 'caption', 'cite', 'code', 'dd', 'del', 'details', 'div', 'dl', 'dt', 'em',
   'figcaption', 'figure', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'i', 'img', 'ins', 'kbd', 'li', 'mark', 'ol', 'p',
   'pre', 'q', 's', 'samp', 'small', 'span', 'strike', 'strong', 'sub', 'summary', 'sup', 'table', 'tbody', 'td',
-  'tfoot', 'th', 'thead', 'tr', 'u', 'ul', 'var',
+  'tfoot', 'th', 'thead', 'tr', 'u', 'ul', 'var', 'video', 'audio', 'source',
 ]);
 const DROPPED = new Set(['script', 'style', 'iframe', 'object', 'embed', 'noscript', 'template', 'form', 'input', 'button', 'select', 'textarea', 'link', 'meta', 'base', 'svg', 'math']);
 const ATTRIBUTES: Record<string, string[]> = {
@@ -24,6 +24,10 @@ const ATTRIBUTES: Record<string, string[]> = {
   li: ['value'],
   abbr: ['title'],
   details: ['open'],
+  // Players, with their controls; never playing by themselves.
+  video: ['src', 'poster', 'width', 'height'],
+  audio: ['src'],
+  source: ['src', 'type'],
 };
 
 // `html` as DOM nodes holding only allowed elements and attributes: no scripts,
@@ -55,7 +59,11 @@ export function safeHtml(html: string, assetUrl: (src: string) => string): Docum
           if (/^(https?:|mailto:|#|[\w./-]+$)/i.test(value.trim())) el.setAttribute('title', value);
           continue;
         }
-        el.setAttribute(attr, attr === 'src' ? assetUrl(value) : value);
+        el.setAttribute(attr, attr === 'src' || attr === 'poster' ? assetUrl(value) : value);
+      }
+      if (name === 'video' || name === 'audio') {
+        el.setAttribute('controls', '');
+        el.setAttribute('preload', 'metadata');
       }
       if (name === 'a') el.className = 'html-link';
       copy(child, el);

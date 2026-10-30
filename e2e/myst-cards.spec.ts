@@ -1,6 +1,6 @@
 // MyST blocks shown as cards, and the forms they're edited with: a toctree, link
 // targets, a literalinclude's lines, code tabs, definition lists of blocks, stub
-// columns, and values over lines in front matter.
+// columns, a video, and values over lines in front matter.
 import { expect, test } from '@playwright/test';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -43,6 +43,9 @@ Term
   - one
   - two
 
+\`\`\`{video} media/missing.mp4
+\`\`\`
+
 \`\`\`{list-table}
 :stub-columns: 1
 
@@ -83,6 +86,7 @@ test('shows each as what it is', async () => {
   await expect(page.locator('.directive-tab-set-code pre')).toContainText('print("hi")');
   await expect(page.locator('.prose dd li')).toHaveText(['one', 'two']);
   await expect(page.locator('.prose table.stub-columns-1 td').first()).toHaveCSS('font-weight', '600');
+  await expect(page.locator('.card-media')).toContainText('Can’t play media/missing.mp4');
   expect(file()).toBe(PAGE);
 });
 

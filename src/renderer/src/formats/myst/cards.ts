@@ -50,5 +50,7 @@ export const mystCards: Cards = {
     const now = urls(after);
     return [...urls(before)].flatMap(([label, url]) => (now.has(label) && now.get(label) !== url ? [[url, now.get(label)!] as [string, string]] : []));
   },
+  // sphinxcontrib-video's {video} and {audio}: a file, by its path from the page.
+  media: (name, args) => ((name === 'video' || name === 'audio') && args && !/^https?:/.test(args) ? { kind: name, title: null, src: args } : null),
   directiveForm: (name, source) => (name === 'toctree' ? toctreeForm(source) : null),
 };

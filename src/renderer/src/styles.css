@@ -3845,3 +3845,17 @@ kbd {
   font-weight: 600;
   background: var(--bg-soft);
 }
+
+/* A video's or a sound's card: its player. */
+.card-media-preview {
+  padding: 4px 12px 10px;
+}
+
+.card-player {
+  display: block;
+  max-width: 100%;
+}
+
+video.card-player {
+  max-height: 320px;
+}
