@@ -18,7 +18,7 @@ export const plainError = (e: unknown) => String(e instanceof Error ? e.message 
 export function landingPage(info: ProjectInfo): string | null {
   const { files, projects } = info;
   return (
-    projects.map((p) => files.find((f) => dirname(f) === p.dir && isIndexPage(f))).find((f) => f) ??
+    projects.map((p) => (p.home && files.includes(p.home) ? p.home : files.find((f) => dirname(f) === p.dir && isIndexPage(f)))).find((f) => f) ??
     files.find((f) => !f.includes('/') && isIndexPage(f)) ??
     files.find(isIndexPage) ??
     files[0] ??

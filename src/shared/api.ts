@@ -19,6 +19,7 @@ export interface Project {
   dir: string; // source directory relative to the opened folder ('' for the folder itself)
   sourceDir: string; // absolute
   marker: string; // the file that makes it a project, relative to the opened folder
+  home?: string; // the page to show first, relative to the opened folder, when it isn't the folder's index page
   config: PageConfig;
 }
 
