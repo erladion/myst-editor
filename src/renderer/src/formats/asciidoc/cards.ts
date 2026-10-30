@@ -2,6 +2,7 @@
 // they look as Asciidoctor renders them.
 import { safeHtml } from '../../editor/html';
 import { blockAttributesForm, blockAttributesPreview, entriesForm, entriesPreview } from './attributes';
+import { BLOCK_MACRO, isTitleLine, parseAttrlist } from '../../../../core/asciidoc/syntax';
 import type { Cards } from '../editing';
 
 const LABELS: Record<string, string> = {
@@ -73,7 +74,20 @@ function preprocessorForm(source: string) {
   };
 }
 
+const SITES: Record<string, string> = { youtube: 'YouTube', vimeo: 'Vimeo', wistia: 'Wistia' };
+
 export const asciidocCards: Cards = {
+  // video::file.mp4[], video::id[youtube], audio::file.wav[]; a .Title above.
+  media(name, _args, source) {
+    if (name !== 'video' && name !== 'audio') return null;
+    const lines = source.split('\n');
+    const m = BLOCK_MACRO.exec(lines[lines.length - 1]);
+    if (!m) return null;
+    const title = lines.find(isTitleLine)?.slice(1).trim() ?? null;
+    const site = SITES[(parseAttrlist(m[3])?.style ?? '').toLowerCase()];
+    if (site) return { kind: 'video', title, site, id: m[2] };
+    return /^[a-z][\w+.-]*:/i.test(m[2]) ? { kind: name, title, site: /^[a-z][\w+.-]*:\/\/([^/]+)/i.exec(m[2])?.[1] ?? 'the web', id: m[2] } : { kind: name, title, src: m[2] };
+  },
   label: (kind) => LABELS[kind] ?? 'AsciiDoc',
   editTitle: (name) => `Edit ${name}:: block`,
   comment: (source) => source.replace(/^\/{4,}[ \t]*$/gm, '').replace(/^\/\/ ?/gm, '').trim(),
