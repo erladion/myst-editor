@@ -40,8 +40,8 @@ test('shows an AsciiDoc page as formatted content, and leaves it as it is', asyn
   await expect(page.locator('.prose ol li')).toHaveCount(2);
   await expect(page.locator('.code-block code')).toHaveText('./install.sh');
   await expect(page.locator('.code-block .code-lang')).toHaveValue('bash');
-  await expect(page.locator('.prose table th')).toHaveText(['System', 'Version']);
-  await expect(page.locator('.prose table td').first()).toHaveText('Linux');
+  await expect(page.locator('.prose table:not(.field-list) th')).toHaveText(['System', 'Version']);
+  await expect(page.locator('.prose table:not(.field-list) td').first()).toHaveText('Linux');
   // A definition list: terms and what they mean.
   await expect(page.locator('.prose dt')).toHaveText(['CPU', 'Memory']);
   await expect(page.locator('.prose dd')).toHaveText(['Any 64-bit processor', '4 GB']);
