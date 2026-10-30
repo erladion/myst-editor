@@ -83,7 +83,12 @@ const titleOf = (title: unknown) => (title === undefined || title === null || ti
 // The files a page includes, relative to the project, in order. In an Antora
 // component, resources (partial$note.adoc) are the module's.
 function includesOf(page: string, text: string, antora: Antora | null): string[] {
-  return [...text.matchAll(/^include::([^\s[]+)\[/gm)].map((m) => (antora && /\$/.test(m[1]) ? (resolveResource(antora, page, m[1], 'partial')?.file ?? m[1]) : join(dirname(page), m[1]).split(sep).join('/')));
+  return [...text.matchAll(/^include::([^\s[]+)\[/gm)].map((m) => includeTarget(page, m[1], antora));
+}
+
+// The file an include names, relative to the project.
+function includeTarget(page: string, target: string, antora: Antora | null): string {
+  return antora && /\$/.test(target) ? (resolveResource(antora, page, target, 'partial')?.file ?? target) : join(dirname(page), target).split(sep).join('/');
 }
 
 // What's used of Asciidoctor's blocks here.
@@ -93,29 +98,63 @@ interface Node {
   getLineNumber?(): number | undefined;
   getSourceLocation?(): { getFile?(): string } | undefined;
   addRole?(name: string): boolean;
+  getLevel?(): number;
+  getId?(): string;
+  getTitle?(): string;
   convert(): Promise<string>;
 }
 
+// The most an include's preview shows (a whole book's chapter can be a lot).
+const MAX_FRAGMENT = 300_000;
+
+// What an include brought into a page, for its card: blocks, and its sections' headings.
+type Included = { block: Node } | { heading: string };
+
 // Each block written in the page gets its line as a class (mysteditor-line-N), as
 // Sphinx's do, for the preview to follow the editor; and the page's blocks (those of
-// its sections) their HTML, for cards: what blocks start on which lines.
-function markLines(doc: Node, own: (file: string | undefined) => boolean): { block: Node; line: number }[] {
+// its sections) their HTML, for cards: what blocks start on which lines. What an
+// include brings in is its include's (`includeAt`: the line of the include that
+// brought a file's blocks in, after the page's own block on line `after`): its first
+// block gets the include's line, and its card all of it.
+function markLines(doc: Node, own: (file: string | undefined) => boolean, includeAt: (file: string | undefined, after: number) => number | null) {
   const fragments: { block: Node; line: number }[] = [];
-  const visit = (parent: Node, outer: boolean) => {
+  const included = new Map<number, Included[]>();
+  let lastOwn = 0;
+  const visit = (parent: Node, outer: boolean, group: number | null) => {
     for (const child of parent.getBlocks()) {
       if (!child || typeof child !== 'object' || !('getContext' in child)) continue;
       const block = child as Node;
       const line = block.getLineNumber?.();
-      if (line && own(block.getSourceLocation?.()?.getFile?.())) {
-        block.addRole?.(`mysteditor-line-${line}`);
-        if (outer && block.getContext() !== 'section' && block.getContext() !== 'preamble') fragments.push({ block, line });
-      }
+      const file = block.getSourceLocation?.()?.getFile?.();
       const context = block.getContext();
-      visit(block, outer && (context === 'section' || context === 'preamble'));
+      const sectionish = context === 'section' || context === 'preamble';
+      if (line && own(file)) {
+        block.addRole?.(`mysteditor-line-${line}`);
+        lastOwn = line;
+        if (outer && !sectionish) fragments.push({ block, line });
+        visit(block, outer && sectionish, null);
+        continue;
+      }
+      const at = outer ? (group ?? includeAt(file, lastOwn)) : null;
+      if (at === null) {
+        visit(block, outer && sectionish, group);
+        continue;
+      }
+      let parts = included.get(at);
+      if (!parts) {
+        included.set(at, (parts = []));
+        block.addRole?.(`mysteditor-line-${at}`);
+      }
+      if (context === 'section') {
+        const h = (block.getLevel?.() ?? 1) + 1;
+        parts.push({ heading: `<h${h}${block.getId?.() ? ` id="${block.getId()}"` : ''}>${block.getTitle?.() ?? ''}</h${h}>` });
+      }
+      if (sectionish) visit(block, true, at);
+      else parts.push({ block });
     }
   };
-  visit(doc, true);
-  return fragments;
+  visit(doc, true, null);
+  return { fragments, included };
 }
 
 export function buildAsciidoctor(project: Project, outputDir: string, request: BuildRequest = {}): Promise<BuildOutcome> {
@@ -225,11 +264,29 @@ async function build(project: Project, outputDir: string, { previous, changed = 
         options = { attributes: { ...attributes, ...(imagesdir !== null ? { imagesdir } : {}), ...own } };
       }
       const doc = await loadFile(file, { safe: 'safe', sourcemap: true, base_dir: project.sourceDir, ...options });
-      const blocks = markLines(doc as unknown as Node, (f) => fileOf(f) === page);
+      // The page's includes, by line, and the file each brings in.
+      const direct = (texts.get(page) ?? '').split('\n').flatMap((l, i) => {
+        const m = /^include::([^\s[]+)\[/.exec(l);
+        return m ? [{ line: i + 1, file: includeTarget(page, m[1], antora) }] : [];
+      });
+      const reaches = (from: string, to: string, seen = new Set<string>()): boolean => from === to || includes(from).some((f) => !seen.has(f) && (seen.add(f), reaches(f, to, seen)));
+      const includeAt = (f: string | undefined, after: number) => {
+        if (!f) return null;
+        const rel = relative(project.sourceDir, resolve(f)).split(sep).join('/');
+        const candidates = direct.filter((d) => reaches(d.file, rel));
+        return (candidates.find((d) => d.line > after) ?? candidates[candidates.length - 1])?.line ?? null;
+      };
+      const { fragments: blocks, included } = markLines(doc as unknown as Node, (f) => fileOf(f) === page, includeAt);
       const html = (await doc.convert({ standalone: true })) as string;
       // (After the page: converting a block on its own first would count its footnotes twice.)
       const fragments = [];
       for (const b of blocks) fragments.push({ line: b.line, html: await b.block.convert() });
+      for (const [line, parts] of included) {
+        let html = '';
+        for (const part of parts) html += 'heading' in part ? part.heading : await part.block.convert();
+        if (html.length <= MAX_FRAGMENT) fragments.push({ line, html });
+      }
+      fragments.sort((a, b) => a.line - b.line);
       await fs.mkdir(dirname(out), { recursive: true });
       await fs.writeFile(out, html);
       // Its blocks one by one, for cards' previews (see sphinx/fragments.ts).

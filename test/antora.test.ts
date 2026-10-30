@@ -111,6 +111,9 @@ describe('an Antora component', () => {
     expect(index).toContain('<a href="../../admin/pages/users.html#roles">the roles</a>');
     expect(index).toContain('<img src="../images/logo.svg" alt="Logo">');
     expect(index).toContain('Mail <a href="mailto:help@example.com">');
+    // The partial's card: what it brings in.
+    const cards = JSON.parse(readFileSync(join(out, '_mysteditor/fragments/modules/ROOT/pages/index.json'), 'utf8')).fragments;
+    expect(cards).toContainEqual({ line: 7, html: expect.stringContaining('Mail <a href="mailto:help@example.com">') });
     const install = readFileSync(join(out, 'modules/ROOT/pages/install.html'), 'utf8');
     expect(install).toContain('src="../../admin/images/shield.svg"');
     expect(install).toContain('curl example.com | sh');

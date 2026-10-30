@@ -69,6 +69,14 @@ describe('an Asciidoctor project', () => {
     const fragments = JSON.parse(readFileSync(join(out, '_mysteditor/fragments/chapters/one.json'), 'utf8'));
     expect(fragments.uri).toBe('chapters/one.html');
     expect(fragments.fragments).toContainEqual({ line: 6, html: expect.stringContaining('About Widget') });
+    // An include's card: all it brings in (headings too), each include its own.
+    const cards = JSON.parse(readFileSync(join(out, '_mysteditor/fragments/index.json'), 'utf8')).fragments as { line: number; html: string }[];
+    const one = cards.find((f) => f.line === 4)!.html;
+    expect(one).toMatch(/<h2[^>]*>Chapter One<\/h2>/);
+    expect(one).toContain('About Widget');
+    expect(one).not.toContain('Chapter Two');
+    expect(cards.find((f) => f.line === 6)!.html).toContain('Chapter Two');
+    expect(readFileSync(join(out, 'index.html'), 'utf8')).toMatch(/class="[^"]*mysteditor-line-4/);
   });
 
   it('builds again only what a change affects', async () => {

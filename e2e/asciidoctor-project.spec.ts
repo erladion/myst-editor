@@ -32,6 +32,11 @@ test('builds the book: its contents, references and preview', async () => {
   // {product}, as the main document's header sets it.
   await expect(page.locator('.prose .role-value')).toHaveText('Widget');
   await expect(page.locator('.prose p').first()).toHaveText('Intro to Widget.');
+  // An include's card: the chapter it brings in, as built.
+  const card = page.locator('.card-directive', { hasText: 'chapters/install.adoc' });
+  const included = card.frameLocator('iframe.card-preview:not(.card-preview-next)');
+  await expect(included.locator('h2').first()).toHaveText('Installing');
+  await expect(included.getByText('You need a computer.')).toBeVisible();
   // The chapters under the book, in their includes' order.
   await expect(page.locator('.sidebar .page')).toContainText(['Widget Book', 'Installing', 'Using']);
   await page.getByRole('button', { name: 'Using', exact: true }).click();
