@@ -11,6 +11,7 @@ import { nodeViews } from '../editor/nodeviews';
 import { createEditorState } from '../editor/setup';
 import { setConditionView } from '../editor/conditions';
 import { locatePreviews, setPreviews, type PreviewBuild } from '../editor/previews';
+import { editingFor } from '../formats/editing';
 
 interface Props {
   text: string;
@@ -35,7 +36,7 @@ export function LivePreview({ text, ctx, savedText, build, viewAs, line, onPick 
     const first = loadDocument(text, ctx.config);
     parsed.current = first;
     const view = new EditorView(host.current!, {
-      state: createEditorState(first.doc),
+      state: createEditorState(first.doc, editingFor(ctx.config).cells),
       editable: () => false,
       nodeViews: nodeViews(ctx),
       attributes: { class: 'prose', 'aria-label': 'Live preview', role: 'document' },
@@ -67,7 +68,7 @@ export function LivePreview({ text, ctx, savedText, build, viewAs, line, onPick 
       if (!view) return;
       const next = loadDocument(text, ctx.config);
       parsed.current = next;
-      view.updateState(createEditorState(next.doc));
+      view.updateState(createEditorState(next.doc, editingFor(ctx.config).cells));
       view.dispatch(setConditionView(view.state.tr, ctx.config.editor.conditions, viewAs));
       view.dispatch(setPreviews(view.state.tr, locatePreviews(view.state.doc, savedText, ctx.config, build)));
     }, PARSE_DELAY_MS);

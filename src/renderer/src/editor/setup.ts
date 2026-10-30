@@ -18,7 +18,7 @@ import { problemsPlugin } from './problems';
 import { valePlugin } from './vale';
 import { conditionsPlugin } from './conditions';
 import { previewsPlugin } from './previews';
-import { tablePlugins } from './tables';
+import { tablePlugins, type CellKind } from './tables';
 
 const { nodes, marks } = schema;
 
@@ -136,13 +136,14 @@ const syncSelectionOnKey = new Plugin({
 import { inlineHtmlPlugin } from './html';
 import { findPlugin } from './find';
 
-export function createEditorState(doc: PMNode): EditorState {
+// `cells`: how the page's format has table cells (see tables.ts).
+export function createEditorState(doc: PMNode, cells: CellKind = 'line'): EditorState {
   return EditorState.create({
     doc,
     plugins: [
       syncSelectionOnKey,
       // Before the general keymap, so Tab and Enter move between cells in tables.
-      ...tablePlugins,
+      ...tablePlugins(cells),
       rules,
       keys,
       keymap(baseKeymap),

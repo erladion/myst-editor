@@ -886,6 +886,34 @@ button.toc-toggle:hover {
   margin-top: 0.25em;
 }
 
+/* Callouts: numbered as the marks in the code above them are. */
+.prose ol.callout-list {
+  list-style: none;
+  counter-reset: callout;
+  padding-left: 2em;
+}
+
+.prose ol.callout-list > li {
+  counter-increment: callout;
+  position: relative;
+}
+
+.prose ol.callout-list > li::before {
+  content: counter(callout);
+  position: absolute;
+  left: -1.8em;
+  top: 0.15em;
+  width: 1.35em;
+  height: 1.35em;
+  border-radius: 50%;
+  background: var(--fg);
+  color: var(--bg);
+  font-size: 0.8em;
+  font-weight: 600;
+  line-height: 1.35em;
+  text-align: center;
+}
+
 .prose hr {
   border: none;
   border-top: 1px solid var(--border);
@@ -2191,6 +2219,16 @@ button.danger-text {
 .prose td p,
 .prose th p {
   margin: 0;
+}
+
+/* A cell holding blocks: paragraphs apart, as on the page. */
+.prose .cell-blocks > * + * {
+  margin-top: 0.5em;
+}
+
+.prose .cell-blocks {
+  border-left: 2px solid var(--accent-soft);
+  padding-left: 6px;
 }
 
 /* prosemirror-tables: selected cells */

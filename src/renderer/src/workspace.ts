@@ -5,6 +5,7 @@ import type { SourceMap } from '../../core/sourcemap';
 import type { MystApi, ProjectInfo } from '../../shared/api';
 import { configFor } from '../../shared/projects';
 import { createEditorState } from './editor/setup';
+import { editingFor } from './formats/editing';
 
 export type SaveStatus =
   | { kind: 'saved' }
@@ -169,8 +170,9 @@ export class Workspace {
   // `eol`: keep this line ending instead of the text's own (text from the Markdown view
   // has plain \n).
   private load(path: string, text: string, eol = lineEnding(text)): Session {
-    const { doc, map } = loadDocument(toLf(text), configFor(this.project, path));
-    return { path, state: createEditorState(doc), map, savedText: text, dirty: false, status: { kind: 'saved' }, text: null, eol };
+    const config = configFor(this.project, path);
+    const { doc, map } = loadDocument(toLf(text), config);
+    return { path, state: createEditorState(doc, editingFor(config).cells), map, savedText: text, dirty: false, status: { kind: 'saved' }, text: null, eol };
   }
 
   update(path: string, state: EditorState, docChanged: boolean) {

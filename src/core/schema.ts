@@ -54,11 +54,14 @@ const own = (name: string, extra: Partial<TagParseRule> = {}): TagParseRule => (
 function cellSpec(tag: 'td' | 'th', tableRole: string): NodeSpec {
   return {
     // Markdown table cells hold inline content only; several paragraphs (e.g. after
-    // merging cells) are joined when written.
-    content: 'paragraph+',
+    // merging cells) are joined when written. A format whose cells can hold other
+    // blocks has them in a cell_blocks (an AsciiDoc cell of style a).
+    content: '(paragraph | cell_blocks)+',
     tableRole,
     isolating: true,
-    attrs: { colspan: { default: 1 }, rowspan: { default: 1 }, colwidth: { default: null }, align: { default: null } },
+    // `style`: what a format writes in the cell's spec beyond its span and alignment,
+    // as written (AsciiDoc's style letter and vertical alignment: "a", ".^m").
+    attrs: { colspan: { default: 1 }, rowspan: { default: 1 }, colwidth: { default: null }, align: { default: null }, style: { default: null as string | null } },
     parseDOM: [
       {
         tag,
@@ -69,6 +72,7 @@ function cellSpec(tag: 'td' | 'th', tableRole: string): NodeSpec {
             colspan: Number(el.getAttribute('colspan') ?? 1) || 1,
             rowspan: Number(el.getAttribute('rowspan') ?? 1) || 1,
             align: ['left', 'center', 'right'].includes(align ?? '') ? align : null,
+            style: el.getAttribute('data-cell-style'),
           };
         },
       },
@@ -78,6 +82,7 @@ function cellSpec(tag: 'td' | 'th', tableRole: string): NodeSpec {
       if (node.attrs.colspan > 1) attrs.colspan = String(node.attrs.colspan);
       if (node.attrs.rowspan > 1) attrs.rowspan = String(node.attrs.rowspan);
       if (node.attrs.align) attrs.style = `text-align: ${node.attrs.align}`;
+      if (node.attrs.style) attrs['data-cell-style'] = node.attrs.style;
       return [tag, attrs, 0];
     },
   };
@@ -126,6 +131,8 @@ const nodes: Record<string, NodeSpec> = {
   ordered_list: {
     group: 'block',
     content: 'list_item+',
+    // `delim`: what follows its numbers ("." or ")"); "<>" for a list of callouts
+    // (AsciiDoc's <1>, notes on the lines of a code block marked so).
     attrs: { ...sid, start: { default: 1 }, delim: { default: '.' }, tight: { default: true }, repeat: { default: false } },
     parseDOM: [
       {
@@ -137,7 +144,7 @@ const nodes: Record<string, NodeSpec> = {
         },
       },
     ],
-    toDOM: (node) => ['ol', dataAttrs(node, node.attrs.start === 1 ? {} : { start: String(node.attrs.start) }), 0],
+    toDOM: (node) => ['ol', dataAttrs(node, { ...(node.attrs.start === 1 ? {} : { start: String(node.attrs.start) }), ...(node.attrs.delim === '<>' ? { class: 'callout-list' } : {}) }), 0],
   },
 
   // `marker` is the item's original marker ("-", "3.", ...) and `pad` the spaces
@@ -294,6 +301,13 @@ const nodes: Record<string, NodeSpec> = {
   },
   table_cell: cellSpec('td', 'cell'),
   table_header: cellSpec('th', 'header_cell'),
+  // The blocks of a cell that holds more than text (lists, code, notes).
+  cell_blocks: {
+    content: 'block+',
+    defining: true,
+    parseDOM: [{ tag: 'div.cell-blocks' }],
+    toDOM: () => ['div', { class: 'cell-blocks' }, 0],
+  },
 
   text: { group: 'inline' },
 

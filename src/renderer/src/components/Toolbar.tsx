@@ -13,7 +13,7 @@ import { canConditionRows, conditionColor, conditionKind, makeConditional, remov
 import type { ConditionsDef } from '../../../core/editor-config';
 import {
   addColumnAfter, addColumnBefore, addRowAfter, addRowBefore, alignColumn, columnAlign, deleteColumn, deleteRow, deleteTable,
-  insertTable, isInTable, mergeCells, splitCell, tableOf,
+  holdsBlocks, insertTable, isInTable, mergeCells, splitCell, tableOf, toggleCellBlocks,
 } from '../editor/tables';
 
 // The selected table rows' condition: edit the one they're in, or put them in one.
@@ -259,6 +259,15 @@ export function Toolbar({ view, ctx, onMarkdown, previewAvailable, previewOpen, 
           <span className="tb-hint" title="Set colspan_role and rowspan_role under [tables] in .mysteditor.toml to write merged cells the way your project's extension expects">
             Merging cells needs span roles in .mysteditor.toml
           </span>
+        )}
+        {editingFor(ctx.config).cells === 'blocks' && (
+          <Btn
+            label="Blocks in cell"
+            title="Let the cell hold lists, code and notes, not just text (or only text again, when it's only paragraphs)"
+            cmd={toggleCellBlocks}
+            active={!!state && holdsBlocks(state)}
+            wide
+          />
         )}
         {ctx.config.editor.conditions && (
           <>

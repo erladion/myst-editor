@@ -66,7 +66,7 @@ function clean(node: Json): Json {
   if (node.content) {
     let content = node.content.map(clean);
     // A table cell's paragraphs are written as one line, so they read back as one.
-    if ((node.type === 'table_cell' || node.type === 'table_header') && content.length > 1) {
+    if ((node.type === 'table_cell' || node.type === 'table_header') && content.length > 1 && content.every((c) => c.type === 'paragraph')) {
       const joined: Json[] = [];
       content.forEach((p, i) => {
         if (i > 0 && p.content?.length && joined.length) joined.push({ type: 'text', text: ' ' });

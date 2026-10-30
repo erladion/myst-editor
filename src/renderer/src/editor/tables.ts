@@ -1,5 +1,6 @@
-// Editing GFM tables: cell navigation, keeping cells in the shape Markdown can store,
-// and the commands behind the table toolbar.
+// Editing tables: cell navigation, keeping cells in the shape the page's format can
+// store (Markdown's: a line each, aligned as their column), and the commands behind
+// the table toolbar.
 import type { Node as PMNode } from 'prosemirror-model';
 import { Plugin, TextSelection, type Command, type EditorState, type Transaction } from 'prosemirror-state';
 import { keymap } from 'prosemirror-keymap';
@@ -25,9 +26,17 @@ const { nodes } = schema;
 
 export { addColumnAfter, addColumnBefore, addRowAfter, addRowBefore, deleteColumn, deleteRow, deleteTable, isInTable, mergeCells, splitCell };
 
+// Whether the selection is among a cell's blocks (where keys do what they do outside
+// tables).
+const inCellBlocks = (state: EditorState) => {
+  const { $from } = state.selection;
+  for (let d = $from.depth; d > 0; d--) if ($from.node(d).type === nodes.cell_blocks) return true;
+  return false;
+};
+
 // Enter: to the same column in the next row, adding a row at the bottom.
 const nextRow: Command = (state, dispatch) => {
-  if (!isInTable(state)) return false;
+  if (!isInTable(state) || inCellBlocks(state)) return false;
   const rect = selectedRect(state);
   let tr = state.tr;
   if (rect.bottom >= rect.map.height) addRowAfter(state, (t) => (tr = t));
@@ -40,7 +49,7 @@ const nextRow: Command = (state, dispatch) => {
 };
 
 // A line break can't be written inside a Markdown table cell.
-const noBreakInCell: Command = (state) => isInTable(state);
+const noBreakInCell: Command = (state) => isInTable(state) && !inCellBlocks(state);
 
 export const tableKeys = keymap({
   Tab: goToNextCell(1),
@@ -115,7 +124,42 @@ function normalizeTable(tr: Transaction, table: PMNode, tablePos: number): Trans
   return tr;
 }
 
-export const tablePlugins = [tableEditing(), tableKeys, normalizeCells];
+// How a format's cells are: a line each, aligned as their column (Markdown's); or
+// paragraphs, or blocks, aligned on their own.
+export type CellKind = 'line' | 'blocks';
+
+export const tablePlugins = (cells: CellKind = 'line') => [tableEditing(), tableKeys, ...(cells === 'line' ? [normalizeCells] : [])];
+
+// The cell the selection is in, if it's one: its position and node.
+function cellAt(state: EditorState): { pos: number; node: PMNode } | null {
+  const { $from } = state.selection;
+  for (let d = $from.depth; d > 0; d--) {
+    const node = $from.node(d);
+    if (node.type === nodes.table_cell || node.type === nodes.table_header) return { pos: $from.before(d), node };
+  }
+  return null;
+}
+
+// Whether the cell the selection is in holds blocks.
+export function holdsBlocks(state: EditorState): boolean {
+  return !!cellAt(state)?.node.firstChild && cellAt(state)!.node.firstChild!.type === nodes.cell_blocks;
+}
+
+// A cell holding blocks (lists, code, notes), or only text again: its paragraphs go
+// in, or come out when they're all it has.
+export const toggleCellBlocks: Command = (state, dispatch) => {
+  const cell = cellAt(state);
+  if (!cell) return false;
+  const inner: PMNode[] = [];
+  cell.node.forEach((c) => (c.type === nodes.cell_blocks ? c.forEach((b) => inner.push(b)) : inner.push(c)));
+  const blocks = cell.node.firstChild?.type === nodes.cell_blocks;
+  if (blocks && inner.some((b) => b.type !== nodes.paragraph)) return false;
+  if (!dispatch) return true;
+  const content = blocks ? inner : [nodes.cell_blocks.create(null, inner)];
+  const tr = state.tr.replaceWith(cell.pos + 1, cell.pos + cell.node.nodeSize - 1, content);
+  dispatch(tr.setSelection(TextSelection.near(tr.doc.resolve(cell.pos + 2))).scrollIntoView());
+  return true;
+};
 
 // Set the alignment of the column the selection is in.
 export function alignColumn(align: 'left' | 'center' | 'right' | null): Command {

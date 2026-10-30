@@ -179,7 +179,11 @@ class Writer {
       const written = this.fresh ? undefined : this.map.cellSource(cell);
       if (written !== undefined) return written;
       const parts: string[] = [];
-      cell.forEach((p) => parts.push(inlineMarkdown(p, this.map.style, true).replace(/\n/g, ' ')));
+      // Its paragraphs (and the text of blocks pasted in from another format's cell).
+      cell.descendants((p) => {
+        if (p.isTextblock) parts.push(inlineMarkdown(p, this.map.style, true).replace(/\n/g, ' '));
+        return !p.isTextblock;
+      });
       const content = parts.filter(Boolean).join(' ').replace(/\|/g, '\\|');
       return [role(this.tableSpans.colspan, cell.attrs.colspan), role(this.tableSpans.rowspan, cell.attrs.rowspan), content].filter(Boolean).join(' ');
     };
@@ -234,7 +238,8 @@ class Writer {
     const tight: boolean = node.attrs.tight;
     const own = (node.firstChild?.attrs.marker as string | null) ?? (ordered ? `1${node.attrs.delim}` : node.attrs.bullet);
     const bullet = swap && !ordered ? (own.trim() === '-' ? '*' : '-') : null;
-    const delim = swap && ordered ? (own.trim().endsWith(')') ? '.' : ')') : node.attrs.delim;
+    // (Another format's callouts, pasted in: numbered.)
+    const delim = swap && ordered ? (own.trim().endsWith(')') ? '.' : ')') : node.attrs.delim === ')' ? ')' : '.';
     let out = '';
     let number = ordered ? node.attrs.start - 1 : 0;
     node.forEach((item, _off, i) => {

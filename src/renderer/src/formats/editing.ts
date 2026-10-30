@@ -101,6 +101,9 @@ export interface EditingFormat {
   images?: Images;
   // The option that names a figure or a table, for cross-references: "name" if not said.
   nameOption?: string;
+  // How its table cells are: a line of text each, aligned as their column ('line',
+  // Markdown's, if not said); or paragraphs, or blocks, aligned on their own.
+  cells?: 'line' | 'blocks';
 }
 
 const FORMATS: Record<PageConfig['format'], EditingFormat> = { myst: mystEditing };
