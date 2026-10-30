@@ -50,3 +50,12 @@ describe('an edit', () => {
     expect(typed(text, 'wide')).toBe(text.replace('wide', 'wideX'));
   });
 });
+
+describe('an autolink', () => {
+  it('is written as its address, nothing in it escaped', () => {
+    const text = 'See <inv:sphinx:*:doc#index> here.\n';
+    const { doc, map } = loadDocument(text, DEFAULT_CONFIG);
+    expect(saveDocument(doc, map, DEFAULT_CONFIG).text).toBe(text);
+    expect(typed(text, 'here')).toBe('See <inv:sphinx:*:doc#index> hereX.\n');
+  });
+});

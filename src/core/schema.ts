@@ -28,6 +28,13 @@ export const directiveAttrs = {
 
 const DATA = 'data-myst';
 
+// A table's caption, from what's written with it: a {list-table}'s argument, or an
+// AsciiDoc title line (.Title).
+function tableCaption(header: unknown): string | null {
+  if (typeof header !== 'string') return null;
+  return /^\s*(?:`{3,}|~{3,}|:{3,})\{list-table\}[ \t]+(.+)$/m.exec(header)?.[1].trim() ?? /^\.([^.\s].*)$/m.exec(header)?.[1].trim() ?? null;
+}
+
 function dataAttrs(node: PMNode, extra: Record<string, string> = {}): Record<string, string> {
   return { [DATA]: JSON.stringify(node.attrs), 'data-pm': node.type.name, ...extra };
 }
@@ -298,7 +305,10 @@ const nodes: Record<string, NodeSpec> = {
     // (its title and settings), for those that have such lines.
     attrs: { ...sid, pretty: { default: true }, ruleSpaces: { default: true }, header: { default: null as string | null } },
     parseDOM: [{ tag: 'table', getAttrs: (dom) => fromData(dom as HTMLElement) }],
-    toDOM: (node) => ['table', dataAttrs(node), ['tbody', 0]],
+    toDOM: (node) => {
+      const caption = tableCaption(node.attrs.header);
+      return caption ? ['table', dataAttrs(node), ['caption', { contenteditable: 'false' }, caption], ['tbody', 0]] : ['table', dataAttrs(node), ['tbody', 0]];
+    },
   },
   table_row: {
     content: '(table_cell | table_header)*',

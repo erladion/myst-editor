@@ -52,6 +52,15 @@ async function insertFootnote(ctx: EditorContext, run: (cmd: Command) => void) {
   });
 }
 
+// A {list-table}: a table whose cells can hold lists, code and notes.
+function insertListTable(ctx: EditorContext): Command {
+  const fence = newDirectiveFence(ctx.config);
+  const cell = (type: typeof nodes.table_cell, text: string) => type.create(null, nodes.paragraph.create(null, text ? schema.text(text) : undefined));
+  const row = (type: typeof nodes.table_cell, a: string, b: string) => nodes.table_row.create(null, [cell(type, a), cell(type, b)]);
+  const table = nodes.table.create({ header: `${fence}{list-table}\n:header-rows: 1\n`, pretty: false }, [row(nodes.table_header, 'Column 1', 'Column 2'), row(nodes.table_cell, '', '')]);
+  return insertBlock(table, 4);
+}
+
 // A directive with nothing in it (a rubric): a block of its own.
 export function insertEmptyDirective(ctx: EditorContext, name: string, args: string): Command {
   return insertBlock(nodes.md_directive.create({ name, args, fence: newDirectiveFence(ctx.config) }), 1);
@@ -170,6 +179,7 @@ export function mystInserts(ctx: EditorContext): InsertItem[] {
     // The Insert menu's grid, for the table's size.
     { id: 'table', group: 'Blocks', label: 'Table…', palette: 'Table…', keys: 'Table', ask: () => window.dispatchEvent(new CustomEvent('mysteditor-table-picker')) },
     { id: 'captioned-table', group: 'Blocks', label: 'Table with caption', palette: 'Table with caption', command: insertCaptionedTable(ctx) },
+    { id: 'list-table', group: 'Blocks', label: 'Table of blocks (list-table)', palette: 'List table', command: insertListTable(ctx) },
     { id: 'code-block', group: 'Blocks', label: 'Code block', palette: 'Code block', keys: 'Code block', command: insertCodeBlock() },
     { id: 'equation', group: 'Blocks', label: 'Equation', palette: 'Equation', command: insertMath(ctx) },
     { id: 'collapsible', group: 'Blocks', label: 'Dropdown', palette: 'Dropdown', command: insertDirective(ctx, 'dropdown', 'Click to expand') },

@@ -5,7 +5,7 @@ import { setBlockType, toggleMark, wrapIn, lift } from 'prosemirror-commands';
 import { wrapInList, liftListItem } from 'prosemirror-schema-list';
 import { schema } from '../../../core/schema';
 import type { EditorContext } from './context';
-import { cellKind } from './tables';
+import { blocksAllowed, cellKind } from './tables';
 import { toggleHtmlList } from './html';
 
 const { nodes, marks } = schema;
@@ -48,7 +48,7 @@ export function toggleList(type: NodeType): Command {
   return (state, dispatch) => {
     if (inList(state) === type.name) return liftListItem(nodes.list_item)(state, dispatch);
     // In a Markdown table's cell, which can't hold a list: an HTML one.
-    if (cellKind.getState(state) === 'line' && toggleHtmlList(type === nodes.ordered_list)(state, dispatch)) return true;
+    if (cellKind.getState(state) === 'line' && !blocksAllowed(state) && toggleHtmlList(type === nodes.ordered_list)(state, dispatch)) return true;
     return wrapInList(type)(state, dispatch);
   };
 }

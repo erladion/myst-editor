@@ -13,7 +13,7 @@ import { canConditionRows, conditionColor, conditionKind, makeConditional, remov
 import type { ConditionsDef } from '../../../core/editor-config';
 import {
   addColumnAfter, addColumnBefore, addRowAfter, addRowBefore, alignColumn, columnAlign, deleteColumn, deleteRow, deleteTable,
-  holdsBlocks, insertTable, isInTable, mergeCells, splitCell, tableOf, toggleCellBlocks,
+  blocksAllowed, holdsBlocks, insertTable, isInTable, mergeCells, splitCell, tableOf, toggleCellBlocks,
 } from '../editor/tables';
 
 // The selected table rows' condition: edit the one they're in, or put them in one.
@@ -260,7 +260,7 @@ export function Toolbar({ view, ctx, onMarkdown, previewAvailable, previewOpen, 
             Merging cells needs span roles in the project’s settings
           </span>
         )}
-        {editingFor(ctx.config).cells === 'blocks' && (
+        {!!state && blocksAllowed(state) && (
           <Btn
             label="Blocks in cell"
             title="Let the cell hold lists, code and notes, not just text (or only text again, when it's only paragraphs)"

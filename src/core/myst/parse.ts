@@ -24,6 +24,13 @@ export const MARKDOWN_DIRECTIVES = new Set([
   'toggle', 'exercise', 'solution', 'button-ref', 'button-link',
 ]);
 
+// What a {list-table} may say for the editor to edit it: other options (stub columns,
+// say) keep it as written.
+const LIST_TABLE_OPTIONS = new Set(['header-rows', 'widths', 'width', 'name', 'class', 'align', 'label']);
+
+// Whether a table is a {list-table} (its header is the directive's).
+export const isListTable = (node: { attrs: Record<string, unknown> }) => typeof node.attrs.header === 'string' && /^\s*(`{3,}|~{3,}|:{3,})\{list-table\}/.test(node.attrs.header);
+
 // Directives with nothing in them, edited as blocks of their own: a picture, a
 // rubric, sphinx-exercise's markers around an exercise or solution written as the
 // page's own blocks.
@@ -376,6 +383,68 @@ class Context {
     return node;
   }
 
+  // {list-table}: rows (* - cell), cells (  - cell) whose content is the page's own
+  // Markdown. The directive's header as written; rows and cells nobody touched written
+  // as they were (see serialize.ts).
+  private listTable(d: ReturnType<typeof splitDirective> & object, src: string): PMNode {
+    const options = new Map(d.options);
+    if ([...options.keys()].some((k) => !LIST_TABLE_OPTIONS.has(k))) throw new Unsupported();
+    const body = (d.body ?? '').split('\n');
+    const bodyLine = this.line + d.header.split('\n').length;
+    interface Cell {
+      line: number; // where its text starts, in the body
+      lines: string[]; // its text, without the marker and indentation
+    }
+    const rows: { start: number; end: number; cells: Cell[]; cellCol: number; textCol: number }[] = [];
+    let rowIndent = 0;
+    body.forEach((line, k) => {
+      const cur = rows[rows.length - 1];
+      const cell = cur && cur.cells[cur.cells.length - 1];
+      // A row starts where the first did (a cell's own list starts further in).
+      const row = /^( {0,3})([-*+])([ \t]+)([-*+])([ \t]+|$)(.*)$/.exec(line);
+      if (row && (!cur || row[1].length === rowIndent)) {
+        rowIndent = row[1].length;
+        const cellCol = row[1].length + 1 + row[3].length;
+        const textCol = cellCol + 1 + Math.max(1, row[5].length);
+        rows.push({ start: k, end: k, cells: [{ line: k, lines: [row[6]] }], cellCol, textCol });
+        return;
+      }
+      if (!cur) {
+        if (line.trim()) throw new Unsupported();
+        return;
+      }
+      const next = /^(\s*)([-*+])([ \t]+|$)(.*)$/.exec(line);
+      if (next && next[1].length === cur.cellCol) {
+        cur.cells.push({ line: k, lines: [next[4]] });
+        cur.end = k;
+      } else if (!line.trim()) cell.lines.push('');
+      else if (line.length - line.trimStart().length >= cur.textCol) {
+        cell.lines.push(line.slice(cur.textCol));
+        cur.end = k;
+      } else throw new Unsupported();
+    });
+    if (!rows.length || rows.some((r) => r.cells.length !== rows[0].cells.length)) throw new Unsupported();
+    const headerRows = Number(options.get('header-rows') ?? 0);
+    if (!Number.isInteger(headerRows) || headerRows < 0 || headerRows > rows.length) throw new Unsupported();
+    const line = this.line;
+    const pmRows = rows.map((r, n) => {
+      const cells = r.cells.map((c) => {
+        while (c.lines.length > 1 && !c.lines[c.lines.length - 1].trim()) c.lines.pop();
+        const text = c.lines.join('\n');
+        const { nodes } = this.container(text, false, bodyLine + c.line);
+        const content = !nodes.length ? [schema.node('paragraph')] : nodes.length === 1 && nodes[0].type.name === 'paragraph' ? nodes : [schema.node('cell_blocks', null, nodes)];
+        const node = schema.node(n < headerRows ? 'table_header' : 'table_cell', null, content);
+        this.map.recordCell(node, text);
+        return node;
+      });
+      const row = schema.node('table_row', null, cells);
+      this.map.recordRow(row, body.slice(r.start, r.end + 1).join('\n'));
+      return row;
+    });
+    this.line = line;
+    return this.withSid('table', { header: d.header, pretty: false }, pmRows, src);
+  }
+
   private directive(md: MdNode, src: string): PMNode {
     const d = splitDirective(src);
     if (!d) throw new Unsupported();
@@ -391,6 +460,14 @@ class Context {
     const text = declared ? declared === 'text' : CODE_DIRECTIVES.has(d.name);
     if (markdown && d.closing) {
       return this.containerNode('md_directive', { ...common, fence: d.fence }, d.body ?? '', src, d.header.split('\n').length);
+    }
+    // A table written as a list of rows, each a list of cells.
+    if (d.name === 'list-table' && !declared && d.closing) {
+      try {
+        return this.listTable(d, src);
+      } catch (e) {
+        if (!(e instanceof Unsupported)) throw e;
+      }
     }
     // A picture, a rubric, a marker: a block of its own (one with content isn't one
     // Sphinx reads: as written).

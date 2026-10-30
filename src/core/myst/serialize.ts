@@ -8,7 +8,7 @@ import { MarkdownSerializerState, defaultMarkdownSerializer } from 'prosemirror-
 import { schema, type RowCondition } from '../schema.js';
 import { SourceMap, type ContainerEntry, type InlineStyle } from '../sourcemap.js';
 import { headerKey, renderHeader, fenceFor } from '../directive.js';
-import { hardBreakStyle, parseMyst } from './parse.js';
+import { hardBreakStyle, isListTable, parseMyst } from './parse.js';
 
 export interface SerializeOptions {
   // Ignore the source map and serialize everything (used to test the serializer).
@@ -179,7 +179,58 @@ class Writer {
 
   // A GFM table. Merged cells are written with the span roles, and the cells they
   // cover as empty cells; padded columns if the table had them.
+  // A {list-table}: its header as written (its widths as many as its columns), then
+  // a list item a row, a list item a cell. Rows and cells nobody touched as written.
+  private listTable(node: PMNode): string {
+    let header = node.attrs.header as string;
+    const fence = /^\s*(`{3,}|~{3,}|:{3,})/.exec(header)![1];
+    const was = this.fresh ? undefined : this.map.get(node.attrs.sid);
+    // Rows with blank lines between them, if they were (in the body, after the header).
+    const spaced = !!was && /\n[ \t]*\n[ \t]{0,3}[-*+][ \t]+[-*+]/.test(was.text.slice((was.node.attrs.header as string).length));
+    let ncols = 0;
+    node.firstChild?.forEach(() => void ncols++);
+    header = header.replace(/^(:widths:[ \t]+)([\d ,]+)$/m, (all, key: string, list: string) => {
+      const widths = list.trim().split(/[\s,]+/);
+      if (widths.length === ncols) return all;
+      return key + Array.from({ length: ncols }, (_, k) => widths[k] ?? '1').join(' ');
+    });
+    let marker = '*';
+    const rows: string[] = [];
+    node.forEach((row) => {
+      const own = this.fresh ? undefined : this.map.rowSource(row);
+      if (own !== undefined) {
+        rows.push(own);
+        marker = /^\s*([-*+])/.exec(own)?.[1] ?? marker;
+        return;
+      }
+      const cells: string[] = [];
+      row.forEach((cell, _o, i) => {
+        const prefix = i === 0 ? `${marker} - ` : '  - ';
+        const text = (this.fresh ? undefined : this.map.cellSource(cell)) ?? this.cellMarkdown(cell);
+        const [first, ...rest] = text.split('\n');
+        cells.push([`${prefix}${first}`.trimEnd(), ...rest.map((l) => (l ? ' '.repeat(prefix.length) + l : l))].join('\n'));
+      });
+      rows.push(cells.join('\n'));
+    });
+    const body = rows.join(spaced ? '\n\n' : '\n');
+    // A fence nothing in it closes.
+    const needed = fenceFor(fence, body);
+    if (needed !== fence) header = header.replace(fence, needed);
+    // (The header ends at the blank line under it, if it has one; the closing fence as
+    // it was, blank lines before it too.)
+    const close = was ? /\n([ \t]*\n)*[ \t]*\S+[ \t]*$/.exec(was.text)?.[0] : undefined;
+    return `${header}\n${body}${close ? close.replace(/\S+[ \t]*$/, needed.trimStart()) : `\n${needed.trimStart()}`}`;
+  }
+
+  // A cell's content as Markdown: its paragraphs, or its blocks.
+  private cellMarkdown(cell: PMNode): string {
+    const all: PMNode[] = [];
+    cell.forEach((c) => (c.type.name === 'cell_blocks' ? c.forEach((b) => void all.push(b)) : all.push(c)));
+    return this.container(schema.nodes.cell_blocks.create(null, all), undefined);
+  }
+
   private table(node: PMNode): string {
+    if (isListTable(node)) return this.listTable(node);
     const grid: ({ cell: PMNode; start: boolean } | undefined)[][] = [];
     node.forEach((row, _o, r) => {
       grid[r] ??= [];
@@ -369,7 +420,9 @@ const nodes: Record<string, NodeFn> = {
     const atLineStart = !state.inCell && (state.out === '' || state.out.endsWith('\n'));
     if (atLineStart) state.atBlockStart = true;
     const text = atLineStart ? node.text!.replace(/^[ \t]+/, '') : node.text!;
-    if (text) state.text(text);
+    // In an autolink (<scheme:…>), its text is its address: as it is.
+    if (state.inAutolink) state.write(text);
+    else if (text) state.text(text);
   },
   soft_break: (state) => state.write('\n'),
   // A trailing hard break would serialize as a literal backslash.
@@ -436,6 +489,7 @@ const marksFor = (style: InlineStyle): Record<string, MarkSerializerSpec> => ({
       const stack = (s.linkClose ??= []);
       if (isAutolink(style, mark, parent, index)) {
         stack.push('>');
+        (state as State).inAutolink = true;
         return '<';
       }
       const ref = style.refs.get(mark.attrs.href);
@@ -449,6 +503,7 @@ const marksFor = (style: InlineStyle): Record<string, MarkSerializerSpec> => ({
     },
     close(state, mark, parent, index) {
       const close = (state as LinkState).linkClose!.pop()! + (close0(mark) ?? '');
+      if (close.startsWith('>')) (state as State).inAutolink = false;
       // A shortcut reference directly followed by `(` or `[` would parse differently.
       const next = index < parent.childCount ? parent.child(index) : null;
       if (close === ']' && next?.isText && /^[([]/.test(next.text!)) return `][${style.refs.get(mark.attrs.href)!.label}]`;

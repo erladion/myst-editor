@@ -23,6 +23,7 @@ import {
 import { chainCommands } from 'prosemirror-commands';
 import { schema } from '../../../core/schema';
 import { joinHtmlItems, splitHtmlItem } from './html';
+import { isListTable } from '../../../core/myst/parse';
 
 const { nodes } = schema;
 
@@ -103,6 +104,8 @@ function changedRanges(transactions: readonly Transaction[], state: EditorState)
 }
 
 function normalizeTable(tr: Transaction, table: PMNode, tablePos: number): Transaction {
+  // A {list-table}'s cells hold blocks, aligned as they are.
+  if (isListTable(table)) return tr;
   const map = TableMap.get(table);
   const start = tablePos + 1;
   const headerAlign = (col: number) => table.nodeAt(map.map[col])?.attrs.align ?? null;
@@ -146,6 +149,15 @@ function cellAt(state: EditorState): { pos: number; node: PMNode } | null {
     if (node.type === nodes.table_cell || node.type === nodes.table_header) return { pos: $from.before(d), node };
   }
   return null;
+}
+
+// Whether the cells around the selection may hold blocks: the format's are, or the
+// table is a {list-table}.
+export function blocksAllowed(state: EditorState): boolean {
+  if (cellKind.getState(state) === 'blocks') return true;
+  const { $from } = state.selection;
+  for (let d = $from.depth; d > 0; d--) if ($from.node(d).type === nodes.table) return isListTable($from.node(d));
+  return false;
 }
 
 // Whether the cell the selection is in holds blocks.
