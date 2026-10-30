@@ -37,6 +37,11 @@ export class SourceMap {
     return `s${++counter}`;
   }
 
+  // The blocks as parsed, here or in a map merged in (whether still in the page or not).
+  *parsed(): Iterable<SourceEntry> {
+    yield* this.entries.values();
+  }
+
   merge(other: SourceMap) {
     for (const [sid, entry] of other.entries) this.entries.set(sid, entry);
     for (const [cell, text] of other.cells) this.cells.set(cell, text);

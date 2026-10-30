@@ -41,6 +41,8 @@ export interface EditorContext {
   addImage(file: File): Promise<string>;
   // URL for an image referenced from the open page.
   assetUrl(ref: string): string;
+  // A file the open page refers to (a literalinclude's), as text.
+  readFile(ref: string): Promise<string>;
   // Open the page a {doc} role or toctree entry points at.
   openDocument(ref: string): void;
   // That page's title, if known.

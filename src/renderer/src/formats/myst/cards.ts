@@ -1,5 +1,6 @@
 // MyST blocks the editor keeps as written, shown as cards: their names and previews.
 import { createTokenizer } from 'myst-parser';
+import { labelKey, linkDefinitions } from '../../../../core/myst/parse';
 import { safeHtml } from '../../editor/html';
 import type { Cards } from '../editing';
 import { definitionsForm, definitionsPreview } from './definitions';
@@ -43,5 +44,11 @@ export const mystCards: Cards = {
     return kind === 'table' || kind === 'definitionList' || kind === 'footnote' ? markdownPreview(source, assetUrl) : null;
   },
   form: (kind, source) => (kind === 'fieldlist' ? fieldsForm(source) : kind === 'frontmatter' ? frontMatterForm(source) : kind === 'definitions' ? definitionsForm(source) : null),
+  relink(kind, before, after) {
+    if (kind !== 'definitions') return [];
+    const urls = (source: string) => new Map([...linkDefinitions(source)].map(([url, r]) => [labelKey(r.label), url]));
+    const now = urls(after);
+    return [...urls(before)].flatMap(([label, url]) => (now.has(label) && now.get(label) !== url ? [[url, now.get(label)!] as [string, string]] : []));
+  },
   directiveForm: (name, source) => (name === 'toctree' ? toctreeForm(source) : null),
 };

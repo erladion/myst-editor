@@ -851,15 +851,23 @@ function parseMdast(input: string, extensions: Record<string, boolean>): MdNode 
   return tokensToMyst(input, t.parse(input, {})) as unknown as MdNode;
 }
 
-function inferStyle(source: string): SourceMap['style'] {
-  const count = (re: RegExp) => source.match(re)?.length ?? 0;
-  // Reference definitions, keyed by the URL as the parser normalizes it.
-  const refs = new Map<string, { label: string; title: string | null }>();
+// The link definitions in `source`, keyed by the URL as the parser normalizes it.
+export function linkDefinitions(source: string): SourceMap['style']['refs'] {
+  const refs: SourceMap['style']['refs'] = new Map();
   const def = /^ {0,3}\[([^\]^][^\]]*)\]:[ \t]*(?:<([^>\n]*)>|(\S+))(?:[ \t]+(?:"([^"]*)"|'([^']*)'|\(([^)]*)\)))?[ \t]*$/gm;
   for (const m of source.matchAll(def)) {
     const url = tokenizer.normalizeLink(m[2] ?? m[3]);
     if (!refs.has(url)) refs.set(url, { label: m[1], title: m[4] ?? m[5] ?? m[6] ?? null });
   }
+  return refs;
+}
+
+// A definition's label as Markdown matches it: case and spacing aside.
+export const labelKey = (label: string) => label.trim().replace(/\s+/g, ' ').toLowerCase();
+
+function inferStyle(source: string): SourceMap['style'] {
+  const count = (re: RegExp) => source.match(re)?.length ?? 0;
+  const refs = linkDefinitions(source);
   const autolinks = new Set([...source.matchAll(/<([a-zA-Z][\w+.-]{1,31}:[^\s<>]*)>/g)].map((m) => tokenizer.normalizeLink(m[1])));
   // Whether emphasis/strong are written with underscores or asterisks.
   const em = count(/(?<![\w\\_])_(?=[^\s_])[^_\n]*?[^\s_\\]_(?![\w_])/g) > count(/(?<![\w\\*])\*(?=[^\s*])[^*\n]*?[^\s*\\]\*(?![\w*])/g);

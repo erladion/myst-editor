@@ -65,6 +65,8 @@ export interface Cards {
   preview(kind: string, source: string, assetUrl: (src: string) => string): DocumentFragment | Promise<DocumentFragment> | null;
   // A form to edit a block of this kind with, in place of its source.
   form?(kind: string, source: string): CardForm | null;
+  // Links whose address a block's new source changes (a link target's, say): from, to.
+  relink?(kind: string, before: string, after: string): [string, string][];
   // One for a directive (a block the format has a name for) shown as a card.
   directiveForm?(name: string, source: string): CardForm | null;
 }

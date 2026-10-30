@@ -8,7 +8,7 @@ import { MarkdownSerializerState, defaultMarkdownSerializer } from 'prosemirror-
 import { schema, type RowCondition } from '../schema.js';
 import { SourceMap, type ContainerEntry, type InlineStyle } from '../sourcemap.js';
 import { headerKey, renderHeader, fenceFor } from '../directive.js';
-import { hardBreakStyle, isListTable, parseMyst } from './parse.js';
+import { hardBreakStyle, isListTable, labelKey, linkDefinitions, parseMyst } from './parse.js';
 
 export interface SerializeOptions {
   // Ignore the source map and serialize everything (used to test the serializer).
@@ -18,7 +18,22 @@ export interface SerializeOptions {
 }
 
 export function serializeMyst(doc: PMNode, map: SourceMap, opts: SerializeOptions = {}): string {
-  return new Writer(map, !!opts.fresh, opts.tableSpans ?? {}).container(doc, opts.fresh ? undefined : map.root);
+  return new Writer(map, !!opts.fresh, opts.tableSpans ?? {}, styleNow(doc, map)).container(doc, opts.fresh ? undefined : map.root);
+}
+
+// The page's style, with its link definitions as they are now: those of its Link
+// targets blocks as the page has them, the others (in blocks kept as written) as read.
+function styleNow(doc: PMNode, map: SourceMap): InlineStyle {
+  const kind = (n: PMNode) => n.type.name === 'raw_block' && n.attrs.kind === 'definitions';
+  const read = new Set<string>();
+  for (const e of map.parsed()) if (kind(e.node)) for (const r of linkDefinitions(e.text).values()) read.add(labelKey(r.label));
+  if (!read.size) return map.style;
+  const refs = new Map([...map.style.refs].filter(([, r]) => !read.has(labelKey(r.label))));
+  doc.descendants((n) => {
+    if (kind(n)) for (const [url, r] of linkDefinitions(n.attrs.source)) if (!refs.has(url)) refs.set(url, r);
+    return !n.isTextblock;
+  });
+  return { ...map.style, refs };
 }
 
 const ALIGN_RULE = { left: (w: number) => `:${'-'.repeat(w - 1)}`, center: (w: number) => `:${'-'.repeat(w - 2)}:`, right: (w: number) => `${'-'.repeat(w - 1)}:` };
@@ -28,6 +43,7 @@ class Writer {
     private map: SourceMap,
     private fresh: boolean,
     private tableSpans: { colspan?: string; rowspan?: string },
+    private style: InlineStyle,
   ) {}
 
   private unchanged(node: PMNode): string | undefined {
@@ -86,15 +102,15 @@ class Writer {
         // lines as they were, where they say the same.
         const was = this.fresh ? undefined : this.map.get(node.attrs.sid)?.text;
         const own = was === undefined ? null : hardBreakStyle(was);
-        const text = inlineMarkdown(node, own ? { ...this.map.style, hardBreak: own } : this.map.style);
-        return was === undefined ? text : keepLines(text, was, this.map.style);
+        const text = inlineMarkdown(node, own ? { ...this.style, hardBreak: own } : this.style);
+        return was === undefined ? text : keepLines(text, was, this.style);
       }
 
       case 'heading': {
         // Its title as written while it says the same.
         const was = this.fresh || node.attrs.setext ? undefined : /^ {0,3}#{1,6}[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*$/.exec(this.map.get(node.attrs.sid)?.text ?? '')?.[1];
-        const fresh = inlineMarkdown(node, this.map.style);
-        const text = was !== undefined && !fresh.includes('\n') && sameLine(fresh, was, definitions(this.map.style)) ? was : fresh;
+        const fresh = inlineMarkdown(node, this.style);
+        const text = was !== undefined && !fresh.includes('\n') && sameLine(fresh, was, definitions(this.style)) ? was : fresh;
         if (node.attrs.setext && node.attrs.level <= 2) {
           const last = text.split('\n').pop()!;
           return `${text}\n${(node.attrs.level === 1 ? '=' : '-').repeat(Math.max(3, last.length))}`;
@@ -150,7 +166,7 @@ class Writer {
         // Its lines as they were, where they say the same.
         const text = this.definitionList(node);
         const was = this.fresh ? undefined : this.map.get(node.attrs.sid)?.text;
-        return was === undefined ? text : keepLines(text, was, this.map.style);
+        return was === undefined ? text : keepLines(text, was, this.style);
       }
 
       default:
@@ -252,7 +268,7 @@ class Writer {
       const parts: string[] = [];
       // Its paragraphs (and the text of blocks pasted in from another format's cell).
       cell.descendants((p) => {
-        if (p.isTextblock) parts.push(inlineMarkdown(p, this.map.style, true).replace(/\n/g, ' '));
+        if (p.isTextblock) parts.push(inlineMarkdown(p, this.style, true).replace(/\n/g, ' '));
         return !p.isTextblock;
       });
       const content = parts.filter(Boolean).join(' ').replace(/\|/g, '\\|');
@@ -322,13 +338,13 @@ class Writer {
     node.forEach((item) => {
       const lines: string[] = [];
       item.forEach((part) => {
-        if (part.type.name === 'definition_term') return void lines.push(inlineMarkdown(part, this.map.style).replace(/\n/g, ' '));
+        if (part.type.name === 'definition_term') return void lines.push(inlineMarkdown(part, this.style).replace(/\n/g, ' '));
         if (part.attrs.loose && lines.length) lines.push('');
         const original = this.unchanged(part);
         if (original !== undefined) return void lines.push(original);
         const marker: string = part.attrs.marker ?? ': ';
         const indent = ' '.repeat(marker.length);
-        const text = part.childCount === 1 && part.firstChild!.type.name === 'paragraph' ? inlineMarkdown(part.firstChild!, this.map.style) : this.container(part, this.containerEntry(part));
+        const text = part.childCount === 1 && part.firstChild!.type.name === 'paragraph' ? inlineMarkdown(part.firstChild!, this.style) : this.container(part, this.containerEntry(part));
         lines.push(text.split('\n').map((l, k) => (k ? (l ? indent + l : '') : marker + l)).join('\n'));
       });
       items.push(lines.join('\n'));

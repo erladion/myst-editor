@@ -78,13 +78,22 @@ function deleteNode(view: EditorView, getPos: GetPos, node: PMNode) {
 }
 
 // Replace a block with whatever the writer's edited source parses to.
-function replaceWithSource(view: EditorView, getPos: GetPos, node: PMNode, source: string, ctx: EditorContext) {
+// `relink`: links whose address changes with it (from, to).
+function replaceWithSource(view: EditorView, getPos: GetPos, node: PMNode, source: string, ctx: EditorContext, relink: [string, string][] = []) {
   const pos = getPos();
   if (pos === undefined) return;
   if (!source.trim()) return deleteNode(view, getPos, node);
   const loaded = loadDocument(source.replace(/\s+$/, '') + '\n', ctx.config);
   ctx.absorb(loaded.map);
-  view.dispatch(view.state.tr.replaceWith(pos, pos + node.nodeSize, loaded.doc.content));
+  const tr = view.state.tr.replaceWith(pos, pos + node.nodeSize, loaded.doc.content);
+  if (relink.length) {
+    const to = new Map(relink);
+    tr.doc.descendants((n, p) => {
+      const link = n.isText ? n.marks.find((m) => m.type.name === 'link' && to.has(m.attrs.href)) : undefined;
+      if (link) tr.removeMark(p, p + n.nodeSize, link).addMark(p, p + n.nodeSize, link.type.create({ ...link.attrs, href: to.get(link.attrs.href) }));
+    });
+  }
+  view.dispatch(tr);
   view.focus();
 }
 
@@ -492,8 +501,8 @@ class OpaqueDirectiveView extends CardView {
       [el('span', { class: 'card-label' }, 'Code from a file'), el('code', {}, args), ...(caption ? [el('span', { class: 'muted' }, caption)] : []), ...(language ? [el('span', { class: 'chip' }, language)] : [])],
       [code],
     );
-    const url = this.ctx.assetUrl(args);
-    void (url ? fetch(url).then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status))))) : Promise.reject(new Error('outside')))
+    void this.ctx
+      .readFile(args)
       .then((text) => {
         if (this.node.attrs.source !== source) return;
         const shown = literalInclude(text, options);
@@ -572,7 +581,10 @@ class RawBlockView extends CardView {
     const form = editingFor(this.ctx.config).cards.form?.(this.node.attrs.kind, this.node.attrs.source);
     if (form && !/^condition-/.test(this.node.attrs.kind)) {
       const values = await this.ctx.ui.editFields({ title: form.title, fields: form.fields, submit: 'Save' });
-      if (values) replaceWithSource(this.view, this.getPos, this.node, form.source(values), this.ctx);
+      if (!values) return;
+      const { kind, source } = this.node.attrs;
+      const next = form.source(values);
+      replaceWithSource(this.view, this.getPos, this.node, next, this.ctx, editingFor(this.ctx.config).cards.relink?.(kind, source, next));
       return;
     }
     if (!settings || !/^condition-/.test(this.node.attrs.kind)) return this.editSource();

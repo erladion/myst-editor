@@ -104,6 +104,12 @@ export function useEditorContext(dialogs: RefObject<DialogApi | null>, ws: Works
         const rel = resolveRef(w.current, ref, pageProject()?.dir ?? '');
         return rel === null ? '' : api.assetUrl(rel);
       },
+      async readFile(written: string) {
+        const w = current();
+        const rel = w && resolveRef(w.current, written, pageProject()?.dir ?? '');
+        if (!rel) throw new Error(`Not in the project: ${written}`);
+        return api.readFile(rel);
+      },
       openDocument(ref: string) {
         const w = current();
         const found = w && findPage(w.project, w.current, ref);
