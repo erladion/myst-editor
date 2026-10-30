@@ -19,6 +19,8 @@ export interface Field {
   browse?: () => Promise<string | null>;
   // A value of several lines, in a box this many lines high ("Choose…" adds a line).
   lines?: number;
+  // A "Remove" button: a field removed isn't among the form's values.
+  removable?: boolean;
 }
 
 export interface EditorUi {

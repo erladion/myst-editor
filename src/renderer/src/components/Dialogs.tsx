@@ -147,85 +147,110 @@ function SourceForm({ request, cancel }: { request: Extract<Request, { kind: 'so
 
 function FieldsForm({ request, cancel }: { request: Extract<Request, { kind: 'fields' }>; cancel: () => void }) {
   const [values, setValues] = useState(() => Object.fromEntries(request.fields.map((f) => [f.key, f.value])));
+  const [removed, setRemoved] = useState<ReadonlySet<string>>(() => new Set());
   const set = (key: string, value: string) => setValues((v) => ({ ...v, [key]: value }));
+  const toggle = (key: string) =>
+    setRemoved((r) => {
+      const next = new Set(r);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        request.resolve(values);
+        request.resolve(Object.fromEntries(Object.entries(values).filter(([k]) => !removed.has(k))));
       }}
     >
-      {request.fields.map((f, i) => (
-        <div key={f.key} className="field">
-          <label htmlFor={`field-${f.key}`}>{f.label}</label>
-          {f.choices ? (
-            <select
-              id={`field-${f.key}`}
-              value={values[f.key]}
-              aria-describedby={f.help ? `help-${f.key}` : undefined}
-              onChange={(e) => set(f.key, e.target.value)}
-              autoFocus={i === 0}
-            >
-              {f.choices.map((c) => (
-                <option key={c.value} value={c.value}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <>
-              <div className={f.browse ? 'row' : undefined}>
-                {f.lines ? (
-                  <textarea
-                    id={`field-${f.key}`}
-                    className="source-input"
-                    rows={f.lines}
-                    value={values[f.key]}
-                    placeholder={f.placeholder}
-                    autoFocus={i === 0}
-                    aria-describedby={f.help ? `help-${f.key}` : undefined}
-                    onChange={(e) => set(f.key, e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                        e.preventDefault();
-                        e.currentTarget.form?.requestSubmit();
-                      }
-                    }}
-                  />
-                ) : (
-                  <input
-                    id={`field-${f.key}`}
-                    value={values[f.key]}
-                    placeholder={f.placeholder}
-                    autoFocus={i === 0}
-                    aria-describedby={f.help ? `help-${f.key}` : undefined}
-                    list={f.suggestions ? `suggest-${f.key}` : undefined}
-                    onChange={(e) => set(f.key, e.target.value)}
-                  />
-                )}
-                {f.browse && (
-                  <button type="button" onClick={async () => {
-                    const picked = await f.browse!();
-                    if (picked !== null) set(f.key, f.lines ? `${values[f.key].replace(/\n*$/, '')}${values[f.key].trim() ? '\n' : ''}${picked}` : picked);
-                  }}>
-                    Choose…
-                  </button>
-                )}
-              </div>
-              {f.suggestions && (
-                <datalist id={`suggest-${f.key}`}>
-                  {(typeof f.suggestions === 'function' ? f.suggestions(values) : f.suggestions).slice(0, 500).map((s) => (
-                    <option key={s.value} value={s.value}>
-                      {s.label}
-                    </option>
-                  ))}
-                </datalist>
+      {request.fields.map((f, i) =>
+        removed.has(f.key) ? (
+          <div key={f.key} className="field field-removed">
+            <span>
+              <s>{f.label}</s> is taken out.
+            </span>
+            <button type="button" onClick={() => toggle(f.key)}>
+              Keep it
+            </button>
+          </div>
+        ) : (
+          <div key={f.key} className="field">
+            <div className="field-label">
+              <label htmlFor={`field-${f.key}`}>{f.label}</label>
+              {f.removable && (
+                <button type="button" className="field-remove" aria-label={`Remove ${f.label}`} title="Remove" onClick={() => toggle(f.key)}>
+                  Remove
+                </button>
               )}
-            </>
-          )}
-          {f.help && <small id={`help-${f.key}`}>{f.help}</small>}
-        </div>
-      ))}
+            </div>
+            {f.choices ? (
+              <select
+                id={`field-${f.key}`}
+                value={values[f.key]}
+                aria-describedby={f.help ? `help-${f.key}` : undefined}
+                onChange={(e) => set(f.key, e.target.value)}
+                autoFocus={i === 0}
+              >
+                {f.choices.map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <>
+                <div className={f.browse ? 'row' : undefined}>
+                  {f.lines ? (
+                    <textarea
+                      id={`field-${f.key}`}
+                      className="source-input"
+                      rows={f.lines}
+                      value={values[f.key]}
+                      placeholder={f.placeholder}
+                      autoFocus={i === 0}
+                      aria-describedby={f.help ? `help-${f.key}` : undefined}
+                      onChange={(e) => set(f.key, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                          e.preventDefault();
+                          e.currentTarget.form?.requestSubmit();
+                        }
+                      }}
+                    />
+                  ) : (
+                    <input
+                      id={`field-${f.key}`}
+                      value={values[f.key]}
+                      placeholder={f.placeholder}
+                      autoFocus={i === 0}
+                      aria-describedby={f.help ? `help-${f.key}` : undefined}
+                      list={f.suggestions ? `suggest-${f.key}` : undefined}
+                      onChange={(e) => set(f.key, e.target.value)}
+                    />
+                  )}
+                  {f.browse && (
+                    <button type="button" onClick={async () => {
+                      const picked = await f.browse!();
+                      if (picked !== null) set(f.key, f.lines ? `${values[f.key].replace(/\n*$/, '')}${values[f.key].trim() ? '\n' : ''}${picked}` : picked);
+                    }}>
+                      Choose…
+                    </button>
+                  )}
+                </div>
+                {f.suggestions && (
+                  <datalist id={`suggest-${f.key}`}>
+                    {(typeof f.suggestions === 'function' ? f.suggestions(values) : f.suggestions).slice(0, 500).map((s) => (
+                      <option key={s.value} value={s.value}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </datalist>
+                )}
+              </>
+            )}
+            {f.help && <small id={`help-${f.key}`}>{f.help}</small>}
+          </div>
+        ),
+      )}
       <Actions cancel={cancel} submit={request.submit} />
     </form>
   );
