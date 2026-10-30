@@ -71,9 +71,20 @@ test('a list in a table cell: new items on Enter, made from its lines by the lis
   const file = () => readFileSync(join(ctx.project, 'docs', 'html.md'), 'utf8');
   const saved = () => expect(page.locator('.save-status')).toHaveText('All changes saved', { timeout: 10_000 });
   const cells = page.locator('.prose td');
-  // Enter at the end of an item: a new one, typed in.
-  await cells.nth(5).getByText('beta').click();
-  await page.keyboard.press('End');
+  // Enter at the end of an item: a new one, typed in. (The caret put right after
+  // "beta": a click on the list's text lands where the fonts put its lines.)
+  await cells.nth(5).click();
+  await page.evaluate(() => {
+    const walker = document.createTreeWalker(document.querySelector('.prose')!, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (n.textContent !== 'beta') continue;
+      const range = document.createRange();
+      range.setStart(n, 4);
+      getSelection()!.removeAllRanges();
+      getSelection()!.addRange(range);
+      return;
+    }
+  });
   await page.keyboard.press('Enter');
   await page.keyboard.type('gamma');
   await expect(cells.nth(5).locator('.html-li-marker')).toHaveText(['1.', '2.', '3.']);
