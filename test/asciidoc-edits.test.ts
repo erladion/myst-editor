@@ -402,3 +402,26 @@ describe('a table without cols', () => {
     expect(out).toBe('[%header,cols="2*"]\n|===\n|one\n\ntwo |b\n\n|c |d\n|===\n');
   });
 });
+
+describe('verse', () => {
+  const VERSE = '[verse,Carl Sandburg,Fog]\n____\nThe fog comes\non little cat feet.\n\n  It sits looking\n  over harbor and city.\n____\n';
+  it('is a block of its stanzas, lines and indentation kept', () => {
+    const { doc } = load(VERSE);
+    const verse = doc.firstChild!;
+    expect(verse.attrs).toMatchObject({ name: 'verse', options: [['attribution', 'Carl Sandburg'], ['citetitle', 'Fog']] });
+    expect(verse.childCount).toBe(2);
+    expect(edited(VERSE, (s) => s.tr.insertText(',', find(s.doc, (n) => n.isText && n.text!.includes('city.')) + 'over harbor and city'.length + 2))).toBe(VERSE.replace('city.', 'city,.'));
+  });
+  it('written anew, reads the same', () => {
+    const { doc, map } = load(VERSE);
+    expect(saveDocument(doc, map, ASCIIDOC_CONFIG).text).toBe(VERSE);
+  });
+});
+
+describe('an open block of code', () => {
+  it('is code, its -- kept', () => {
+    const T = '[source,groovy]\n--\nclass Bar {}\n--\n';
+    expect(load(T).doc.firstChild!.type.name).toBe('code_block');
+    expect(edited(T, (s) => s.tr.insertText(' // x', 1 + 'class Bar {}'.length))).toBe(T.replace('{}', '{} // x'));
+  });
+});

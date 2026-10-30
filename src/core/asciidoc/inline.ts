@@ -23,8 +23,9 @@ interface Found {
 
 // Macros whose brackets hold the whole value: kbd:[Ctrl+C].
 const CONTENT_MACROS = new Set(['kbd', 'btn', 'stem', 'asciimath']);
-// Macros kept as written, target and brackets: menu:File[Save], footnote:[text].
-const RAW_MACROS = new Set(['menu', 'footnote', 'footnoteref', 'icon']);
+// Macros kept as written, target and brackets: menu:File[Save], footnote:[text],
+// pass:q[<u>text</u>].
+const RAW_MACROS = new Set(['menu', 'footnote', 'footnoteref', 'icon', 'pass']);
 
 export function parseInline(src: string): PMNode[] {
   return new InlineParser(src).parse(0, src.length, []);
@@ -93,6 +94,7 @@ class InlineParser {
     const c = src[i];
     const rest = () => src.slice(i, to);
     const pass = this.passthrough(i, to, prev);
+    if (pass?.kind === 'subs') return { end: pass.end, nodes: [role('pass', `${pass.subs}[${pass.content}]`, marks)], escape: 'unsupported' };
     if (pass) {
       const nodes = pass.html ? [schema.node('html_inline', { value: pass.content }, undefined, marks)] : textNodes(pass.content, marks);
       return { end: pass.end, nodes, escape: pass.html || pass.kind !== '+' ? 'unsupported' : 'literal' };
@@ -122,22 +124,30 @@ class InlineParser {
       const text = comma < 0 ? '' : m[1].slice(comma + 1).trim();
       return { end: i + m[0].length, nodes: [role('ref', reference(text, target), marks)], escape: 'literal' };
     }
-    if (c === '(' && src.startsWith('((', i) && /^\(\(\(?[^)\n]+\)\)\)?/.test(rest())) throw new Unsupported('index term');
+    // Index terms: (((primary, secondary))) only in the index; ((term)) also here.
+    if (c === '(' && src.startsWith('((', i)) {
+      const hidden = /^\(\(\(([^()\n]+)\)\)\)/.exec(rest());
+      if (hidden) return { end: i + hidden[0].length, nodes: [role('indexterm', hidden[1], marks)], escape: 'unsupported' };
+      const shown = /^\(\(([^()\n]+)\)\)(?!\))/.exec(rest());
+      if (shown) return { end: i + shown[0].length, nodes: [role('indexterm2', shown[1], marks)], escape: 'unsupported' };
+      if (/^\(\(\(?[^)\n]+\)\)\)?/.test(rest())) throw new Unsupported('index term');
+    }
     const url = this.url(i, to, marks, prev);
     if (url) return url;
     return this.macro(i, to, marks, prev);
   }
 
   // +text+, ++text++, +++html+++, pass:[html]. `kind`: which pluses.
-  private passthrough(i: number, to: number, prev: string | undefined): { end: number; content: string; html: boolean; kind: string } | null {
+  private passthrough(i: number, to: number, prev: string | undefined): { end: number; content: string; html: boolean; kind: string; subs?: string } | null {
     const src = this.src;
     if (src.startsWith('pass:', i)) {
       const m = /^pass:([a-z,]*)\[/.exec(src.slice(i, to));
       if (!m) return null;
       const close = closingBracket(src, i + m[0].length, to);
       if (close < 0) return null;
-      // pass:c[text]: only special characters replaced, i.e. plain text.
-      if (m[1] && m[1] !== 'c') throw new Unsupported('passthrough with substitutions');
+      // pass:c[text]: only special characters replaced, i.e. plain text. Others
+      // (pass:q[<u>*text*</u>]) as written.
+      if (m[1] && m[1] !== 'c') return { end: close + 1, content: src.slice(i + m[0].length, close), html: false, kind: 'subs', subs: m[1] };
       return { end: close + 1, content: src.slice(i + m[0].length, close).replace(/\\\]/g, ']'), html: !m[1], kind: 'pass' };
     }
     if (src[i] !== '+') return null;
@@ -190,25 +200,32 @@ class InlineParser {
     }
     if (!found) return null;
     const literalEscape = found.double ? 'unsupported' : 'literal';
-    // Its roles: [.path], [.term.key]. Only roles: other attributes aren't kept.
+    // Its roles: [.path], [.term.key], [big] (the old way); and an id: [#name.term],
+    // an anchor in front of it.
     let roles: string | null = null;
+    let id: string | null = null;
     if (attrs !== null) {
-      if (!/^(\.[\w-]+)+$/.test(attrs)) throw new Unsupported('formatting with attributes');
-      roles = attrs.slice(1).split('.').join(' ');
+      const m = /^([A-Za-z][\w-]*)?(?:#([A-Za-z_][\w:-]*))?((?:\.[\w-]+)*)$/.exec(attrs);
+      if (!m || (!m[1] && !m[2] && !m[3])) throw new Unsupported('formatting with attributes');
+      roles = [m[1], ...(m[3] ? m[3].slice(1).split('.') : [])].filter(Boolean).join(' ') || null;
+      id = m[2] ?? null;
+      // A span with only an id isn't a highlight: as written.
+      if (id && (c === '#' || c === '^' || c === '~') && !roles) throw new Unsupported('formatting with attributes');
     }
+    const anchored = (found: Found): Found => (id ? { ...found, nodes: [role('anchor', id, marks), ...found.nodes] } : found);
     if (c === '#') {
       // The editor's strikethrough; else highlighted, or a span of its role.
       if (roles === 'line-through') {
         const strike = schema.marks.strike.create().addToSet(marks);
-        return { end: found.end, nodes: this.parse(found.start, found.close, strike), escape: 'unsupported' };
+        return anchored({ end: found.end, nodes: this.parse(found.start, found.close, strike), escape: 'unsupported' });
       }
       const span = schema.marks.span.create({ role: roles }).addToSet(marks);
-      return { end: found.end, nodes: this.parse(found.start, found.close, span), escape: found.double ? 'unsupported' : 'literal' };
+      return anchored({ end: found.end, nodes: this.parse(found.start, found.close, span), escape: found.double ? 'unsupported' : 'literal' });
     }
     if (c === '^' || c === '~') {
       if (roles !== null) throw new Unsupported('formatting with attributes');
       const value = src.slice(found.start, found.close);
-      if (/[*_`#^~+{\[\\<]/.test(value)) throw new Unsupported('formatting in a superscript');
+      if (/[*_`#^~+{\\<]/.test(value)) throw new Unsupported('formatting in a superscript');
       return { end: found.end, nodes: [role(c === '^' ? 'sup' : 'sub', value, marks)], escape: 'literal' };
     }
     const mark = c === '*' ? schema.marks.strong : c === '_' ? schema.marks.em : schema.marks.code;
@@ -217,9 +234,9 @@ class InlineParser {
     // (`++text++` is monospace around a passthrough, read as one.)
     const content = src.slice(found.start, found.close);
     if (c === '`' && /^\+(?!\+)[\s\S]*(?<!\+)\+$|^\+\+$/.test(content) && content.length >= 2) {
-      return { end: found.end, nodes: textNodes(src.slice(found.start + 1, found.close - 1), inner), escape: literalEscape };
+      return anchored({ end: found.end, nodes: textNodes(src.slice(found.start + 1, found.close - 1), inner), escape: literalEscape });
     }
-    return { end: found.end, nodes: this.parse(found.start, found.close, inner), escape: literalEscape };
+    return anchored({ end: found.end, nodes: this.parse(found.start, found.close, inner), escape: literalEscape });
   }
 
   // The first `close` at or after `from` (passthroughs skipped, like Asciidoctor,
@@ -318,6 +335,9 @@ class InlineParser {
     if (name === 'latexmath' && !target) return one(schema.node('inline_math', { value: content }, undefined, marks));
     if (CONTENT_MACROS.has(name) && !target) return one(role(name, content, marks));
     if (RAW_MACROS.has(name)) return one(role(name, `${target}[${raw}]`, marks));
+    if ((name === 'indexterm' || name === 'indexterm2') && !target && !/[()\n]/.test(content)) return one(role(name, content, marks));
+    // anchor:id[text]: as [[id,text]].
+    if (name === 'anchor' && target && !/[\]\n]/.test(content)) return one(role('anchor', content.trim() ? `${target},${content.trim()}` : target, marks));
     if (name === 'indexterm' || name === 'indexterm2' || name === 'anchor' || name === 'pass') throw new Unsupported(name);
     return null;
   }
@@ -403,7 +423,8 @@ function keepLines(text: string, was: string): string {
       const f = form(line);
       const at = f === null ? -1 : forms.indexOf(f, from);
       // An edited line: indented as the one it replaced was (a list item's text).
-      if (at < 0) return lines.length === old.length && k > 0 ? /^[ \t]*/.exec(old[k])![0] + line : line;
+      // (One with its own indentation, a verse's, keeps it.)
+      if (at < 0) return lines.length === old.length && k > 0 && !/^[ \t]/.test(line) ? /^[ \t]*/.exec(old[k])![0] + line : line;
       from = at + 1;
       return old[at];
     })
@@ -625,6 +646,12 @@ class InlineWriter {
         return;
       case 'sup':
         this.out += `^${value}^`;
+        return;
+      case 'indexterm':
+        this.out += `(((${value})))`;
+        return;
+      case 'indexterm2':
+        this.out += `((${value}))`;
         return;
       case 'sub':
         this.out += `~${value}~`;

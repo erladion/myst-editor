@@ -136,8 +136,23 @@ describe('AsciiDoc inline text', () => {
   });
 
   it('keeps what it can’t show as it is', () => {
-    for (const text of ['[id=x]*styled*', 'https://example.org[a=b]', 'x^[.r]^', '((index term))']) {
+    for (const text of ['[id=x]*styled*', 'https://example.org[a=b]', 'x^*b*^', '[#only-id]#a span#']) {
       expect(() => parseInline(text), text).toThrow(Unsupported);
+    }
+  });
+
+  it('index terms, passthroughs with substitutions, anchors and ids on formatting', () => {
+    const roles = (text: string) => parseInline(text).flatMap((n) => (n.type.name === 'role' ? [[n.attrs.name, n.attrs.value]] : []));
+    expect(roles('At ((Devoxx)) (((Conference, Devoxx))) and indexterm:[Talks].')).toEqual([['indexterm2', 'Devoxx'], ['indexterm', 'Conference, Devoxx'], ['indexterm', 'Talks']]);
+    expect(roles('The text pass:q[<u>underline *me*</u>] is underlined.')).toEqual([['pass', 'q[<u>underline *me*</u>]']]);
+    expect(roles('anchor:here[]Look, anchor:there[There].')).toEqual([['anchor', 'here'], ['anchor', 'there,There']]);
+    expect(roles('A [#def.term]*mark* and ^[1]^.')).toEqual([['anchor', 'def'], ['sup', '[1]']]);
+    const strong = parseInline('A [#def.term]*mark*.').find((n) => n.marks.some((m) => m.type.name === 'strong'))!;
+    expect(strong.marks[0].attrs.role).toBe('term');
+    expect(parseInline('[big]##O##nce').find((n) => n.text === 'O')!.marks[0].attrs.role).toBe('big');
+    // Written back so.
+    for (const text of ['At ((Devoxx)) here.', 'Only (((in, the index))).', 'The text pass:q[<u>underline *me*</u>] is underlined.', 'See ^[1]^.']) {
+      expect(serializeInline(schema.node('paragraph', null, parseInline(text)))).toBe(text);
     }
   });
 

@@ -241,6 +241,8 @@ class Writer {
       }
       fence = delimiterFor(name);
     }
+    // An open block's -- can't be made longer: a listing's, if its code has one.
+    if (fence === '--' && text.split('\n').some((l) => l.trimEnd() === '--')) fence = '----';
     fence = fence.startsWith('`') ? fenceAround(fence, text) : delimiterAround(fence, text);
     return `${this.header(node, lang, fence)}\n${text ? `${text}\n` : ''}${fence}`;
   }

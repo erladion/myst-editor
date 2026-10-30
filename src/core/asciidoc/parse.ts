@@ -528,6 +528,8 @@ class Reader {
       return this.code(name, header, d, headerText, inner, src);
     }
     if (c === '.') return this.code(style || 'literal', header, d, headerText, inner, src);
+    // An open block of code: [source]\n--.
+    if (d === '--' && (style === 'source' || style === 'listing' || style === 'literal')) return this.code(style, header, d, headerText, inner, src);
     if (c === '`') {
       const lang = /^`+([\w+#.-]*)/.exec(own[body])![1];
       const options = optionsOf(header, 'source');
@@ -562,6 +564,7 @@ class Reader {
     else if (c === '*') name = !style || style === 'sidebar' ? 'sidebar' : null;
     else if (c === '_') {
       if (!style && !header.title && !optionsOf(header, '').length) return this.containerNode('blockquote', {}, inner, src, innerLine);
+      if (style === 'verse') return this.verse(common('verse'), d, inner, src, innerLine);
       name = style === 'quote' || !style ? 'quote' : null;
     } else if (d === '--') name = ADMONITION_STYLE.has(style) || ['abstract', 'partintro', 'sidebar', 'example', 'quote'].includes(style) ? style : !style ? 'open' : null;
     if (!name) throw new Unsupported(`${style} block`);
@@ -597,6 +600,33 @@ class Reader {
     this.line = line;
     const attrs = { name: style, args: header.title, options, fence: '', header: headerText, headerKey: blockKey(style, '', header.title, options, '') };
     return this.withSid('md_directive', attrs, [para], src, this.map.newContainer(headerText, ''));
+  }
+
+  // A verse: its stanzas (between blank lines), each a paragraph of its lines, as
+  // they are (indentation too: Asciidoctor keeps it).
+  private verse(common: Record<string, unknown>, d: string, inner: string, src: string, innerLine: number): PMNode {
+    const lines = inner.split('\n');
+    const stanzas: { start: number; end: number }[] = [];
+    lines.forEach((l, k) => {
+      if (isBlank(l)) return;
+      const last = stanzas[stanzas.length - 1];
+      if (last && last.end === k - 1) last.end = k;
+      else stanzas.push({ start: k, end: k });
+    });
+    const offset = (k: number) => lines.slice(0, k).reduce((n, l) => n + l.length + 1, 0);
+    const line = this.line;
+    const paras = stanzas.map((st) => {
+      this.line = innerLine + st.start;
+      return this.paragraph(lines.slice(st.start, st.end + 1).join('\n'));
+    });
+    this.line = line;
+    paras.forEach((p, k) => {
+      if (k) this.map.link(paras[k - 1].attrs.sid, p.attrs.sid, inner.slice(offset(stanzas[k - 1].end) + lines[stanzas[k - 1].end].length, offset(stanzas[k].start)));
+    });
+    const first = stanzas[0];
+    const last = stanzas[stanzas.length - 1];
+    const entry = this.map.newContainer(first ? inner.slice(0, offset(first.start)) : inner, last ? inner.slice(offset(last.end) + lines[last.end].length) : '');
+    return this.withSid('md_directive', { ...common, fence: d }, paras, src, entry);
   }
 
   private containerNode(type: string, attrs: Record<string, unknown>, inner: string, src: string, innerLine: number): PMNode {
