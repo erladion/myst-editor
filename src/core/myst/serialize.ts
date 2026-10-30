@@ -377,6 +377,7 @@ const nodes: Record<string, NodeFn> = {
     }
   },
   role: (state, node) => {
+    if (node.attrs.name === 'substitution') return void state.write(`{{${node.attrs.value}}}`);
     const t = tick(node.attrs.value);
     state.write(`{${node.attrs.name}}${t}${node.attrs.value}${t}`);
   },

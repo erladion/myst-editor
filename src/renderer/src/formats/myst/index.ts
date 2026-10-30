@@ -6,6 +6,7 @@ import { mystCards } from './cards';
 import { mystSource } from './source';
 import { mystInserts } from './inserts';
 import { renameMystReferences } from './rename';
+import { substitutionShown } from './substitutions';
 
 export const mystEditing: EditingFormat = {
   inserts: mystInserts,
@@ -35,5 +36,7 @@ export const mystEditing: EditingFormat = {
     references: REFERENCE_ROLES,
     split: splitRoleValue,
     page: (name, target) => (name === 'doc' ? target : null),
+    // {{ name }}: what it stands for.
+    shown: (name, value, config, where) => (name === 'substitution' ? substitutionShown(value, config, where.doc) : null),
   },
 };

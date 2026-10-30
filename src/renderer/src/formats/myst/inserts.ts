@@ -1,5 +1,5 @@
 // What can be inserted in a MyST page, and the directives that does it with.
-import type { Command } from 'prosemirror-state';
+import type { Command, EditorState } from 'prosemirror-state';
 import { schema } from '../../../../core/schema';
 import { mystConfig, newDirectiveFence } from '../../../../core/project-config';
 import { renderHeader } from '../../../../core/directive';
@@ -7,10 +7,28 @@ import type { DirectiveDef } from '../../../../core/editor-config';
 import type { EditorContext } from '../../editor/context';
 import { IMAGE_HELP, insertAsking, insertBlock, insertCodeBlock, insertDivider, insertImage, insertTarget, targetLabel, uniqueLabel } from '../../editor/commands';
 import type { InsertItem } from '../editing';
+import { substitutionsFor } from './substitutions';
 import { ADMONITIONS, CALLOUT_CHOICES } from './directives';
 import { insertReference } from './references';
 
 const { nodes } = schema;
+
+// {{ name }}: one of those conf.py or the page's front matter set (or another).
+async function insertSubstitution(ctx: EditorContext, run: (cmd: Command) => void, state?: EditorState) {
+  const known = state ? substitutionsFor(ctx.config, state.doc) : {};
+  const values = await ctx.ui.editFields({
+    title: 'Insert substitution',
+    submit: 'Insert',
+    fields: [{ key: 'name', label: 'Name', value: '', suggestions: Object.entries(known).map(([k, v]) => ({ value: k, label: `${k} — ${v}` })), help: 'From myst_substitutions in conf.py, or the page’s front matter.' }],
+  });
+  const name = values?.name.trim();
+  if (!name) return;
+  run((s, dispatch) => {
+    if (!s.selection.$from.parent.type.contentMatch.matchType(nodes.role)) return false;
+    dispatch?.(s.tr.replaceSelectionWith(nodes.role.create({ name: 'substitution', value: ` ${name} ` }), false).scrollIntoView());
+    return true;
+  });
+}
 
 // A footnote: its number here, its text at the end of the page.
 async function insertFootnote(ctx: EditorContext, run: (cmd: Command) => void) {
@@ -178,5 +196,8 @@ export function mystInserts(ctx: EditorContext): InsertItem[] {
     { id: 'reference', group: 'Inline', label: 'Cross-reference…', palette: 'Cross-reference…', keys: 'Cross-reference', ask: (run, state) => void insertReference(ctx, run, state) },
     { id: 'anchor', group: 'Inline', label: 'Link target…', palette: 'Link target…', ask: (run, state) => state && void insertTarget(ctx, state, run) },
     { id: 'footnote', group: 'Inline', label: 'Footnote…', palette: 'Footnote…', ask: (run) => void insertFootnote(ctx, run) },
+    ...(mystConfig(ctx.config).extensions.includes('substitution')
+      ? [{ id: 'substitution', group: 'Inline' as const, label: 'Substitution…', palette: 'Substitution…', ask: (run: (cmd: Command) => void, state?: EditorState) => void insertSubstitution(ctx, run, state) }]
+      : []),
   ];
 }

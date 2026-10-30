@@ -16,6 +16,8 @@ export interface MystConfig {
   fromConfPy: boolean;
   // numfig = True: figures and tables are numbered, and {numref} works.
   numfig?: boolean;
+  // myst_substitutions: what {{ name }} stands for, where it's a string.
+  substitutions?: Record<string, string>;
   // The project's own directives, roles and conditions, from .wysie.toml.
   editor: EditorConfig;
 }
@@ -30,7 +32,10 @@ const OPTIONAL: Record<string, string> = {
   strikethrough: 'strikethrough',
 };
 
-export const DEFAULT_CONFIG: MystConfig = { format: 'myst', extensions: Object.keys(OPTIONAL), fromConfPy: false, editor: EMPTY_EDITOR_CONFIG };
+// Extensions the editor reads itself (myst-parser doesn't know them).
+export const OWN_SYNTAX = ['substitution'] as const;
+
+export const DEFAULT_CONFIG: MystConfig = { format: 'myst', extensions: [...Object.keys(OPTIONAL), ...OWN_SYNTAX], fromConfPy: false, editor: EMPTY_EDITOR_CONFIG };
 
 export function readConfPy(source: string): MystConfig {
   const extensions = new Set<string>();
@@ -45,7 +50,16 @@ export function readConfPy(source: string): MystConfig {
   for (const m of source.matchAll(/myst_enable_extensions\s*\.\s*extend\(\s*[[({]([^\])}]*)[\])}]\s*\)/g)) {
     strings(m[1]).forEach((e) => extensions.add(e));
   }
-  return { format: 'myst', extensions: [...extensions], fromConfPy: true, numfig: /^\s*numfig\s*=\s*True\b/m.test(source), editor: EMPTY_EDITOR_CONFIG };
+  return { format: 'myst', extensions: [...extensions], fromConfPy: true, numfig: /^\s*numfig\s*=\s*True\b/m.test(source), substitutions: substitutionsOf(source), editor: EMPTY_EDITOR_CONFIG };
+}
+
+// myst_substitutions = {"product": "Widget", ...}: its string values.
+function substitutionsOf(source: string): Record<string, string> {
+  const m = /^\s*myst_substitutions\s*=\s*\{([\s\S]*?)^\s*\}/m.exec(source) ?? /^\s*myst_substitutions\s*=\s*\{([^}\n]*)\}/m.exec(source);
+  const out: Record<string, string> = {};
+  if (!m) return out;
+  for (const e of m[1].matchAll(/(["'])([\w-]+)\1\s*:\s*(["'])((?:\\.|(?!\3).)*)\3/g)) out[e[2]] = e[4].replace(/\\(.)/g, '$1');
+  return out;
 }
 
 // A page's settings, known to be MyST's: for MyST's own code.

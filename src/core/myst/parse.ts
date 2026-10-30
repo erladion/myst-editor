@@ -53,7 +53,12 @@ export interface ParseOptions {
   conditionKeywords?: [string, string];
   // Roles the project's extension uses for merged table cells.
   tableSpans?: { colspan?: string; rowspan?: string };
+  // {{ name }} as a substitution (the substitution extension).
+  substitutions?: boolean;
 }
+
+// The options of the parse under way, for reading inline text.
+let reading: ParseOptions = {};
 
 export interface ParseResult {
   doc: PMNode;
@@ -63,6 +68,16 @@ export interface ParseResult {
 class Unsupported extends Error {}
 
 export function parseMyst(source: string, opts: ParseOptions = {}): ParseResult {
+  const was = reading;
+  reading = opts;
+  try {
+    return parseWith(source, opts);
+  } finally {
+    reading = was;
+  }
+}
+
+function parseWith(source: string, opts: ParseOptions): ParseResult {
   const map = new SourceMap();
   map.style = inferStyle(source);
   const ctx = new Context(source, map, opts);
@@ -579,7 +594,16 @@ function inline(children: MdNode[] = [], marks: readonly Mark[] = []): PMNode[] 
         const parts = (c.value as string).split('\n');
         parts.forEach((part, i) => {
           if (i > 0) out.push(schema.node('soft_break', null, undefined, marks));
-          if (part) out.push(schema.text(part, marks));
+          if (!part) return;
+          if (!reading.substitutions) return void out.push(schema.text(part, marks));
+          // {{ name }}: a substitution, its spaces as written.
+          let at = 0;
+          for (const m of part.matchAll(/\{\{([^{}\n]+)\}\}/g)) {
+            if (m.index! > at) out.push(schema.text(part.slice(at, m.index), marks));
+            out.push(schema.node('role', { name: 'substitution', value: m[1] }, undefined, marks));
+            at = m.index! + m[0].length;
+          }
+          if (at < part.length) out.push(schema.text(part.slice(at), marks));
         });
         break;
       }
