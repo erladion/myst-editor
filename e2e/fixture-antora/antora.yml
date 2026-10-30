@@ -1,0 +1,8 @@
+name: shop
+title: The Shop
+version: '2.0'
+nav:
+- modules/ROOT/nav.adoc
+asciidoc:
+  attributes:
+    product: ShopKeeper

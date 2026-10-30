@@ -8,6 +8,8 @@ import { sphinxContents } from './sphinx/contents';
 import { sphinxReferences } from './sphinx/references';
 import { asciidoctorContents } from './asciidoctor/contents';
 import { asciidoctorReferences } from './asciidoctor/references';
+import { antoraContents, antoraOf } from './antora/contents';
+import { antoraReferences } from './antora/references';
 
 export interface References {
   // What a role (`role`, `target`) or a link written in `fromSource` points at.
@@ -28,4 +30,9 @@ const SPHINX: ProjectBuilder = { contents: sphinxContents, references: sphinxRef
 const ASCIIDOCTOR: ProjectBuilder = { contents: asciidoctorContents, references: asciidoctorReferences, fragments: true };
 
 // A project's (pages outside every project: Sphinx's rules, as for a Markdown folder).
-export const builderFor = (project: Project | null): ProjectBuilder => (project?.builder === 'asciidoctor' ? ASCIIDOCTOR : SPHINX);
+// An Antora component's are Asciidoctor's, with its own contents and references.
+export function builderFor(project: Project | null): ProjectBuilder {
+  if (project?.builder !== 'asciidoctor') return SPHINX;
+  const antora = antoraOf(project);
+  return antora ? { contents: antoraContents, references: antoraReferences(antora), fragments: true } : ASCIIDOCTOR;
+}

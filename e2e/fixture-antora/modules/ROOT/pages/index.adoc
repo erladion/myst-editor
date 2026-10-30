@@ -1,0 +1,7 @@
+= Welcome
+
+About {product}. See xref:install.adoc[] and xref:admin:users.adoc#roles[the roles].
+
+image::logo.svg[Logo]
+
+include::partial$note.adoc[]

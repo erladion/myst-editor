@@ -48,3 +48,21 @@ test('makes the PDF of a book: its cover, contents and chapters', async () => {
   expect(text.some((t) => /^Installing/.test(t) && t.includes('You need a computer.'))).toBe(true);
   expect(text.some((t) => /^Using/.test(t))).toBe(true);
 });
+
+test('makes the PDF of an Antora component, in its navigation’s order', async () => {
+  const dir = mkdtempSync(join(workDir(), 'mysteditor-antora-pdf-'));
+  cpSync(join(import.meta.dirname, 'fixture-antora'), join(dir, 'shop'), { recursive: true });
+  const { code, out, err } = await run(dir, '--export-pdf', 'shop', '--output', 'shop.pdf');
+  expect(code, `${out}\n${err}`).toBe(0);
+  expect(out).toContain('Making a PDF of The Shop');
+  const text = await pageTexts(readFileSync(join(dir, 'shop.pdf')));
+  expect(text[0]).toContain('The Shop');
+  const contents = text.find((t) => /Contents/.test(t))!;
+  const order = ['Welcome', 'Installing', 'On Linux', 'Reference', 'Users'].map((t) => contents.indexOf(t));
+  expect(order.every((i) => i >= 0), contents).toBe(true);
+  expect([...order].sort((a, b) => a - b)).toEqual(order);
+  expect(contents).not.toContain('Not in the navigation');
+  // The partial and the example, included where they are.
+  expect(text.some((t) => t.includes('Ask us anything.'))).toBe(true);
+  expect(text.some((t) => t.includes('curl example.com | sh'))).toBe(true);
+});

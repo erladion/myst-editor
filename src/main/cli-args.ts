@@ -21,7 +21,7 @@ project, or an Asciidoctor one (AsciiDoc pages, built from their main document).
 under it, with --project to say which.
 
 Options:
-  --project <dir>     the project's folder (with conf.py, or its main .adoc), relative to <folder>
+  --project <dir>     the project's folder (with conf.py, antora.yml or its main .adoc), relative to <folder>
   --output <file>     where the PDF goes (default: the project's name, here)
   --python <path>     for Sphinx: a Python with Sphinx and MyST-Parser installed (default:
                       an environment set up from the project's requirements, as the app does)

@@ -10,7 +10,7 @@ export function NewProjectDialog({ onCreated, onClose }: { onCreated: (folder: s
   const [folder, setFolder] = useState(''); // empty: from the title
   const [parent, setParent] = useState('');
   const [useGit, setUseGit] = useState(true);
-  const [builder, setBuilder] = useState<'sphinx' | 'asciidoctor'>('sphinx');
+  const [kind, setKind] = useState<'sphinx' | 'asciidoctor' | 'antora'>('sphinx');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -25,7 +25,7 @@ export function NewProjectDialog({ onCreated, onClose }: { onCreated: (folder: s
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const result = await api.createProject({ title: title.trim(), parent, folder: name, git: useGit, builder });
+    const result = await api.createProject({ title: title.trim(), parent, folder: name, git: useGit, builder: kind === 'sphinx' ? 'sphinx' : 'asciidoctor', antora: kind === 'antora' });
     setBusy(false);
     if (result.ok) onCreated(result.path, result.note);
     else setError(result.message);
@@ -42,12 +42,16 @@ export function NewProjectDialog({ onCreated, onClose }: { onCreated: (folder: s
           <fieldset className="field">
             <legend>Written in</legend>
             <label className="check">
-              <input type="radio" name="project-builder" checked={builder === 'sphinx'} onChange={() => setBuilder('sphinx')} />
+              <input type="radio" name="project-builder" checked={kind === 'sphinx'} onChange={() => setKind('sphinx')} />
               MyST Markdown, built with Sphinx
             </label>
             <label className="check">
-              <input type="radio" name="project-builder" checked={builder === 'asciidoctor'} onChange={() => setBuilder('asciidoctor')} />
+              <input type="radio" name="project-builder" checked={kind === 'asciidoctor'} onChange={() => setKind('asciidoctor')} />
               AsciiDoc, built with Asciidoctor
+            </label>
+            <label className="check">
+              <input type="radio" name="project-builder" checked={kind === 'antora'} onChange={() => setKind('antora')} />
+              AsciiDoc, an Antora component
             </label>
           </fieldset>
           <div className="field">

@@ -1,6 +1,7 @@
 // How a project's AsciiDoc pages are read: the project's editor settings, and (in an
 // Asciidoctor project) its main document and the attributes its header sets.
 import { EMPTY_EDITOR_CONFIG, type EditorConfig } from '../editor-config.js';
+import type { Antora } from './antora.js';
 
 export interface AsciidocConfig {
   format: 'asciidoc';
@@ -14,9 +15,12 @@ export interface AsciidocConfig {
   // The folder (from the opened folder) the main document is in: in a book, what its
   // chapters' pictures are found from (with :imagesdir:). Null: each page's own.
   base: string | null;
+  // An Antora component's: its pages refer to each other by resource ID (see
+  // antora.ts), and `attributes` are its antora.yml's. Null: a plain project.
+  antora: Antora | null;
 }
 
-export const ASCIIDOC_CONFIG: AsciidocConfig = { format: 'asciidoc', editor: EMPTY_EDITOR_CONFIG, main: null, attributes: {}, base: null };
+export const ASCIIDOC_CONFIG: AsciidocConfig = { format: 'asciidoc', editor: EMPTY_EDITOR_CONFIG, main: null, attributes: {}, base: null, antora: null };
 
 // Editor settings for AsciiDoc pages: conditions are written as ifdef::[] there.
 export function asciidocEditor(editor: EditorConfig): EditorConfig {

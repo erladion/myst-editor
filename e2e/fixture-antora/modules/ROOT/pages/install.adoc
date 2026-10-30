@@ -1,0 +1,8 @@
+= Installing
+
+On xref:topic/linux.adoc[Linux], and xref:missing.adoc[nowhere].
+
+[source,sh]
+----
+include::example$install.sh[]
+----

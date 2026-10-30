@@ -5,6 +5,8 @@ import { relativePath } from '../../../../core/rename';
 import type { PageConfig } from '../../../../core/format';
 import type { Node as PMNode } from 'prosemirror-model';
 import type { AsciidocConfig } from '../../../../core/asciidoc/config';
+import { attributeValue, resolveResource, resourceIdFor } from '../../../../core/asciidoc/antora';
+import { fromComponent, inComponent } from '../../builders/antora/references';
 import { splitRoleValue } from '../myst/directives';
 import { ADMONITIONS, CALLOUT_CHOICES, blockInfo } from './blocks';
 import { asciidocCards } from './cards';
@@ -23,7 +25,7 @@ const BUILT_IN: Record<string, string> = {
 // the page's own (its header, and entries above it), in order; :name!: unsets one.
 function attributesAt(config: PageConfig, doc: PMNode, pos: number): Map<string, { value: string | null; here: boolean }> {
   const out = new Map<string, { value: string | null; here: boolean }>();
-  for (const [k, v] of Object.entries(config.format === 'asciidoc' ? (config as AsciidocConfig).attributes : {})) out.set(k, { value: v, here: false });
+  for (const [k, v] of Object.entries(config.format === 'asciidoc' ? (config as AsciidocConfig).attributes : {})) out.set(k, { value: attributeValue(v), here: false });
   doc.descendants((node, at) => {
     if (at >= pos) return false;
     if (node.type.name !== 'raw_block' || !['attributes', 'header'].includes(node.attrs.kind)) return true;
@@ -40,11 +42,12 @@ function attributesAt(config: PageConfig, doc: PMNode, pos: number): Map<string,
 function attributeShown(name: string, config: PageConfig, where: { doc: PMNode; pos: number }) {
   const set = attributesAt(config, where.doc, where.pos).get(name);
   const own = set?.value ?? undefined;
-  const from = set?.here ? 'on this page' : 'in the main document';
+  const antora = config.format === 'asciidoc' && !!(config as AsciidocConfig).antora;
+  const from = set?.here ? 'on this page' : antora ? 'in antora.yml' : 'in the main document';
   if (set && set.value === null) return { text: `{${name}}`, title: `{${name}} is unset ${from}`, missing: true };
   if (own !== undefined) return { text: own || `{${name}}`, title: `{${name}}: set ${from}${own ? '' : ', to nothing'}` };
   if (name in BUILT_IN) return { text: BUILT_IN[name], title: `{${name}}` };
-  return { text: `{${name}}`, title: `{${name}} isn’t set in the main document’s header`, missing: true };
+  return { text: `{${name}}`, title: antora ? `{${name}} isn’t set on this page or in antora.yml` : `{${name}} isn’t set in the main document’s header`, missing: true };
 }
 
 // Where pictures are found from: in a book, the main document's folder; and :imagesdir:.
@@ -64,14 +67,30 @@ function entries(extra: string | null): { positional: string[]; named: string[] 
   return { positional: all.filter((e) => !e.includes('=')), named: all.filter((e) => e.includes('=')) };
 }
 
+// In an Antora component: the module's images, by resource ID (logo.png, admin:logo.png).
+const antoraImages = {
+  fromPage(ref: string, config: AsciidocConfig, page: string): string {
+    const antora = config.antora!;
+    const found = resolveResource(antora, inComponent(antora, page), ref, 'image');
+    return found ? relativePath(dirname(page), fromComponent(antora, found.file)) : ref;
+  },
+  toRef(path: string, config: AsciidocConfig, page: string): string {
+    const antora = config.antora!;
+    const target = join(dirname(page), path);
+    return (target !== null && resourceIdFor(inComponent(antora, page), inComponent(antora, target), 'image')) || path;
+  },
+};
+
 const images: Images = {
   fromPage(ref, config, page) {
+    if ((config as AsciidocConfig).antora) return antoraImages.fromPage(ref, config as AsciidocConfig, page);
     const root = imagesRoot(config, page);
     if (ABSOLUTE.test(ref) || root === null) return ref;
     const target = join(root, ref);
     return target === null ? ref : relativePath(dirname(page), target);
   },
   toRef(path, config, page) {
+    if ((config as AsciidocConfig).antora) return antoraImages.toRef(path, config as AsciidocConfig, page);
     const root = imagesRoot(config, page);
     const target = join(dirname(page), path);
     return root === null || target === null ? path : relativePath(root, target);
@@ -111,7 +130,16 @@ export const asciidocEditing: EditingFormat = {
   roles: {
     references: { ref: 'Anchor', xref: 'Cross-reference' },
     split: splitRoleValue,
-    page: (name, target) => (name === 'xref' || name === 'ref' ? pageOf(target) : null),
+    page: (name, target, from) => {
+      if (name !== 'xref' && name !== 'ref') return null;
+      // In an Antora component: by resource ID, from the project's folder.
+      const antora = from?.config.format === 'asciidoc' ? (from.config as AsciidocConfig).antora : null;
+      if (antora && from?.page) {
+        const found = resolveResource(antora, inComponent(antora, from.page), target, 'page');
+        return found ? `/${found.file}` : null;
+      }
+      return pageOf(target);
+    },
     shown: (name, value, config, where) => (name === 'attribute' ? attributeShown(value, config, where) : null),
   },
 };

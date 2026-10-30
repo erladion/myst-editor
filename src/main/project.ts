@@ -54,7 +54,7 @@ export interface FolderScan {
 type ProjectFinder = (root: string, scan: FolderScan, read: Set<string>) => Promise<Project[]>;
 
 // The files that make a folder a project, and the finders, a kind each.
-const MARKERS = ['conf.py'];
+const MARKERS = ['conf.py', 'antora.yml'];
 // Whether a file (relative to the opened folder) is one of those: when it changes,
 // the projects are found again.
 export const isMarker = (rel: string) => MARKERS.includes(rel.slice(rel.lastIndexOf('/') + 1));

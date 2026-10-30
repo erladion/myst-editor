@@ -1,6 +1,7 @@
 // What can be inserted in an AsciiDoc page.
 import type { Command } from 'prosemirror-state';
 import { schema } from '../../../../core/schema';
+import type { AsciidocConfig } from '../../../../core/asciidoc/config';
 import type { EditorContext } from '../../editor/context';
 import { IMAGE_HELP, insertAsking, insertBlock, insertImage, insertTarget, targetLabel, uniqueLabel } from '../../editor/commands';
 import type { InsertItem } from '../editing';
@@ -55,8 +56,11 @@ function insertDefinitionList(): Command {
 }
 
 const FILE_HELP = 'Relative to this page.';
+const RESOURCE_HELP = 'A partial or example of this module (partial$name.adoc), or of another (module:partial$name.adoc); or a path relative to this page.';
 
 export function asciidocInserts(ctx: EditorContext): InsertItem[] {
+  // In an Antora component, included files are the module's partials and examples.
+  const antora = ctx.config.format === 'asciidoc' && !!(ctx.config as AsciidocConfig).antora;
   const asking = (title: string, label: string, insert: (value: string) => Command, more: { placeholder?: string; help?: string } = {}) => (run: (cmd: Command) => void) =>
     void insertAsking(ctx, run, { title, label, insert, ...more });
   return [
@@ -89,12 +93,12 @@ export function asciidocInserts(ctx: EditorContext): InsertItem[] {
     { id: 'quote', group: 'Text', label: 'Quote', command: insertContainer('quote', '____') },
     { id: 'definition-list', group: 'Structure', label: 'Definition list', palette: 'Definition list', command: insertDefinitionList() },
     { id: 'page-contents', group: 'Structure', label: 'Contents of this page', command: insertMacro('toc', '') },
-    { id: 'include', group: 'Structure', label: 'Include a file…', ask: asking('Include a file', 'File', (v) => insertMacro('include', v), { placeholder: 'partials/common.adoc', help: FILE_HELP }) },
+    { id: 'include', group: 'Structure', label: 'Include a file…', ask: asking('Include a file', 'File', (v) => insertMacro('include', v), antora ? { placeholder: 'partial$common.adoc', help: RESOURCE_HELP } : { placeholder: 'partials/common.adoc', help: FILE_HELP }) },
     {
       id: 'code-include',
       group: 'Structure',
       label: 'Code from a file…',
-      ask: asking('Code from a file', 'File', (v) => insertBlock(nodes.code_block.create({ name: 'source', lang: '', fence: '----' }, schema.text(`include::${v}[]`))), { placeholder: '../examples/hello.py', help: FILE_HELP }),
+      ask: asking('Code from a file', 'File', (v) => insertBlock(nodes.code_block.create({ name: 'source', lang: '', fence: '----' }, schema.text(`include::${v}[]`))), antora ? { placeholder: 'example$hello.py', help: RESOURCE_HELP } : { placeholder: '../examples/hello.py', help: FILE_HELP }),
     },
     { id: 'raw-html', group: 'Structure', label: 'Raw HTML', command: insertBlock(nodes.raw_block.create({ kind: 'passthrough', source: '++++\n<p>HTML</p>\n++++' })) },
     { id: 'reference', group: 'Inline', label: 'Cross-reference…', palette: 'Cross-reference…', keys: 'Cross-reference', ask: (run, state) => void insertReference(ctx, run, state) },

@@ -60,3 +60,24 @@ test('makes an AsciiDoc book, and opens it', async () => {
   await expect(page.locator('.chip-button', { hasText: /Built in/ })).toBeVisible({ timeout: 30_000 });
   await expect(page.locator('.sidebar .page')).toContainText(['Widget guide', 'Getting started']);
 });
+
+test('makes an Antora component, and opens its start page', async () => {
+  ctx = await launch({ noProject: true });
+  const { page } = ctx;
+  const parent = join(ctx.project, '..');
+  await page.getByRole('button', { name: 'New project…' }).click();
+  const dialog = page.getByRole('dialog', { name: 'New project' });
+  await dialog.getByLabel('Title').fill('Gadget docs');
+  await dialog.getByLabel('AsciiDoc, an Antora component').check();
+  await dialog.getByLabel('Save in').fill(parent);
+  await dialog.getByLabel('Make it a git repository').uncheck();
+  await dialog.getByRole('button', { name: 'Create project' }).click();
+
+  await expect(page.locator('.prose h1')).toHaveText('Gadget docs');
+  const dir = join(parent, 'gadget-docs');
+  expect(readFileSync(join(dir, 'docs', 'antora.yml'), 'utf8')).toContain('name: gadget-docs\n');
+  expect(readFileSync(join(dir, 'antora-playbook.yml'), 'utf8')).toContain('start_path: docs');
+  // Built: its navigation as the contents.
+  await expect(page.locator('.chip-button', { hasText: /Built in/ })).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('.sidebar .page')).toContainText(['Gadget docs', 'Gadget docs', 'Getting started']);
+});

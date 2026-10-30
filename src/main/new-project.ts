@@ -1,6 +1,7 @@
 // File → New Project: a folder with a project in it, ready to write in and to build:
-// docs/ with a Sphinx project (conf.py, a first page and its requirements) or an
-// Asciidoctor book (its main document including a first chapter); a README; and, if
+// docs/ with a Sphinx project (conf.py, a first page and its requirements), an
+// Asciidoctor book (its main document including a first chapter) or an Antora
+// component (antora.yml, its pages and navigation); a README; and, if
 // asked, a git repository with it all as the first commit.
 import { ipcMain } from 'electron';
 import { existsSync, promises as fs } from 'node:fs';
@@ -11,8 +12,8 @@ import { git } from './git/service.js';
 // A Python string (JSON's are, for what a title holds).
 const py = (s: string) => JSON.stringify(s);
 
-export function projectFiles(title: string, builder: BuilderId = 'sphinx'): Record<string, string> {
-  if (builder === 'asciidoctor') return asciidoctorFiles(title);
+export function projectFiles(title: string, builder: BuilderId = 'sphinx', antora = false): Record<string, string> {
+  if (builder === 'asciidoctor') return antora ? antoraFiles(title) : asciidoctorFiles(title);
   return {
     'README.md': `# ${title}\n\nDocumentation written in MyST Markdown and built with Sphinx.\n\n    pip install -r docs/requirements.txt\n    sphinx-build docs _build/html\n`,
     '.gitignore': '_build/\n.venv/\n__pycache__/\n',
@@ -43,6 +44,22 @@ function asciidoctorFiles(title: string): Record<string, string> {
   };
 }
 
+// An Antora component: docs/antora.yml, its ROOT module's pages and navigation; and
+// a playbook to build the site with Antora itself.
+function antoraFiles(title: string): Record<string, string> {
+  const name = title.normalize('NFKD').toLowerCase().replace(/[^\w\s-]/g, '').trim().replace(/[\s_]+/g, '-') || 'docs';
+  const yaml = (s: string) => JSON.stringify(s);
+  return {
+    'README.md': `# ${title}\n\nDocumentation written in AsciiDoc: an Antora component, in docs/.\n\n    npx antora antora-playbook.yml\n`,
+    '.gitignore': 'build/\n',
+    'antora-playbook.yml': `site:\n  title: ${yaml(title)}\n  start_page: ${name}::index.adoc\ncontent:\n  sources:\n  - url: .\n    branches: HEAD\n    start_path: docs\nui:\n  bundle:\n    url: https://gitlab.com/antora/antora-ui-default/-/jobs/artifacts/HEAD/raw/build/ui-bundle.zip?job=bundle-stable\n    snapshot: true\n`,
+    'docs/antora.yml': `name: ${name}\ntitle: ${yaml(title)}\nversion: ~\nnav:\n- modules/ROOT/nav.adoc\n`,
+    'docs/modules/ROOT/nav.adoc': '* xref:index.adoc[]\n* xref:getting-started.adoc[]\n',
+    'docs/modules/ROOT/pages/index.adoc': `= ${title}\n\nWhat this documentation is about, and who it's for.\n`,
+    'docs/modules/ROOT/pages/getting-started.adoc': '= Getting started\n\nThe first steps.\n\nTIP: Add pages with *New page* in the sidebar (Ctrl+N). They go into the navigation you choose.\n',
+  };
+}
+
 export function registerNewProjectIpc() {
   ipcMain.handle('create-project', async (_e, p: NewProject): Promise<NewProjectResult> => {
     const title = String(p.title).trim();
@@ -52,7 +69,7 @@ export function registerNewProjectIpc() {
     const dir = join(String(p.parent), folder);
     if (existsSync(dir) && (await fs.readdir(dir)).length) return { ok: false, message: `There’s a folder called ${folder} there already, with files in it.` };
     try {
-      for (const [rel, text] of Object.entries(projectFiles(title, p.builder === 'asciidoctor' ? 'asciidoctor' : 'sphinx'))) {
+      for (const [rel, text] of Object.entries(projectFiles(title, p.builder === 'asciidoctor' ? 'asciidoctor' : 'sphinx', !!p.antora))) {
         await fs.mkdir(join(dir, rel, '..'), { recursive: true });
         await fs.writeFile(join(dir, rel), text, { flag: 'wx' });
       }

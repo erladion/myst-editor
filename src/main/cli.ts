@@ -88,7 +88,7 @@ async function builderFor(project: Project, p: ProjectInfo, opts: CliOptions): P
 // The project to export: the one --project names; else the folder's own; else the
 // only one. Otherwise what's wrong.
 function chooseProject(projects: Project[], root: string, wanted: string | null): Project | string {
-  if (!projects.length) return `there’s no project in ${root}: a Sphinx project (conf.py with a root page) or AsciiDoc pages`;
+  if (!projects.length) return `there’s no project in ${root}: a Sphinx project (conf.py with a root page), an Antora component (antora.yml) or AsciiDoc pages`;
   const list = projects.map((x) => `  ${x.dir || '.'}  (${x.name})`).join('\n');
   if (wanted !== null) {
     const dir = relative(root, isAbsolute(wanted) ? wanted : resolve(root, wanted)).split(sep).join('/');

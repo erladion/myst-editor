@@ -106,6 +106,7 @@ export interface NewProject {
   folder: string; // its own folder's name
   git: boolean;
   builder?: BuilderId; // what it's written in and built with: Sphinx (MyST) if not said
+  antora?: boolean; // with Asciidoctor: an Antora component, not a book
 }
 export type NewProjectResult = { ok: true; path: string; note: string | null } | { ok: false; message: string };
 

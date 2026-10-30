@@ -1,11 +1,14 @@
 // Cross-references in an AsciiDoc page: <<anchor>> on the page, xref:page.adoc#anchor[]
-// to others.
+// to others (in an Antora component, by resource ID: from the module's pages).
 import type { Node as PMNode } from 'prosemirror-model';
 import type { Command, EditorState } from 'prosemirror-state';
 import { schema } from '../../../../core/schema';
 import { relativePath } from '../../../../core/rename';
 import type { EditorContext } from '../../editor/context';
 import { dirname } from '../../paths';
+import type { AsciidocConfig } from '../../../../core/asciidoc/config';
+import { resourceIdFor } from '../../../../core/asciidoc/antora';
+import { inComponent } from '../../builders/antora/references';
 
 const { nodes } = schema;
 
@@ -29,7 +32,8 @@ export async function insertReference(ctx: EditorContext, run: (cmd: Command) =>
   const others = await ctx.otherPages();
   const own = state ? anchorsOf(state.doc) : [];
   const fromDir = here ? dirname(here) : '';
-  const pageRef = (path: string) => relativePath(fromDir, path);
+  const antora = ctx.config.format === 'asciidoc' ? (ctx.config as AsciidocConfig).antora : null;
+  const pageRef = (path: string) => (antora && here && resourceIdFor(inComponent(antora, here), inComponent(antora, path), 'page')) || relativePath(fromDir, path);
   const values = await ctx.ui.editFields({
     title: 'Insert cross-reference',
     submit: 'Insert',
