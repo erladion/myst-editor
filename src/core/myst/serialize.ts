@@ -102,6 +102,12 @@ class Writer {
       case 'blockquote':
         return prefixLines(inner(), '> ', '>');
 
+      case 'footnote_def': {
+        const [first, ...rest] = inner().split('\n');
+        const pad = ' '.repeat(node.attrs.indent || 4);
+        return [`[^${node.attrs.label}]:${first ? ` ${first}` : ''}`, ...rest.map((l) => (l ? pad + l : l))].join('\n');
+      }
+
       case 'bullet_list':
       case 'ordered_list':
         return this.list(node);
@@ -150,6 +156,8 @@ class Writer {
     } else {
       fence = needed;
       header = renderHeader(fence, name, args, options);
+      // (Nothing under the options: no blank line before the closing fence.)
+      if (body === '' && node.type.name === 'md_directive') header = header.replace(/\n$/, '');
     }
     const parts = [header];
     if (body !== '' || node.type.name !== 'md_directive') parts.push(body);

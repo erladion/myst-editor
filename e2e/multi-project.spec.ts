@@ -65,7 +65,7 @@ test('new callouts use each project’s fence style, and saving rebuilds only th
   await page.keyboard.press('End');
   await page.keyboard.press('Enter');
   await page.getByRole('button', { name: 'Insert ▾' }).click();
-  await page.getByRole('menuitem', { name: 'Note' }).click();
+  await page.getByRole('menuitem', { name: 'Note', exact: true }).click();
   await page.keyboard.type('Only admins can see this page.');
   await expect(page.locator('.save-status')).toHaveText('All changes saved', { timeout: 10_000 });
   expect(readFileSync(join(ctx.project, 'admin-guide', 'index.md'), 'utf8')).toContain('```{note}\nOnly admins can see this page.\n```');
@@ -76,7 +76,7 @@ test('new callouts use each project’s fence style, and saving rebuilds only th
   await page.keyboard.press('End');
   await page.keyboard.press('Enter');
   await page.getByRole('button', { name: 'Insert ▾' }).click();
-  await page.getByRole('menuitem', { name: 'Note' }).click();
+  await page.getByRole('menuitem', { name: 'Note', exact: true }).click();
   await page.keyboard.type('For everyone.');
   await expect(page.locator('.save-status')).toHaveText('All changes saved', { timeout: 10_000 });
   expect(readFileSync(join(ctx.project, 'user-guide', 'index.md'), 'utf8')).toContain(':::{note}\nFor everyone.\n:::');

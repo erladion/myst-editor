@@ -22,6 +22,21 @@ export const MARKDOWN_DIRECTIVES = new Set([
   'tab-set', 'tab-item', 'grid', 'grid-item', 'grid-item-card', 'card', 'div', 'container',
 ]);
 
+// A footnote definition's last line: it goes on over indented lines (blank lines
+// between them), and lines going on from its paragraph that don't start a block.
+function footnoteEnd(lines: string[], start: number, limit: number): number {
+  let end = start;
+  for (let k = start + 1; k <= limit; k++) {
+    const line = lines[k];
+    if (!line.trim()) continue;
+    const indented = /^ {1,}\S/.test(line) || /^\t/.test(line);
+    const lazy = end === k - 1 && !/^ {0,3}(```|~~~|:::|#{1,6}\s|>|[-*+]\s|\d+[.)]\s|\[\^[^\]]+\]:|<|\||\$\$|\{|\(.*\)=\s*$)/.test(line);
+    if (indented || lazy) end = k;
+    else break;
+  }
+  return end;
+}
+
 // Directives whose body is literal text, shown as an editable code block.
 export const CODE_DIRECTIVES = new Set(['code-block', 'code', 'sourcecode', 'code-cell', 'eval-rst', 'raw', 'mermaid']);
 
@@ -131,7 +146,7 @@ class Context {
       if (segs.length && b.start <= segs[segs.length - 1].end) continue; // duplicate start
       const next = blocks.find((o, j) => j > i && o.start > b.start);
       const limit = next ? next.start - 1 : lines.length - 1;
-      const end = b.node.type === 'footnoteDefinition' ? limit : Math.min(b.end, limit);
+      const end = b.node.type === 'footnoteDefinition' ? footnoteEnd(lines, b.start, limit) : Math.min(b.end, limit);
       segs.push({ ...b, end });
       let j = end + 1;
       while (j <= limit) {
@@ -271,8 +286,15 @@ class Context {
         return this.conditionalTable(src);
       case 'table':
         return this.table(md, src);
-      case 'footnoteDefinition':
-        return this.raw('footnote', src);
+      case 'footnoteDefinition': {
+        // Its text: after [^label]:, and the lines under it without their indentation.
+        const lines = src.split('\n');
+        const head = /^ {0,3}\[\^([^\]]+)\]:[ \t]?(.*)$/.exec(lines[0]);
+        if (!head) throw new Unsupported();
+        const indent = lines.slice(1).find((l) => l.trim())?.match(/^ */)![0].length || 4;
+        const inner = [head[2], ...lines.slice(1).map((l) => l.replace(new RegExp(`^ {0,${indent}}`), ''))].join('\n');
+        return this.containerNode('footnote_def', { label: head[1], indent: Math.min(indent, 4) }, inner, src);
+      }
       case 'definitionList':
         return this.definitionList(md, src);
       case 'blockBreak':
@@ -312,6 +334,11 @@ class Context {
     const text = declared ? declared === 'text' : CODE_DIRECTIVES.has(d.name);
     if (markdown && d.closing) {
       return this.containerNode('md_directive', { ...common, fence: d.fence }, d.body ?? '', src, d.header.split('\n').length);
+    }
+    // A picture: a block of its own, like a figure without a caption (one with content
+    // isn't one Sphinx reads: as written).
+    if (d.name === 'image' && !declared && d.closing && !(d.body ?? '').trim()) {
+      return this.withSid('md_directive', { ...common, fence: d.fence }, [], src);
     }
     if (d.name === 'math' && d.closing && !declared) {
       const label = d.options.find(([k]) => k === 'label')?.[1] ?? '';

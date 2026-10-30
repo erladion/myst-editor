@@ -27,8 +27,8 @@ export function checkDoc(doc: PMNode): Finding[] {
   const out: Finding[] = [];
 
   doc.descendants((node, pos) => {
-    if (node.type.name === 'md_directive' && node.attrs.name === 'figure' && !(node.attrs.options as [string, string][]).some(([k, v]) => k === 'alt' && v.trim())) {
-      out.push({ kind: 'figure-alt', from: pos, to: pos + node.nodeSize, message: 'This figure has no description (alt), for screen readers and for when it can’t be shown.', fix: { kind: 'describe-figure', pos } });
+    if (node.type.name === 'md_directive' && (node.attrs.name === 'figure' || node.attrs.name === 'image') && !(node.attrs.options as [string, string][]).some(([k, v]) => k === 'alt' && v.trim())) {
+      out.push({ kind: 'figure-alt', from: pos, to: pos + node.nodeSize, message: `This ${node.attrs.name} has no description (alt), for screen readers and for when it can’t be shown.`, fix: { kind: 'describe-figure', pos } });
     }
     if (node.type.name === 'table') {
       const header = node.firstChild;

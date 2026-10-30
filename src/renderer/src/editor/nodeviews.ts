@@ -112,7 +112,8 @@ class DirectiveView implements NodeView {
   private render() {
     const { name, args, options } = this.node.attrs;
     const info = editingFor(this.ctx.config).block(name, this.ctx.config.editor);
-    setOwnClass(this.dom, `directive tone-${info.tone} directive-${name}`);
+    // A picture has no contents to write in.
+    setOwnClass(this.dom, `directive tone-${info.tone} directive-${name}${name === 'image' && !this.node.childCount ? ' directive-no-body' : ''}`);
     // Rebuild the header unless only the argument changed while the writer is typing it.
     const key = JSON.stringify([name, options]);
     if (key === this.rendered && this.argInput) {
@@ -161,7 +162,7 @@ class DirectiveView implements NodeView {
     // The argument field stretches; without one, push the buttons right.
     if (!this.argInput) parts.push(el('span', { class: 'spacer' }));
     // Figures and tables: the name cross-references use.
-    if (name === 'figure' || name === 'table') parts.push(this.nameButton(name));
+    if (name === 'figure' || name === 'table' || name === 'image') parts.push(this.nameButton(name));
     parts.push(
       button(optionCount(options), 'Edit the options of this block', async () => {
         const next = await this.ctx.ui.editOptions({ title: `${info.label} options`, options: this.node.attrs.options, schema });
@@ -175,7 +176,7 @@ class DirectiveView implements NodeView {
   private nameButton(kind: string): HTMLButtonElement {
     const key = editingFor(this.ctx.config).nameOption ?? 'name';
     const current = (this.node.attrs.options as [string, string][]).find(([k]) => k === key)?.[1] ?? '';
-    const what = kind === 'figure' ? 'figure' : 'table';
+    const what = kind === 'figure' ? 'figure' : kind === 'image' ? 'image' : 'table';
     const b = button(current ? `#${current}` : '# Name', current ? `Other places refer to this ${what} as ${current}` : `Give this ${what} a name, to refer to it from other places`, async () => {
       const values = await this.ctx.ui.editFields({
         title: `Name of the ${what}`,
@@ -193,7 +194,7 @@ class DirectiveView implements NodeView {
 
   private renderPreview() {
     const { name, args, options } = this.node.attrs;
-    if (name === 'figure' && args) {
+    if ((name === 'figure' || name === 'image') && args) {
       const alt = options.find(([k]: [string, string]) => k === 'alt')?.[1] ?? '';
       const current = this.preview.querySelector('img');
       const src = this.ctx.assetUrl(args);
@@ -855,16 +856,100 @@ class RefLinkView extends InlineView {
   }
 }
 
+// Where a footnote's text is on the page, if it has one.
+function footnoteDef(doc: PMNode, label: string): { pos: number; node: PMNode } | null {
+  let found: { pos: number; node: PMNode } | null = null;
+  doc.descendants((node, pos) => {
+    if (!found && node.type.name === 'footnote_def' && node.attrs.label === label) found = { pos, node };
+    return !found && !node.isTextblock;
+  });
+  return found;
+}
+
 class FootnoteRefView extends InlineView {
   protected render() {
     setOwnClass(this.dom, 'footnote-ref');
     this.dom.title = `Footnote ${this.node.attrs.label}`;
     this.dom.replaceChildren(el('sup', {}, `[${this.node.attrs.label}]`));
+    // (Rendered first from InlineView's constructor: the element says it's set up.)
+    if (this.dom.dataset.ready) return;
+    this.dom.dataset.ready = '1';
+    // Its text when pointed at; Ctrl+click goes to it.
+    this.dom.addEventListener('mouseenter', () => {
+      const def = footnoteDef(this.view.state.doc, this.node.attrs.label);
+      const text = def?.node.textContent.trim() ?? '';
+      this.dom.title = def ? `Footnote ${this.node.attrs.label}: ${text.length > 200 ? `${text.slice(0, 200)}…` : text} (Ctrl+click to go to it)` : `Footnote ${this.node.attrs.label} (its text isn’t on this page)`;
+    });
+    this.dom.addEventListener('click', (e) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const def = footnoteDef(this.view.state.doc, this.node.attrs.label);
+      if (!def) return;
+      e.preventDefault();
+      const { state } = this.view;
+      this.view.dispatch(state.tr.setSelection(TextSelection.near(state.doc.resolve(def.pos + 2))).scrollIntoView());
+      this.view.focus();
+    });
   }
 
   protected async edit() {
     const next = await this.ctx.ui.editFields({ title: 'Footnote', fields: [{ key: 'label', label: 'Label', value: this.node.attrs.label }] });
     if (next?.label) setAttrs(this.view, this.getPos, this.node, { label: next.label });
+  }
+}
+
+// A footnote's text, its label in front: click the label to change it (its
+// references on the page change with it).
+class FootnoteDefView implements NodeView {
+  dom: HTMLElement;
+  contentDOM: HTMLElement;
+  private label = el('button', { type: 'button', class: 'footnote-label', contenteditable: 'false' });
+
+  constructor(
+    private node: PMNode,
+    private view: EditorView,
+    private getPos: GetPos,
+    private ctx: EditorContext,
+  ) {
+    this.contentDOM = el('div', { class: 'footnote-body' });
+    this.dom = el('div', { class: 'footnote-def' }, this.label, this.contentDOM);
+    this.label.addEventListener('mousedown', (e) => e.preventDefault());
+    this.label.addEventListener('click', () => void this.rename());
+    this.render();
+  }
+
+  private render() {
+    this.label.textContent = this.node.attrs.label;
+    this.label.title = `Footnote ${this.node.attrs.label}: click to change its label`;
+  }
+
+  private async rename() {
+    if (!this.view.editable) return;
+    const was = this.node.attrs.label as string;
+    const next = await this.ctx.ui.editFields({ title: 'Footnote', submit: 'Save', fields: [{ key: 'label', label: 'Label', value: was, help: 'Its references on this page change with it.' }] });
+    const label = next?.label.trim();
+    const pos = this.getPos();
+    if (!label || label === was || pos === undefined) return;
+    const tr = this.view.state.tr.setNodeMarkup(pos, null, { ...this.node.attrs, label });
+    this.view.state.doc.descendants((n, at) => {
+      if (n.type.name === 'footnote_ref' && n.attrs.label === was) tr.setNodeMarkup(at, null, { ...n.attrs, label });
+      return true;
+    });
+    this.view.dispatch(tr);
+  }
+
+  update(node: PMNode) {
+    if (node.type !== this.node.type) return false;
+    this.node = node;
+    this.render();
+    return true;
+  }
+
+  stopEvent(e: Event) {
+    return this.label.contains(e.target as Node);
+  }
+
+  ignoreMutation(m: MutationRecord | { type: 'selection'; target: Node }) {
+    return this.label.contains(m.target);
   }
 }
 
@@ -1005,6 +1090,7 @@ export function nodeViews(ctx: EditorContext): Record<string, NodeViewConstructo
     inline_math: (node, view, getPos) => new InlineMathView(node, view, getPos, ctx),
     ref_link: (node, view, getPos) => new RefLinkView(node, view, getPos, ctx),
     footnote_ref: (node, view, getPos) => new FootnoteRefView(node, view, getPos, ctx),
+    footnote_def: (node, view, getPos) => new FootnoteDefView(node, view, getPos, ctx),
     html_inline: (node, view, getPos, decorations) => new HtmlInlineView(node, view, getPos, ctx, decorations),
     image: (node, view, getPos) => new ImageView(node, view, getPos, ctx),
     target: (node, view, getPos) => new TargetView(node, view, getPos, ctx),

@@ -22,6 +22,7 @@ const OTHER: Record<string, DirectiveInfo> = {
   deprecated: { label: 'Deprecated since version', tone: 'warning', argLabel: 'Version' },
   versionremoved: { label: 'Removed in version', tone: 'danger', argLabel: 'Version' },
   figure: { label: 'Figure', tone: 'neutral', argLabel: 'Image' },
+  image: { label: 'Image', tone: 'neutral', argLabel: 'Image' },
   table: { label: 'Table', tone: 'neutral', argLabel: 'Caption' },
   dropdown: { label: 'Dropdown', tone: 'neutral', argLabel: 'Title' },
   topic: { label: 'Topic', tone: 'neutral', argLabel: 'Title' },

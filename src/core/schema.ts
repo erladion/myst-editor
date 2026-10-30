@@ -263,7 +263,18 @@ const nodes: Record<string, NodeSpec> = {
     toDOM: (node) => ['hr', dataAttrs(node)],
   },
 
-  // Anything else (front matter, HTML blocks, tables, comments, footnote definitions,
+  // A footnote's text: [^label]: and what follows, the lines under it indented by
+  // `indent` spaces.
+  footnote_def: {
+    group: 'block',
+    content: 'block+',
+    defining: true,
+    attrs: { ...sid, label: { default: '' }, indent: { default: 4 } },
+    parseDOM: [own('footnote_def')],
+    toDOM: (node) => ['div', dataAttrs(node, { class: 'footnote-def' }), 0],
+  },
+
+  // Anything else (front matter, HTML blocks, tables, comments,
   // unrecognized syntax). `kind` is informational; `source` is written back as-is.
   raw_block: {
     group: 'block',

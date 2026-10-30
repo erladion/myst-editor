@@ -12,6 +12,28 @@ import { insertReference } from './references';
 
 const { nodes } = schema;
 
+// A footnote: its number here, its text at the end of the page.
+async function insertFootnote(ctx: EditorContext, run: (cmd: Command) => void) {
+  const values = await ctx.ui.editFields({ title: 'Insert footnote', submit: 'Insert', fields: [{ key: 'text', label: 'Footnote', value: '', help: 'Shown at the end of the page; its number marks where it belongs.' }] });
+  const text = values?.text.trim();
+  if (!text) return;
+  run((state, dispatch) => {
+    if (!state.selection.$from.parent.type.contentMatch.matchType(nodes.footnote_ref)) return false;
+    const used = new Set<string>();
+    state.doc.descendants((n) => {
+      if (n.type === nodes.footnote_ref || n.type === nodes.footnote_def) used.add(n.attrs.label);
+      return true;
+    });
+    let k = 1;
+    while (used.has(String(k))) k++;
+    const label = String(k);
+    const tr = state.tr.replaceSelectionWith(nodes.footnote_ref.create({ label }), false);
+    tr.insert(tr.doc.content.size, nodes.footnote_def.create({ label }, nodes.paragraph.create(null, schema.text(text))));
+    dispatch?.(tr.scrollIntoView());
+    return true;
+  });
+}
+
 export function insertDirective(ctx: EditorContext, name: string, args = ''): Command {
   const node = nodes.md_directive.create({ name, args, fence: newDirectiveFence(ctx.config) }, nodes.paragraph.create());
   return insertBlock(node, 2);
@@ -155,5 +177,6 @@ export function mystInserts(ctx: EditorContext): InsertItem[] {
     ...projectDirectives.map(([name, def]): InsertItem => ({ id: `project-${name}`, group: 'This project', label: def.label ?? name, command: insertProjectDirective(ctx, name, def) })),
     { id: 'reference', group: 'Inline', label: 'Cross-reference…', palette: 'Cross-reference…', keys: 'Cross-reference', ask: (run, state) => void insertReference(ctx, run, state) },
     { id: 'anchor', group: 'Inline', label: 'Link target…', palette: 'Link target…', ask: (run, state) => state && void insertTarget(ctx, state, run) },
+    { id: 'footnote', group: 'Inline', label: 'Footnote…', palette: 'Footnote…', ask: (run) => void insertFootnote(ctx, run) },
   ];
 }

@@ -27,6 +27,12 @@ const fileName = (src: string) => src.split('/').pop()!.replace(/\.\w+$/, '');
 function docTargets(doc: PMNode): Target[] {
   const out: Target[] = [];
   doc.descendants((node, pos) => {
+    if (node.type === nodes.md_directive && node.attrs.name === 'image') {
+      const options = node.attrs.options as [string, string][];
+      const label = options.find(([k]) => k === 'name')?.[1] || null;
+      out.push({ kind: 'image', index: out.length, pos, label, description: options.find(([k]) => k === 'alt')?.[1] || fileName(String(node.attrs.args)), captioned: false });
+      return false;
+    }
     if (node.type === nodes.md_directive && (node.attrs.name === 'figure' || node.attrs.name === 'table')) {
       const figure = node.attrs.name === 'figure';
       const label = (node.attrs.options as [string, string][]).find(([k]) => k === 'name')?.[1] || null;
