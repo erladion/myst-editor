@@ -151,7 +151,7 @@ kept. In GitHub Actions:
   env:
     GH_TOKEN: ${{ github.token }}
   run: |
-    gh release download v0.26.0 --repo erladion/wysie --pattern '*.AppImage' --output wysie.AppImage
+    gh release download v0.27.0 --repo erladion/wysie --pattern '*.AppImage' --output wysie.AppImage
     chmod +x wysie.AppImage
     ./wysie.AppImage --appimage-extract-and-run --ozone-platform=headless --no-sandbox \
       --export-pdf docs --output manual.pdf | grep -v '^/tmp/appimage_extracted_'

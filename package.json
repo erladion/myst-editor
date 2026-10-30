@@ -1,7 +1,7 @@
 {
   "name": "wysie",
   "productName": "Wysie",
-  "version": "0.26.0",
+  "version": "0.27.0",
   "description": "WYSIWYG editor for Sphinx + MyST Markdown",
   "author": "erladion",
   "license": "UNLICENSED",
