@@ -1151,6 +1151,28 @@ button.toc-toggle:hover {
   color: var(--fg-muted);
 }
 
+.included-code {
+  color: var(--fg);
+}
+
+.included-line {
+  display: block;
+}
+
+.included-code.numbered .included-line::before {
+  content: attr(data-n);
+  display: inline-block;
+  min-width: 3ch;
+  margin-right: 1.5ch;
+  text-align: right;
+  color: var(--fg-muted);
+  user-select: none;
+}
+
+.included-line.emphasized {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
 .card-note {
   padding: 0 12px 8px;
   font-size: 12px;

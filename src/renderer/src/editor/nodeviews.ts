@@ -2,6 +2,7 @@
 import type { Node as PMNode } from 'prosemirror-model';
 import { TextSelection } from 'prosemirror-state';
 import { NO_BODY_DIRECTIVES } from '../../../core/myst/parse';
+import { literalInclude } from '../../../core/myst/literalinclude';
 import type { Decoration, EditorView, NodeView, NodeViewConstructor, ViewMutationRecord } from 'prosemirror-view';
 import { splitDirective } from '../../../core/directive';
 import { loadDocument } from '../../../core/document';
@@ -479,6 +480,42 @@ class OpaqueDirectiveView extends CardView {
     return { items, conditional };
   }
 
+  // The file's lines it shows, as Sphinx picks them (its options), numbered if it says so.
+  private renderLiteralInclude() {
+    const { args, options, source } = this.node.attrs as { args: string; options: [string, string][]; source: string };
+    const opt = (k: string) => options.find(([o]) => o === k)?.[1];
+    const caption = opt('caption');
+    const language = opt('language');
+    const code = el('pre', { class: 'card-source included-code' }, 'Loading…');
+    this.card(
+      'card-directive card-literalinclude',
+      [el('span', { class: 'card-label' }, 'Code from a file'), el('code', {}, args), ...(caption ? [el('span', { class: 'muted' }, caption)] : []), ...(language ? [el('span', { class: 'chip' }, language)] : [])],
+      [code],
+    );
+    const url = this.ctx.assetUrl(args);
+    void (url ? fetch(url).then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status))))) : Promise.reject(new Error('outside')))
+      .then((text) => {
+        if (this.node.attrs.source !== source) return;
+        const shown = literalInclude(text, options);
+        const numbered = opt('linenos') !== undefined || opt('lineno-start') !== undefined || opt('lineno-match') !== undefined;
+        const start = opt('lineno-match') !== undefined ? shown.first : Number(opt('lineno-start') ?? 1) || 1;
+        const emphasized = new Set((opt('emphasize-lines') ?? '').split(',').flatMap((p) => {
+          const [a, b] = p.split('-').map((n) => Number(n.trim()));
+          return a ? Array.from({ length: (b || a) - a + 1 }, (_, i) => a + i) : [];
+        }));
+        const lines = shown.lines.slice(0, INCLUDED_LINES).map((line, i) =>
+          el('span', { class: `included-line${emphasized.has(i + 1) ? ' emphasized' : ''}`, ...(numbered ? { 'data-n': String(start + i) } : {}) }, line || ' '),
+        );
+        const more = shown.lines.length - INCLUDED_LINES;
+        code.className = `card-source included-code${numbered ? ' numbered' : ''}`;
+        code.replaceChildren(...lines, ...(more > 0 ? [el('span', { class: 'muted' }, `… ${more} more line${more === 1 ? '' : 's'}`)] : []));
+        if (shown.problem) code.before(el('div', { class: 'missing' }, shown.problem));
+      })
+      .catch(() => {
+        if (this.node.attrs.source === source) code.replaceWith(el('div', { class: 'missing' }, `File not found: ${args}`));
+      });
+  }
+
   protected render() {
     const { name, args, options, source } = this.node.attrs;
     const label = (text: string) => el('span', { class: 'card-label' }, text);
@@ -489,6 +526,8 @@ class OpaqueDirectiveView extends CardView {
       img.addEventListener('error', () => img.replaceWith(el('div', { class: 'missing' }, `Image not found: ${args}`)));
       return this.card('card-image', [label('Image'), el('code', {}, args)], [el('div', { class: 'card-image-preview' }, img)]);
     }
+
+    if (name === 'literalinclude') return this.renderLiteralInclude();
 
     if (name === 'toctree') {
       const caption = options.find(([k]: string[]) => k === 'caption')?.[1];
@@ -514,6 +553,9 @@ class OpaqueDirectiveView extends CardView {
     );
   }
 }
+
+// Lines of a file shown in a literalinclude's card (more: "… n more lines").
+const INCLUDED_LINES = 40;
 
 class RawBlockView extends CardView {
   protected editTitle() {
