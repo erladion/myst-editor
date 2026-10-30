@@ -9,7 +9,7 @@ import type { Project } from '../../shared/api.js';
 import { asciidocEditor, headerAttributes, type AsciidocConfig } from '../../core/asciidoc/config.js';
 import { documentTitle } from '../../core/asciidoc/pages.js';
 import { readComponent, startPageOf } from '../../core/asciidoc/antora.js';
-import { loadEditorConfig, SETTINGS_FILE } from '../../core/editor-config.js';
+import { loadEditorConfig, SETTINGS_FILES } from '../../core/editor-config.js';
 import { settingsSources, type FolderScan } from '../project.js';
 
 // A folder's main document, by name: index.adoc always; the others when they
@@ -32,9 +32,11 @@ export async function asciidoctorProjects(root: string, scan: FolderScan, read: 
   const folders = new Set<string>(['']);
   for (const page of pages) for (let d = dirOf(page); d; d = dirOf(d)) folders.add(d);
   for (const dir of folders) {
-    const file = join(root, dir, SETTINGS_FILE);
-    if (!existsSync(file)) continue;
-    const rel = dir ? `${dir}/${SETTINGS_FILE}` : SETTINGS_FILE;
+    // The folder's settings file, under the app's name or an earlier one.
+    const name = SETTINGS_FILES.find((n) => existsSync(join(root, dir, n)));
+    if (!name) continue;
+    const file = join(root, dir, name);
+    const rel = dir ? `${dir}/${name}` : name;
     const { main } = loadEditorConfig([{ file: rel, text: readFileSync(file, 'utf8'), readCapabilities: () => '' }]).asciidoctor;
     if (main && pages.includes(main) && inside(dirOf(main), dir)) mains.set(dir, main);
   }

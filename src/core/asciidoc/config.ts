@@ -5,7 +5,7 @@ import type { Antora } from './antora.js';
 
 export interface AsciidocConfig {
   format: 'asciidoc';
-  // The project's own blocks, roles and conditions, from .mysteditor.toml.
+  // The project's own blocks, roles and conditions, from .wysie.toml.
   editor: EditorConfig;
   // The document that includes the others, relative to the project; null when its
   // pages stand on their own.
