@@ -104,6 +104,39 @@ def line_of(node):
     return None
 
 
+INCLUDED = "mysteditor_include"
+
+
+def mark_includes():
+    """Stamp what MyST's {include} makes with the directive's line: it renders the
+    included file into the page as it goes, and not all of what it makes says which
+    file it's from. The editor's card for the include then previews all of it."""
+    try:
+        from docutils import nodes
+        from myst_parser.mocking import MockIncludeDirective
+    except Exception:
+        return
+    original = MockIncludeDirective.run
+    if getattr(original, "_mysteditor", False):
+        return
+
+    def run(self):
+        document = self.renderer.document
+        before = {id(n) for n in document.findall(nodes.Element)}
+        result = original(self)
+        for node in result:
+            if isinstance(node, nodes.Element):
+                for n in node.findall(nodes.Element):
+                    n[INCLUDED] = self.lineno
+        for node in document.findall(nodes.Element):
+            if id(node) not in before:
+                node[INCLUDED] = self.lineno
+        return result
+
+    run._mysteditor = True
+    MockIncludeDirective.run = run
+
+
 def export_fragments(app, doctree, docname, outdir):
     """HTML for each previewable top-level block of a page, keyed by source line,
     written to <outdir>/_mysteditor/fragments/<docname>.json for the editor's cards."""
@@ -114,9 +147,26 @@ def export_fragments(app, doctree, docname, outdir):
         return  # not an HTML builder
     own_source = str(app.env.doc2path(docname))
     fragments = []
+    # What each {include} brought in, by its line: one preview for it all.
+    included = {}
 
-    def walk(parent):
+    def walk(parent, within=None):
         for node in parent.children:
+            line = node.get(INCLUDED) if isinstance(node, nodes.Element) else None
+            if line and line != within:
+                copy = node.deepcopy()
+                if isinstance(node, nodes.section):
+                    # Only what the include made: the page's own blocks after it may
+                    # be in the included section.
+                    for child in list(copy.children):
+                        if isinstance(child, nodes.Element) and child.get(INCLUDED) != line and not isinstance(child, nodes.title):
+                            copy.remove(child)
+                included.setdefault(line, []).append(copy)
+                if isinstance(node, nodes.section):
+                    walk(node, line)
+                continue
+            if line:
+                continue  # in an included section, previewed with it
             if isinstance(node, nodes.section):
                 walk(node)
                 continue
@@ -138,6 +188,14 @@ def export_fragments(app, doctree, docname, outdir):
                 fragments.append({"line": line, "html": html})
 
     walk(doctree)
+    for line, parts in included.items():
+        try:
+            html = "".join(render(part)["fragment"] for part in parts)
+        except Exception:
+            continue
+        if html.strip() and len(html) <= MAX_FRAGMENT:
+            fragments.append({"line": line, "html": html})
+    fragments.sort(key=lambda f: f["line"])
     try:
         uri = app.builder.get_target_uri(docname)
     except Exception:
@@ -155,10 +213,18 @@ def mark_lines(app, doctree, docname):
     from docutils import nodes
 
     own_source = os.path.abspath(str(app.env.doc2path(docname)))
+    marked = set()
 
     def walk(parent):
         for node in parent.children:
             if not isinstance(node, nodes.Element):
+                continue
+            # What an {include} brought in: its first block has the include's line.
+            line = node.get(INCLUDED)
+            if line:
+                if line not in marked:
+                    marked.add(line)
+                    node["classes"].append(f"mysteditor-line-{line}")
                 continue
             source = getattr(node, "source", None)
             if source and os.path.abspath(source) != own_source:
@@ -217,6 +283,7 @@ def main():
         from sphinx.application import Sphinx
 
         result["sphinx_version"] = sphinx_version
+        mark_includes()
         app = Sphinx(
             srcdir=args.srcdir,
             confdir=args.srcdir,
