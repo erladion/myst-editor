@@ -300,6 +300,7 @@ class Writer {
 
   private list(node: PMNode, lists: string[]): string {
     const ordered = node.type.name === 'ordered_list';
+    if (ordered && node.attrs.delim === '<>') return this.callouts(node, lists);
     const level = (m: string) => (/^\d+\.$/.test(m) ? '1.' : m);
     const valid = (m: unknown): m is string => typeof m === 'string' && (ordered ? /^(\.{1,5}|\d+\.)$/ : /^(-|\*{1,5})$/).test(m) && !lists.includes(level(m));
     let marker = node.firstChild?.attrs.marker;
@@ -335,6 +336,34 @@ class Writer {
         const list = child.type.name === 'bullet_list' || child.type.name === 'ordered_list';
         text += (prev && this.originalGap(prev, child)) ?? (list ? '\n' : '\n+\n');
         text += list ? this.list(child, inner) : this.block(child, inner);
+      });
+      out += text;
+    });
+    return out;
+  }
+
+  // A list of callouts: <1>, <2>… in turn (or all <.>), whatever they were before
+  // items came or went; an item's text as written.
+  private callouts(node: PMNode, lists: string[]): string {
+    let out = '';
+    node.forEach((item, _o, i) => {
+      const marker = node.attrs.repeat ? '<.>' : `<${i + 1}>`;
+      if (i > 0) out += this.originalGap(node.child(i - 1), item) ?? '\n';
+      const original = this.unchanged(item);
+      if (original !== undefined) {
+        out += original.replace(/^<(?:\d+|\.)>/, marker);
+        return;
+      }
+      let text = '';
+      item.forEach((child, _off, k) => {
+        if (k === 0 && child.type.name === 'paragraph') {
+          text = `${marker}${' '.repeat(item.attrs.pad || 1)}${this.block(child, lists) || '{empty}'}`;
+          return;
+        }
+        if (k === 0) text = `${marker} {empty}`;
+        const prev = k > 0 ? item.child(k - 1) : null;
+        text += (prev && this.originalGap(prev, child)) ?? '\n+\n';
+        text += this.block(child, lists);
       });
       out += text;
     });

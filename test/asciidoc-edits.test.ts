@@ -304,3 +304,35 @@ describe('attribute values', async () => {
     expect(shown('attribute', 'edition', config, { doc, pos: at('Now') })).toMatchObject({ text: '{edition}', missing: true });
   });
 });
+
+describe('callouts', () => {
+  const CODE = '[source,ruby]\n----\nrequire "x" # <1>\nputs 1 # <2>\n----\n<1> Loads it.\n<2> Prints\n    a number.\n';
+  const list = (doc: PMNode) => find(doc, (n) => n.type === nodes.ordered_list && n.attrs.delim === '<>');
+
+  it('are a list: typed in, one line changes', () => {
+    expect(load(CODE).doc.child(1).attrs.delim).toBe('<>');
+    expect(edited(CODE, (s) => s.tr.insertText(' Once', list(s.doc) + 3 + 'Loads it.'.length))).toBe(CODE.replace('Loads it.', 'Loads it. Once'));
+  });
+
+  it('are numbered in turn when one goes, or a new one comes', () => {
+    expect(
+      edited(CODE, (s) => {
+        const at = list(s.doc);
+        return s.tr.delete(at + 1, at + 1 + s.doc.nodeAt(at)!.firstChild!.nodeSize);
+      }),
+    ).toBe(CODE.replace('<1> Loads it.\n<2>', '<1>'));
+    expect(
+      edited(CODE, (s) => {
+        const at = list(s.doc);
+        const item = nodes.list_item.create(null, nodes.paragraph.create(null, schema.text('Ends.')));
+        return s.tr.insert(at + s.doc.nodeAt(at)!.nodeSize - 1, item);
+      }),
+    ).toBe(`${CODE}<3> Ends.\n`);
+  });
+
+  it('out of order, or all <.>: as written, and <.> kept', () => {
+    expect(load('----\nx\n----\n<2> Two.\n<1> One.\n').doc.child(1).type.name).toBe('raw_block');
+    const auto = '----\nx <.>\n----\n<.> Auto.\n';
+    expect(edited(auto, (s) => s.tr.insertText('!', list(s.doc) + 3 + 'Auto.'.length))).toBe('----\nx <.>\n----\n<.> Auto.!\n');
+  });
+});

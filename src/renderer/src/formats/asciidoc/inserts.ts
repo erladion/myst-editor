@@ -91,6 +91,14 @@ export function asciidocInserts(ctx: EditorContext): InsertItem[] {
     { id: 'example', group: 'Text', label: 'Example', command: insertContainer('example', '====') },
     { id: 'sidebar', group: 'Text', label: 'Sidebar', command: insertContainer('sidebar', '****') },
     { id: 'quote', group: 'Text', label: 'Quote', command: insertContainer('quote', '____') },
+    {
+      id: 'callouts',
+      group: 'Structure',
+      label: 'Callouts for the code',
+      palette: 'Callouts',
+      // Notes numbered as the <1>, <2> marks in the code above.
+      command: insertBlock(nodes.ordered_list.create({ delim: '<>' }, nodes.list_item.create(null, nodes.paragraph.create())), 3),
+    },
     { id: 'definition-list', group: 'Structure', label: 'Definition list', palette: 'Definition list', command: insertDefinitionList() },
     { id: 'page-contents', group: 'Structure', label: 'Contents of this page', command: insertMacro('toc', '') },
     { id: 'include', group: 'Structure', label: 'Include a file…', ask: asking('Include a file', 'File', (v) => insertMacro('include', v), antora ? { placeholder: 'partial$common.adoc', help: RESOURCE_HELP } : { placeholder: 'partials/common.adoc', help: FILE_HELP }) },

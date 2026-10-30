@@ -450,6 +450,13 @@ class Reader {
             if (!(e instanceof Unsupported)) throw e;
           }
         }
+        if (seg.raw === 'callouts') {
+          try {
+            return this.list(seg, scanner, all, true);
+          } catch (e) {
+            if (!(e instanceof Unsupported)) throw e;
+          }
+        }
         return this.raw(seg.raw!, src);
       case 'target':
         return this.withSid('target', { label: anchorOf(first)! }, null, src);
@@ -671,8 +678,10 @@ class Reader {
     return this.withSid('definition_list', {}, nodes, src);
   }
 
-  private list(seg: Segment, scanner: Scanner, all: string[]): PMNode {
-    const { entries } = scanner.items(seg.start, seg.end + 1, (l) => !!listItem(l));
+  // `callouts`: a list of callouts (<1> text), numbered from 1 or all <.>.
+  private list(seg: Segment, scanner: Scanner, all: string[], callouts = false): PMNode {
+    const itemOf = (line: string) => (callouts ? calloutItem(line) : listItem(line));
+    const { entries } = scanner.items(seg.start, seg.end + 1, (l) => !!itemOf(l));
     interface Item {
       line: number;
       marker: string;
@@ -685,8 +694,8 @@ class Reader {
       ordered: boolean;
       items: Item[];
     }
-    const level = (marker: string) => (/^\d+\.$/.test(marker) ? '1.' : marker);
-    const root: List = { marker: level(listItem(all[seg.start])!.marker), ordered: listItem(all[seg.start])!.ordered, items: [] };
+    const level = (marker: string) => (/^\d+\.$/.test(marker) ? '1.' : /^</.test(marker) ? '<>' : marker);
+    const root: List = { marker: level(itemOf(all[seg.start])!.marker), ordered: itemOf(all[seg.start])!.ordered, items: [] };
     const stack: List[] = [root];
     const current = () => {
       const list = stack[stack.length - 1];
@@ -694,7 +703,7 @@ class Reader {
     };
     for (const e of entries) {
       if (e.type === 'item') {
-        const it = listItem(all[e.line])!;
+        const it = itemOf(all[e.line])!;
         const at = stack.findIndex((l) => l.marker === level(it.marker));
         const item: Item = { line: e.line, marker: it.marker, text: [], children: [], end: e.line };
         if (at >= 0) {
@@ -706,6 +715,8 @@ class Reader {
           stack.push(list);
         }
       } else if (e.type === 'text') {
+        // (A list under a callout: kept as written.)
+        if (callouts && listItem(all[e.line])) throw new Unsupported('list in a callout');
         current().text.push(e.line);
       } else {
         current().children.push({ attach: e });
@@ -728,7 +739,7 @@ class Reader {
         this.line = listLine + item.line - seg.start;
         const content: PMNode[] = [];
         // Its text: the first line after the marker, and the lines going on from it.
-        const m = /^[ \t]*(-|\*{1,5}|\.{1,5}|\d+\.)([ \t]+)/.exec(all[item.line])!;
+        const m = /^[ \t]*(-|\*{1,5}|\.{1,5}|\d+\.|<(?:\d+|\.)>)([ \t]+)/.exec(all[item.line])!;
         const own = [all[item.line].slice(m[0].length), ...item.text.map((l) => all[l])].join('\n');
         const textEnd = item.text.length ? item.text[item.text.length - 1] : item.line;
         // Read without the lines' indentation; recorded as written.
@@ -763,7 +774,17 @@ class Reader {
       }
       this.line = listLine + list.items[0].line - seg.start;
       const first = list.items[0].marker;
-      const attrs = list.ordered ? { start: /^\d+/.test(first) ? parseInt(first, 10) : 1, delim: '.', tight: true, repeat: false } : { bullet: first, tight: true };
+      if (list.marker === '<>') {
+        // Numbered in turn (or all <.>): otherwise as written, numbers and all.
+        const auto = first === '<.>';
+        if (list.items.some((it, i) => it.marker !== (auto ? '<.>' : `<${i + 1}>`))) throw new Unsupported('callouts out of order');
+      }
+      const attrs =
+        list.marker === '<>'
+          ? { start: 1, delim: '<>', tight: true, repeat: first === '<.>' }
+          : list.ordered
+            ? { start: /^\d+/.test(first) ? parseInt(first, 10) : 1, delim: '.', tight: true, repeat: false }
+            : { bullet: first, tight: true };
       return this.withSid(list.ordered ? 'ordered_list' : 'bullet_list', attrs, nodes, slice(list.items[0].line, list.items[list.items.length - 1].end));
     };
     const node = build(root);
@@ -774,6 +795,12 @@ class Reader {
 
 // What a block's header says, to tell whether it's still the header as written.
 export const blockKey = (name: string, lang: string, args: string, options: [string, string][], fence: string) => JSON.stringify([name, lang, args, options, fence]);
+
+// A callout list's item: <1> text, or <.> text.
+function calloutItem(line: string): { marker: string; text: string; ordered: boolean } | null {
+  const m = /^<(\d+|\.)>[ \t]+(\S.*)$/.exec(line);
+  return m ? { marker: `<${m[1]}>`, text: m[2], ordered: true } : null;
+}
 
 function text(value: string): PMNode[] {
   return value ? [schema.text(value)] : [];

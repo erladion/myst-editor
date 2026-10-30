@@ -126,6 +126,7 @@ export const asciidocEditing: EditingFormat = {
   source: asciidocSource,
   images,
   nameOption: 'id',
+  cells: 'blocks',
   cards: asciidocCards,
   roles: {
     references: { ref: 'Anchor', xref: 'Cross-reference' },
