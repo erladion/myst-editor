@@ -59,7 +59,16 @@ export interface ParseOptions {
   // on a line before a block (attrs_block).
   attrsInline?: boolean;
   attrsBlock?: boolean;
+  // :name: value lines as a field list (fieldlist).
+  fieldList?: boolean;
 }
+
+// A field list: :name: value lines, values going on over indented lines.
+export const FIELD = /^:([^:\s][^:]*?):(?:[ \t]+(.*))?$/;
+export const isFieldList = (src: string) => {
+  const lines = src.split('\n');
+  return FIELD.test(lines[0]) && lines.every((l) => FIELD.test(l) || /^[ \t]+\S/.test(l));
+};
 
 // An attribute list: {#id .class key=value key="a value"}.
 const ATTRS = /^\{\s*(?:(?:[#.][\w:.-]+|[\w-]+=(?:"[^"\n]*"|'[^'\n]*'|[^\s{}"']+)|%[\w-]+)\s*)+\}/;
@@ -262,6 +271,7 @@ class Context {
   private convert(md: MdNode, src: string, isFirstInDoc: boolean): PMNode {
     switch (md.type) {
       case 'paragraph':
+        if (this.opts.fieldList && isFieldList(src)) return this.raw('fieldlist', src);
         return this.withSid('paragraph', {}, inline(md.children), src);
 
       // An image on a line of its own (MyST makes it a block): a paragraph with the

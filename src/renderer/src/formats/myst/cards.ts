@@ -2,6 +2,7 @@
 import { createTokenizer } from 'myst-parser';
 import { safeHtml } from '../../editor/html';
 import type { Cards } from '../editing';
+import { fieldsForm, fieldsPreview } from './fields';
 
 const LABELS: Record<string, string> = {
   frontmatter: 'Page settings',
@@ -12,6 +13,7 @@ const LABELS: Record<string, string> = {
   comment: 'Comment',
   'block-break': 'Cell break',
   'block-attributes': 'Attributes',
+  fieldlist: 'Fields',
 };
 
 let tokenizer: ReturnType<typeof createTokenizer> | null = null;
@@ -30,5 +32,6 @@ export const mystCards: Cards = {
   label: (kind) => LABELS[kind] ?? 'Markdown',
   editTitle: (name) => `Edit {${name}} block`,
   comment: (source) => source.replace(/^%\s?/gm, ''),
-  preview: (kind, source, assetUrl) => (kind === 'table' || kind === 'definitionList' || kind === 'footnote' ? markdownPreview(source, assetUrl) : null),
+  preview: (kind, source, assetUrl) => (kind === 'fieldlist' ? fieldsPreview(source) : kind === 'table' || kind === 'definitionList' || kind === 'footnote' ? markdownPreview(source, assetUrl) : null),
+  form: (kind, source) => (kind === 'fieldlist' ? fieldsForm(source) : null),
 };

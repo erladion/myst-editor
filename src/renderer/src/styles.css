@@ -3777,3 +3777,18 @@ kbd {
 .prose .chg-changed {
   box-shadow: -12px 0 0 -9px #bf8700;
 }
+
+/* A field list's card: its fields as a table. */
+.prose table.field-list th {
+  background: none;
+  text-align: left;
+  font-weight: 600;
+  padding-right: 1em;
+  white-space: nowrap;
+}
+
+.prose table.field-list th,
+.prose table.field-list td {
+  border: none;
+  padding: 1px 1em 1px 0;
+}
