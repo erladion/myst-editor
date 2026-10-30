@@ -161,6 +161,10 @@ class Writer {
         return node.attrs.source;
       case 'target':
         return `[[${node.attrs.label}]]`;
+      // A MyST page's footnote text, pasted in (AsciiDoc's footnotes are written where
+      // they're referred to): its blocks.
+      case 'footnote_def':
+        return this.container(node, undefined, lists);
       case 'table':
         return writeTable(node, this.fresh ? null : this.map, this.fresh ? undefined : this.map.get(node.attrs.sid)?.node, (cell) => this.cellBlocks(cell));
       default:
@@ -205,7 +209,8 @@ class Writer {
 
   private directive(node: PMNode): string {
     const { name } = node.attrs as { name: string };
-    if (name === 'figure') return this.figure(node);
+    // (A MyST page's {image}, pasted in: a picture too.)
+    if (name === 'figure' || name === 'image') return this.figure(node);
     let fence: string = node.attrs.fence;
     // Written as a paragraph (NOTE: text) while it's one paragraph.
     if (fence === '' && node.childCount === 1 && node.firstChild!.type.name === 'paragraph' && name !== 'open') {

@@ -425,3 +425,12 @@ describe('an open block of code', () => {
     expect(edited(T, (s) => s.tr.insertText(' // x', 1 + 'class Bar {}'.length))).toBe(T.replace('{}', '{} // x'));
   });
 });
+
+describe('blocks pasted in from a MyST page', () => {
+  it('an {image}: a picture; a footnote’s text: its paragraphs', () => {
+    const image = nodes.md_directive.create({ name: 'image', args: 'images/a.png', options: [['alt', 'A thing'], ['width', '120']] });
+    const note = nodes.footnote_def.create({ label: '1' }, nodes.paragraph.create(null, schema.text('The note.')));
+    const doc = nodes.doc.create(null, [image, note]);
+    expect(saveDocument(doc, load('').map, ASCIIDOC_CONFIG).text).toBe('image::images/a.png[A thing,120]\n\nThe note.');
+  });
+});
