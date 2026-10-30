@@ -65,7 +65,9 @@ export interface Cards {
 export interface Roles {
   references: Record<string, string>; // which roles do, and what to call what they refer to
   split(value: string): { title: string | null; target: string }; // "Title <target>"
-  page(name: string, target: string): string | null; // the page Ctrl+click opens, if any
+  // The page Ctrl+click opens, if any: relative to `from`'s page, or (with a leading /)
+  // to its project's folder.
+  page(name: string, target: string, from: { config: PageConfig; page: string | null }): string | null;
   // What a role of the format's own shows (and says when pointed at), if not the usual.
   // `where`: the page, and where in it (a value set above, say).
   shown?(name: string, value: string, config: PageConfig, where: { doc: PMNode; pos: number }): { text: string; title: string; missing?: boolean } | null;

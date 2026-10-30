@@ -763,11 +763,12 @@ class RoleView extends InlineView {
       d.classList.add('role-ref');
       if (/:/.test(name) && !references[name]) d.classList.add('role-code');
       const resolved = this.ctx.resolveRole(name, target);
+      const from = { config: this.ctx.config, page: this.ctx.filePath };
       d.classList.toggle('role-broken', resolved.broken);
       d.title = resolved.broken
         ? `${references[name] ?? name} not found: ${target}`
-        : `${references[name] ?? name}: ${target}${roles.page(name, target) ? ' (Ctrl+click to open)' : ''}`;
-      const page = roles.page(name, target);
+        : `${references[name] ?? name}: ${target}${roles.page(name, target, from) ? ' (Ctrl+click to open)' : ''}`;
+      const page = roles.page(name, target, from);
       const shown = title ?? resolved.title ?? (page ? this.ctx.pageTitle(page) : null) ?? target;
       d.replaceChildren(el('span', { class: 'role-arrow' }, resolved.broken ? '⚠' : '↗'), shown);
       return;
@@ -812,7 +813,7 @@ class RoleView extends InlineView {
         window.open(url.replaceAll('{value}', encodeURIComponent(value)), '_blank');
       } else {
         const roles = editingFor(this.ctx.config).roles;
-        const page = roles.page(name, roles.split(value).target);
+        const page = roles.page(name, roles.split(value).target, { config: this.ctx.config, page: this.ctx.filePath });
         if (!page) return;
         e.preventDefault();
         this.ctx.openDocument(page);
