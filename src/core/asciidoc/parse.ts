@@ -651,7 +651,7 @@ class Reader {
       end: number;
       terms: { line: number; text: string }[];
       desc: { first: number; text: string[] } | null; // its paragraph: the lines it's on, as written
-      attached: { start: number; end: number }[];
+      attached: { start: number; end: number; list?: boolean }[]; // (a list under its terms: list)
     }
     const items: Item[] = [];
     let marker: string | null = null;
@@ -669,12 +669,21 @@ class Reader {
         item.end = e.line;
         if (!shares) items.push(item);
       } else if (e.type === 'text') {
+        // A list right under the terms: the description's.
+        const run = current?.attached[current.attached.length - 1];
+        if (current && !current.desc && (run?.list || (!run && listItem(all[e.line])))) {
+          if (run) run.end = e.line;
+          else current.attached.push({ start: e.line, end: e.line, list: true });
+          current.end = e.line;
+          continue;
+        }
         if (!current || current.attached.length || listItem(all[e.line]) || /^[ \t]*\+[ \t]*$/.test(all[e.line])) throw new Unsupported('definition with other blocks');
         if (current.desc) current.desc.text.push(all[e.line]);
         else current.desc = { first: e.line, text: [all[e.line]] };
         current.end = e.line;
       } else {
         if (!current) throw new Unsupported('attached block without a term');
+        if (current.attached[current.attached.length - 1]?.list) throw new Unsupported('block attached to a list under a term');
         current.attached.push(e);
         current.end = e.end;
       }

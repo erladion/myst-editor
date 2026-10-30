@@ -298,7 +298,10 @@ class Writer {
         }
         // (In a list's context: lines that would be its items are escaped.)
         const written = this.block(b, ['::']);
-        text += (k > 0 ? this.originalGap(blocks[k - 1], b) : undefined) ?? `\n+\n`;
+        // A list first: under the terms, on the next line (with a + if it had one).
+        const list = k === 0 && /^(bullet|ordered)_list$/.test(b.type.name);
+        const plus = !!was && /^[ \t]*\+[ \t]*$/.test(was.split('\n')[terms.length] ?? '');
+        text += (k > 0 ? this.originalGap(blocks[k - 1], b) : undefined) ?? (list && !plus ? '\n' : `\n+\n`);
         text += written;
       });
       out += text;
