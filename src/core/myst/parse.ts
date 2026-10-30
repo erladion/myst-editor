@@ -19,7 +19,7 @@ export const MARKDOWN_DIRECTIVES = new Set([
   'admonition', 'note', 'warning', 'tip', 'important', 'hint', 'caution', 'attention', 'danger', 'error', 'seealso',
   'versionadded', 'versionchanged', 'deprecated', 'versionremoved',
   'figure', 'table', 'dropdown', 'topic', 'sidebar', 'margin', 'epigraph', 'pull-quote', 'highlights',
-  'tab-set', 'tab-item', 'grid', 'grid-item', 'grid-item-card', 'card', 'div', 'container',
+  'tab-set', 'tab-item', 'tab-set-code', 'grid', 'grid-item', 'grid-item-card', 'card', 'div', 'container',
   // sphinx-togglebutton, sphinx-exercise, sphinx-design's buttons.
   'toggle', 'exercise', 'solution', 'button-ref', 'button-link',
 ]);

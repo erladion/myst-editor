@@ -43,6 +43,7 @@ const OTHER: Record<string, DirectiveInfo> = {
   highlights: { label: 'Highlights', tone: 'neutral' },
   'tab-set': { label: 'Tabs', tone: 'neutral' },
   'tab-item': { label: 'Tab', tone: 'neutral', argLabel: 'Tab title' },
+  'tab-set-code': { label: 'Code tabs', tone: 'neutral' },
   grid: { label: 'Grid', tone: 'neutral', argLabel: 'Columns' },
   'grid-item': { label: 'Grid item', tone: 'neutral' },
   'grid-item-card': { label: 'Card', tone: 'neutral', argLabel: 'Title' },
