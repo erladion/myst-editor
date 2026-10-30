@@ -659,7 +659,8 @@ class RawBlockView extends CardView {
         preview.append(el('pre', { class: 'card-source' }, source));
         void shown.then((fragment) => this.node.attrs.source === source && preview.replaceChildren(fragment)).catch(() => {});
       } else preview.append(shown);
-      return this.card(`card-${kind}`, [label], [preview]);
+      // (A document's header: not card-header, the card's own header's class.)
+      return this.card(kind === 'header' ? 'card-document-header' : `card-${kind}`, [label], [preview]);
     }
     // An HTML block shows what it looks like; one that shows nothing (a comment, say)
     // shows its source.

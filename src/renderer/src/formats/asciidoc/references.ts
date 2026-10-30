@@ -1,5 +1,6 @@
 // Cross-references in an AsciiDoc page: <<anchor>> on the page, xref:page.adoc#anchor[]
 // to others (in an Antora component, by resource ID: from the module's pages).
+import { readHeader } from '../../../../core/asciidoc/parse';
 import type { Node as PMNode } from 'prosemirror-model';
 import type { Command, EditorState } from 'prosemirror-state';
 import { schema } from '../../../../core/schema';
@@ -16,9 +17,16 @@ const { nodes } = schema;
 function anchorsOf(doc: PMNode): { id: string; text: string }[] {
   const out: { id: string; text: string }[] = [];
   doc.descendants((node, _pos, parent, index) => {
-    const id = node.type === nodes.target ? (node.attrs.label as string) : ((node.attrs.options as [string, string][] | undefined)?.find(([k]) => k === 'id')?.[1] ?? null);
+    // (Lines of a block's attributes on their own: the id of the block after them.)
+    const lines = node.type === nodes.raw_block && node.attrs.kind === 'block-attributes';
+    const id =
+      node.type === nodes.target
+        ? (node.attrs.label as string)
+        : lines
+          ? (readHeader((node.attrs.source as string).split('\n'))?.attrs.id ?? null)
+          : ((node.attrs.options as [string, string][] | undefined)?.find(([k]) => k === 'id')?.[1] ?? null);
     if (id) {
-      const next = node.type === nodes.target ? (parent?.maybeChild(index + 1) ?? null) : node;
+      const next = node.type === nodes.target || lines ? (parent?.maybeChild(index + 1) ?? null) : node;
       const text = (next?.textContent ?? '').replace(/\s+/g, ' ').trim();
       out.push({ id, text: text.length > 60 ? `${text.slice(0, 60).replace(/\s+\S*$/, '')}…` : text });
     }

@@ -1,6 +1,7 @@
 // AsciiDoc blocks the editor keeps as written, shown as cards: their names, and how
 // they look as Asciidoctor renders them.
 import { safeHtml } from '../../editor/html';
+import { blockAttributesForm, blockAttributesPreview, entriesForm, entriesPreview } from './attributes';
 import type { Cards } from '../editing';
 
 const LABELS: Record<string, string> = {
@@ -76,8 +77,15 @@ export const asciidocCards: Cards = {
   label: (kind) => LABELS[kind] ?? 'AsciiDoc',
   editTitle: (name) => `Edit ${name}:: block`,
   comment: (source) => source.replace(/^\/{4,}[ \t]*$/gm, '').replace(/^\/\/ ?/gm, '').trim(),
-  form: (kind, source) => (kind === 'preprocessor' && !source.includes('\n') ? preprocessorForm(source) : null),
+  form(kind, source) {
+    if (kind === 'preprocessor' && !source.includes('\n')) return preprocessorForm(source);
+    if (kind === 'header' || kind === 'attributes') return entriesForm(source, kind === 'header');
+    if (kind === 'block-attributes') return blockAttributesForm(source);
+    return null;
+  },
   preview(kind, source, assetUrl) {
+    if (kind === 'header' || kind === 'attributes') return entriesPreview(source, kind === 'header');
+    if (kind === 'block-attributes') return blockAttributesPreview(source);
     // A condition: what it says, readably.
     if (kind === 'preprocessor') {
       const fragment = document.createDocumentFragment();
