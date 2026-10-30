@@ -7,6 +7,7 @@ import type { Node as PMNode } from 'prosemirror-model';
 import type { ContainerEntry, SourceMap } from '../sourcemap.js';
 import { serializeInline } from './inline.js';
 import { writeTable } from './table.js';
+import { schema } from '../schema.js';
 import { blockKey } from './parse.js';
 import { ADMONITIONS, closes, renderAttrlist, type Attrlist } from './syntax.js';
 
@@ -161,7 +162,7 @@ class Writer {
       case 'target':
         return `[[${node.attrs.label}]]`;
       case 'table':
-        return writeTable(node, this.fresh ? null : this.map, this.fresh ? undefined : this.map.get(node.attrs.sid)?.node);
+        return writeTable(node, this.fresh ? null : this.map, this.fresh ? undefined : this.map.get(node.attrs.sid)?.node, (cell) => this.cellBlocks(cell));
       default:
         throw new Error(`Cannot write block node ${node.type.name} as AsciiDoc`);
     }
@@ -340,6 +341,14 @@ class Writer {
       out += text;
     });
     return out;
+  }
+
+  // A cell's blocks (its paragraphs among them, after merging cells, say).
+  private cellBlocks(cell: PMNode): string {
+    const all: PMNode[] = [];
+    cell.forEach((c) => (c.type.name === 'cell_blocks' ? c.forEach((b) => void all.push(b)) : all.push(c)));
+    const holder = cell.childCount === 1 ? cell.firstChild! : schema.nodes.cell_blocks.create(null, all);
+    return this.container(holder, undefined, []);
   }
 
   // A list of callouts: <1>, <2>… in turn (or all <.>), whatever they were before

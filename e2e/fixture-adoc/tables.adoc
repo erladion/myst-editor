@@ -1,0 +1,23 @@
+= Tables and Callouts
+
+[source,ruby]
+----
+require 'widget' # <1>
+Widget.run # <2>
+----
+<1> Loads Widget.
+<2> Runs it.
+
+[cols="1,2a"]
+|===
+|Part |Notes
+
+|Engine
+|What it does:
+
+* Turns
+* Hums
+
+|Wheels
+|Four of them.
+|===

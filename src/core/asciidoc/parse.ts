@@ -542,7 +542,14 @@ class Reader {
     }
     if (d === '|===') {
       try {
-        const rows = tableRows(header, own.slice(body + 1, -1), this.map, !!this.opts.conditions);
+        // A cell of style a: its blocks, read as the page's are (on their own lines).
+        const readBlocks = (text: string, line: number) => {
+          const was = this.line;
+          const { nodes } = this.container(text, innerLine + line);
+          this.line = was;
+          return nodes;
+        };
+        const rows = tableRows(header, own.slice(body + 1, -1), this.map, !!this.opts.conditions, readBlocks);
         return this.withSid('table', { header: body ? own.slice(0, body).join('\n') : null }, rows, src);
       } catch (e) {
         if (!(e instanceof Unsupported)) throw e;

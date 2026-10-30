@@ -2,7 +2,7 @@
 // the page's style, and reads back as edited.
 import { describe, expect, it } from 'vitest';
 import { Fragment, type Node as PMNode } from 'prosemirror-model';
-import { EditorState, type Transaction } from 'prosemirror-state';
+import { EditorState, TextSelection, type Transaction } from 'prosemirror-state';
 import { addColumnAfter, addRowAfter, CellSelection, mergeCells } from 'prosemirror-tables';
 import { loadDocument, saveDocument } from '../src/core/document.js';
 import { ASCIIDOC_CONFIG } from '../src/core/asciidoc/config.js';
@@ -119,7 +119,8 @@ describe('tables', () => {
       mergeCells(state, (t) => (tr = t));
       return tr!;
     });
-    expect(out).toBe('[cols="1,2"]\n|===\n| Name | Value\n\n2+| a 1\n| b | 2\n|===\n');
+    // Both cells' paragraphs, a blank line between (an AsciiDoc cell can have several).
+    expect(out).toBe('[cols="1,2"]\n|===\n| Name | Value\n\n2+| a\n\n1\n| b | 2\n|===\n');
   });
 
   it('made in the editor: a header row, cells on a line', () => {
@@ -334,5 +335,70 @@ describe('callouts', () => {
     expect(load('----\nx\n----\n<2> Two.\n<1> One.\n').doc.child(1).type.name).toBe('raw_block');
     const auto = '----\nx <.>\n----\n<.> Auto.\n';
     expect(edited(auto, (s) => s.tr.insertText('!', list(s.doc) + 3 + 'Auto.'.length))).toBe('----\nx <.>\n----\n<.> Auto.!\n');
+  });
+});
+
+describe('tables with cells of blocks, styles and lines', () => {
+  const BLOCKS = '[cols="1,2a"]\n|===\n|Name |Notes\n\n|lists\n|Some:\n\n* one\n* two\n\n|code\n|\n[source,sh]\n----\nls -l\n----\n|===\n';
+  const textIn = (s: EditorState, text: string) => {
+    const at = find(s.doc, (n) => n.isText && n.text!.includes(text));
+    return at + s.doc.nodeAt(at)!.text!.indexOf(text) + text.length;
+  };
+
+  it('of style a: their blocks, typed in, one line changes', () => {
+    const { doc } = load(BLOCKS);
+    const cell = doc.firstChild!.child(1).child(1);
+    expect(cell.firstChild!.type.name).toBe('cell_blocks');
+    expect(cell.firstChild!.content.content.map((n) => n.type.name)).toEqual(['paragraph', 'bullet_list']);
+    expect(edited(BLOCKS, (s) => s.tr.insertText(' more', textIn(s, 'two')))).toBe(BLOCKS.replace('* two', '* two more'));
+    expect(edited(BLOCKS, (s) => s.tr.insertText(' -a', textIn(s, 'ls -l')))).toBe(BLOCKS.replace('ls -l', 'ls -l -a'));
+  });
+
+  it('a new row of them, written a cell a line, under its spec', () => {
+    const out = edited(BLOCKS, (s) => {
+      const table = s.doc.firstChild!;
+      const list = nodes.bullet_list.create({ bullet: '*' }, [nodes.list_item.create(null, nodes.paragraph.create(null, schema.text('three')))]);
+      const row = nodes.table_row.create(null, [nodes.table_cell.create(null, nodes.paragraph.create(null, schema.text('more'))), nodes.table_cell.create(null, nodes.cell_blocks.create(null, [list]))]);
+      return s.tr.insert(1 + table.content.size, row);
+    });
+    expect(out).toContain('ls -l\n----\n|more\n|\n* three\n|===');
+  });
+
+  it('a cell made to hold blocks is written as one of style a, and back', async () => {
+    const TEXT = '|===\n|a |b\n|===\n';
+    const { toggleCellBlocks } = await import('../src/renderer/src/editor/tables.js');
+    const toggled = (text: string, times: number) =>
+      edited(text, (s) => {
+        let state = s.apply(s.tr.setSelection(TextSelection.create(s.doc, textIn(s, 'b'))));
+        for (let i = 0; i < times; i++) toggleCellBlocks(state, (tr) => (state = state.apply(tr)));
+        return state.doc;
+      });
+    expect(toggled(TEXT, 1)).toBe('|===\n|a a|b\n|===\n');
+    expect(toggled(TEXT, 2)).toBe(TEXT);
+  });
+
+  it('over lines, in paragraphs, with styles, literal lines and comments kept', () => {
+    const T = '[cols="1m,1l,1"]\n|===\n|`x` |  keep   spaces\n  and lines |One line\ngoing on.\n\nAnother.\n// a note between rows\n.2+^.>e|tall |b |c\n|d |e\n|===\n';
+    const { doc } = load(T);
+    const row = doc.firstChild!.child(0);
+    expect(row.child(1).textContent).toBe('keep   spaces   and lines');
+    expect(row.child(2).childCount).toBe(2);
+    expect(doc.firstChild!.child(1).firstChild!.attrs).toMatchObject({ rowspan: 2, align: 'center', style: '.>e' });
+    expect(edited(T, (s) => s.tr.insertText('!', textIn(s, 'Another.')))).toBe(T.replace('Another.', 'Another.!'));
+    expect(edited(T, (s) => s.tr.insertText('!', textIn(s, 'tall')))).toBe(T.replace('|tall', '|tall!'));
+    expect(edited(T, (s) => s.tr.insertText('!', textIn(s, 'lines')))).toBe(T.replace('and lines', 'and lines!'));
+  });
+});
+
+describe('a table without cols', () => {
+  it('keeps its first row on its first line; when a cell there goes over lines, cols says how many', () => {
+    const T = '|===\n|one two |b\n\n|c |d\n|===\n';
+    const out = edited(T, (s) => {
+      let at = -1;
+      s.doc.descendants((n, p) => void (n.isText && n.text === 'one two' && (at = p + 'one'.length)));
+      return s.tr.split(at);
+    });
+    // (It's the header row: the table says so, as it's no longer a line on its own.)
+    expect(out).toBe('[%header,cols="2*"]\n|===\n|one\n\ntwo |b\n\n|c |d\n|===\n');
   });
 });

@@ -126,3 +126,29 @@ test('a condition Asciidoctor evaluates is shown readably, and edited in a form'
   await waitForSave(page);
   expect(changes('guide.adoc')).toEqual({ removed: ['ifeval::[{sectnumlevels} == 3]'], added: ['ifeval::[{sectnumlevels} >= 2]'] });
 });
+
+test('callout lists and cells of blocks are edited in place', async () => {
+  const { page } = ctx;
+  await page.getByRole('button', { name: 'Tables and Callouts' }).click();
+  await expect(page.locator('.prose h1')).toHaveText('Tables and Callouts');
+  // Callouts: a numbered list under the code; a new one is numbered next.
+  await expect(page.locator('.prose ol.callout-list > li')).toHaveText(['Loads Widget.', 'Runs it.']);
+  await page.locator('.prose').getByText('Runs it.').click();
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('Stops.');
+  // A cell of style a: its list, typed in like any other.
+  await expect(page.locator('.prose td .cell-blocks li')).toHaveText(['Turns', 'Hums']);
+  await page.locator('.prose').getByText('Hums').click();
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('Rests');
+  await waitForSave(page);
+  expect(changes('tables.adoc')).toEqual({ removed: [], added: ['<3> Stops.', '* Rests'] });
+  // Another cell made to hold blocks: written as one of style a.
+  await page.locator('.prose').getByText('Wheels').click();
+  await page.getByRole('button', { name: 'Blocks in cell' }).click();
+  await expect(page.getByRole('button', { name: 'Blocks in cell' })).toHaveClass(/active/);
+  await waitForSave(page);
+  expect(file('tables.adoc')).toContain('\na|Wheels\n|Four of them.\n');
+});
