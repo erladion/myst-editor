@@ -51,7 +51,7 @@ class Writer {
       if (text === '' && child.type.name === 'paragraph') return; // empty paragraphs vanish anyway
       // Two lists of a kind, one after the other, with the same marker would be read
       // back as one: the second gets the other marker (- and *, 1. and 1)).
-      if (prev && prev.type === child.type && child.type.name.endsWith('_list') && listMarker(prevText) === listMarker(text)) text = this.list(child, true);
+      if (prev && prev.type === child.type && /^(bullet|ordered)_list$/.test(child.type.name) && listMarker(prevText) === listMarker(text)) text = this.list(child, true);
       if (prev) out += this.gap(prev, child, tight);
       out += text;
       prev = child;
@@ -67,7 +67,7 @@ class Writer {
     if (a.type.name === 'target') return '\n';
     // Inside a tight list item only a paragraph followed by a nested list may be
     // joined; anything after a nested list would become a lazy continuation.
-    if (tight && a.type.name === 'paragraph' && b.type.name.endsWith('_list')) return '\n';
+    if (tight && a.type.name === 'paragraph' && /^(bullet|ordered)_list$/.test(b.type.name)) return '\n';
     // HTML comments (e.g. condition markers) may interrupt a paragraph, and one ends at
     // its own line, so they can sit next to text without making a tight list loose.
     const comment = (n: PMNode) => n.type.name === 'raw_block' && /^(condition-|html$)/.test(n.attrs.kind) && /^<!--[\s\S]*-->$/.test(n.attrs.source.trim());
@@ -386,7 +386,7 @@ const nodes: Record<string, NodeFn> = {
   footnote_ref: (state, node) => state.write(`[^${node.attrs.label}]`),
   ref_link: (state, node) => state.write(`[](${linkDestination(node.attrs.href, node.attrs.title)})`),
   image: (state, node) =>
-    state.write(`![${state.esc(node.attrs.alt || '')}](${linkDestination(node.attrs.src, node.attrs.title)})`),
+    state.write(`![${state.esc(node.attrs.alt || '')}](${linkDestination(node.attrs.src, node.attrs.title)})${attrsOf(node.attrs.extra)}`),
 };
 
 // <scheme:...> autolinks, including MyST custom schemes like <gh-user:name>. Only used
@@ -417,6 +417,12 @@ function linkDestination(href: string, title: string | null): string {
 type MarkSerializerSpec = (typeof defaultMarkdownSerializer.marks)[string];
 type LinkState = State & { linkClose?: string[] };
 
+// What a mark or node writes after itself: its attribute list ({#id .class}), the
+// MyST way of keeping it.
+const attrsOf = (value: unknown) => (typeof value === 'string' && /^\{.*\}$/.test(value) ? value : '');
+// A link's, after it.
+const close0 = (mark: Mark) => attrsOf(mark.attrs.extra) || null;
+
 const marksFor = (style: InlineStyle): Record<string, MarkSerializerSpec> => ({
   em: { open: style.em, close: style.em, mixable: true, expelEnclosingWhitespace: true },
   strong: { open: style.strong, close: style.strong, mixable: true, expelEnclosingWhitespace: true },
@@ -440,7 +446,7 @@ const marksFor = (style: InlineStyle): Record<string, MarkSerializerSpec> => ({
       return '[';
     },
     close(state, mark, parent, index) {
-      const close = (state as LinkState).linkClose!.pop()!;
+      const close = (state as LinkState).linkClose!.pop()! + (close0(mark) ?? '');
       // A shortcut reference directly followed by `(` or `[` would parse differently.
       const next = index < parent.childCount ? parent.child(index) : null;
       if (close === ']' && next?.isText && /^[([]/.test(next.text!)) return `][${style.refs.get(mark.attrs.href)!.label}]`;
@@ -448,9 +454,17 @@ const marksFor = (style: InlineStyle): Record<string, MarkSerializerSpec> => ({
     },
     mixable: true,
   },
-  code: defaultMarkdownSerializer.marks.code,
+  // Inline code, with its attributes ({.py}) if it has them.
+  code: {
+    ...defaultMarkdownSerializer.marks.code,
+    close: (state, mark, parent, index) => {
+      const base = defaultMarkdownSerializer.marks.code.close;
+      return (typeof base === 'function' ? base(state, mark, parent, index) : base) + attrsOf(mark.attrs.role);
+    },
+  },
   // Not MyST's (it has no such styles): its text, as it is.
-  span: { open: '', close: '', mixable: true },
+  // A span with attributes: [text]{.class}. (Other spans, another format's, are text.)
+  span: { open: (_s, mark) => (attrsOf(mark.attrs.role) ? '[' : ''), close: (_s, mark) => (attrsOf(mark.attrs.role) ? `]${mark.attrs.role}` : ''), mixable: true },
 });
 
 const inlineOptions = {

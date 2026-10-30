@@ -1357,8 +1357,10 @@ button.toc-toggle:hover {
   padding: 0 0.3em;
 }
 
-/* Text with a role of the format's own (AsciiDoc's [.path]_file_): marked lightly. */
-.prose .text-role {
+/* Text with a role of the format's own (AsciiDoc's [.path]_file_), or MyST's
+   attributes ([text]{.class}): marked lightly. */
+.prose .text-role,
+.prose .text-attrs {
   text-decoration: underline dotted var(--fg-muted);
   text-underline-offset: 0.2em;
 }

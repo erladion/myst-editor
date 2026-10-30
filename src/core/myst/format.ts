@@ -12,6 +12,8 @@ export const myst: Format<MystConfig> = {
     return parseMyst(text, {
       extensions: parserExtensions(config),
       substitutions: config.extensions.includes('substitution'),
+      attrsInline: config.extensions.includes('attrs_inline'),
+      attrsBlock: config.extensions.includes('attrs_block'),
       directives: Object.fromEntries(Object.entries(directives).map(([name, d]) => [name, d.body])),
       conditionKeywords: conditions?.block,
       tableSpans: tables,

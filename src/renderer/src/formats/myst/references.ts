@@ -62,9 +62,19 @@ interface Anchor {
   titled: boolean;
 }
 
+// The id an attribute list gives the block under it ({#id .class}).
+const blockId = (node: PMNode) => (node.type === nodes.raw_block && node.attrs.kind === 'block-attributes' ? (/#([\w:.-]+)/.exec(node.attrs.source)?.[1] ?? null) : null);
+
 function docAnchors(doc: PMNode): Anchor[] {
   const out: Anchor[] = [];
   doc.descendants((node, _pos, parent, index) => {
+    const id = blockId(node);
+    if (id) {
+      const next = parent?.maybeChild(index + 1) ?? null;
+      const text = (next?.textContent ?? '').replace(/\s+/g, ' ').trim();
+      out.push({ label: id, follows: text.length > 60 ? `${text.slice(0, 60).replace(/\s+\S*$/, '')}…` : text, titled: next?.type === nodes.heading });
+      return false;
+    }
     if (node.type !== nodes.target) return !node.isTextblock;
     const next = parent?.maybeChild(index + 1) ?? null;
     const caption = next?.type === nodes.md_directive && (next.attrs.name === 'figure' ? next.firstChild?.textContent.trim() : next.attrs.name === 'table' ? String(next.attrs.args).trim() : '');
@@ -82,6 +92,8 @@ const anchorWords = (label: string) => label.replace(/[-_.]+/g, ' ').trim();
 function docLabels(doc: PMNode, into: Set<string>) {
   doc.descendants((node) => {
     if (node.type === nodes.target) into.add(node.attrs.label);
+    const id = blockId(node);
+    if (id) into.add(id);
     const name = node.type === nodes.md_directive ? (node.attrs.options as [string, string][]).find(([k]) => k === 'name')?.[1] : undefined;
     if (name) into.add(name);
   });

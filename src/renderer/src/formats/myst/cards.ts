@@ -11,6 +11,7 @@ const LABELS: Record<string, string> = {
   html: 'HTML',
   comment: 'Comment',
   'block-break': 'Cell break',
+  'block-attributes': 'Attributes',
 };
 
 let tokenizer: ReturnType<typeof createTokenizer> | null = null;

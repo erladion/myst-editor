@@ -412,8 +412,14 @@ const nodes: Record<string, NodeSpec> = {
 // a class. Not taken along when pasted, like `extra` (what a format writes with a link
 // beyond its text: AsciiDoc's ^ for a new window).
 const role = { role: { default: null as string | null } };
-const withRole = (tag: string, mark: { attrs: Record<string, unknown> }, more: Record<string, string> = {}) =>
-  [tag, mark.attrs.role ? { ...more, class: `text-role role-${mark.attrs.role}`, title: String(mark.attrs.role) } : more, 0] as [string, Record<string, string>, 0];
+// A mark's role: a class (an AsciiDoc role), or an attribute list as MyST writes one
+// ({#id .class}), shown as its attributes.
+const withRole = (tag: string, mark: { attrs: Record<string, unknown> }, more: Record<string, string> = {}) => {
+  const role = mark.attrs.role as string | null;
+  if (!role) return [tag, more, 0] as [string, Record<string, string>, 0];
+  if (role.startsWith('{')) return [tag, { ...more, class: 'text-attrs', title: role }, 0] as [string, Record<string, string>, 0];
+  return [tag, { ...more, class: `text-role role-${role}`, title: role }, 0] as [string, Record<string, string>, 0];
+};
 
 const marks: Record<string, MarkSpec> = {
   link: {

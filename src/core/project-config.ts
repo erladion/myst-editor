@@ -33,7 +33,7 @@ const OPTIONAL: Record<string, string> = {
 };
 
 // Extensions the editor reads itself (myst-parser doesn't know them).
-export const OWN_SYNTAX = ['substitution'] as const;
+export const OWN_SYNTAX = ['substitution', 'attrs_inline', 'attrs_block'] as const;
 
 export const DEFAULT_CONFIG: MystConfig = { format: 'myst', extensions: [...Object.keys(OPTIONAL), ...OWN_SYNTAX], fromConfPy: false, editor: EMPTY_EDITOR_CONFIG };
 

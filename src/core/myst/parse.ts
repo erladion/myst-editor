@@ -55,7 +55,18 @@ export interface ParseOptions {
   tableSpans?: { colspan?: string; rowspan?: string };
   // {{ name }} as a substitution (the substitution extension).
   substitutions?: boolean;
+  // {#id .class key=value} after spans, code, links and pictures (attrs_inline), and
+  // on a line before a block (attrs_block).
+  attrsInline?: boolean;
+  attrsBlock?: boolean;
 }
+
+// An attribute list: {#id .class key=value key="a value"}.
+const ATTRS = /^\{\s*(?:(?:[#.][\w:.-]+|[\w-]+=(?:"[^"\n]*"|'[^'\n]*'|[^\s{}"']+)|%[\w-]+)\s*)+\}/;
+export const isAttrsLine = (line: string) => {
+  const m = ATTRS.exec(line.trim());
+  return !!m && m[0].length === line.trim().length;
+};
 
 // The options of the parse under way, for reading inline text.
 let reading: ParseOptions = {};
@@ -162,7 +173,14 @@ class Context {
       const next = blocks.find((o, j) => j > i && o.start > b.start);
       const limit = next ? next.start - 1 : lines.length - 1;
       const end = b.node.type === 'footnoteDefinition' ? footnoteEnd(lines, b.start, limit) : Math.min(b.end, limit);
-      segs.push({ ...b, end });
+      // {#id .class} on its own line: the next block's attributes; what follows it in
+      // the paragraph, a paragraph of its own. (Before a block read otherwise, such as
+      // a definition list's term, the block stays as read.)
+      const rest = this.opts.attrsBlock && b.node.type === 'paragraph' && isAttrsLine(lines[b.start]) && end > b.start ? this.parse(lines.slice(b.start + 1, end + 1).join('\n'), false) : null;
+      if (this.opts.attrsBlock && b.node.type === 'paragraph' && isAttrsLine(lines[b.start]) && (end === b.start || (rest?.length === 1 && rest[0].type === 'paragraph'))) {
+        segs.push({ node: { type: 'blockAttributes' }, start: b.start, end: b.start });
+        if (rest) segs.push({ node: rest[0], start: b.start + 1, end });
+      } else segs.push({ ...b, end });
       let j = end + 1;
       while (j <= limit) {
         if (lines[j].trim() === '') {
@@ -314,6 +332,8 @@ class Context {
         return this.definitionList(md, src);
       case 'blockBreak':
         return this.raw('block-break', src);
+      case 'blockAttributes':
+        return this.raw('block-attributes', src);
       default:
         return this.raw(md.type, src);
     }
@@ -586,8 +606,9 @@ class Context {
 
 // ---- inline content -------------------------------------------------------
 
-function inline(children: MdNode[] = [], marks: readonly Mark[] = []): PMNode[] {
+function inline(given: MdNode[] = [], marks: readonly Mark[] = []): PMNode[] {
   const out: PMNode[] = [];
+  const children = reading.attrsInline ? withAttrs(given) : given;
   for (const c of children) {
     switch (c.type) {
       case 'text': {
@@ -595,15 +616,16 @@ function inline(children: MdNode[] = [], marks: readonly Mark[] = []): PMNode[] 
         parts.forEach((part, i) => {
           if (i > 0) out.push(schema.node('soft_break', null, undefined, marks));
           if (!part) return;
-          if (!reading.substitutions) return void out.push(schema.text(part, marks));
-          // {{ name }}: a substitution, its spaces as written.
+          if (!reading.attrsInline) return void out.push(...plainText(part, marks));
+          // [text]{.class}: a span, its attributes as written.
           let at = 0;
-          for (const m of part.matchAll(/\{\{([^{}\n]+)\}\}/g)) {
-            if (m.index! > at) out.push(schema.text(part.slice(at, m.index), marks));
-            out.push(schema.node('role', { name: 'substitution', value: m[1] }, undefined, marks));
+          for (const m of part.matchAll(/\[([^[\]\n]+)\](\{[^{}\n]*\})/g)) {
+            if (!isAttrsLine(m[2])) continue;
+            if (m.index! > at) out.push(...plainText(part.slice(at, m.index), marks));
+            out.push(...plainText(m[1], schema.marks.span.create({ role: m[2] }).addToSet(marks)));
             at = m.index! + m[0].length;
           }
-          if (at < part.length) out.push(schema.text(part.slice(at), marks));
+          if (at < part.length) out.push(...plainText(part.slice(at), marks));
         });
         break;
       }
@@ -618,13 +640,15 @@ function inline(children: MdNode[] = [], marks: readonly Mark[] = []): PMNode[] 
         break;
       case 'link':
         if (!c.children?.length) {
+          if (c.attrs) throw new Unsupported();
           out.push(schema.node('ref_link', { href: c.url, title: c.title ?? null }, undefined, marks));
           break;
         }
-        out.push(...inline(c.children, schema.marks.link.create({ href: c.url, title: c.title ?? null }).addToSet(marks)));
+        out.push(...inline(c.children, schema.marks.link.create({ href: c.url, title: c.title ?? null, extra: c.attrs ?? null }).addToSet(marks)));
         break;
       case 'inlineCode':
-        if (c.value) out.push(schema.text(c.value, schema.marks.code.create().addToSet(marks)));
+        if (c.value) out.push(schema.text(c.value, schema.marks.code.create({ role: c.attrs ?? null }).addToSet(marks)));
+        else if (c.attrs) throw new Unsupported();
         break;
       case 'break':
         out.push(schema.node('hard_break', null, undefined, marks));
@@ -642,7 +666,7 @@ function inline(children: MdNode[] = [], marks: readonly Mark[] = []): PMNode[] 
         out.push(schema.node('footnote_ref', { label: c.label ?? c.identifier }, undefined, marks));
         break;
       case 'image':
-        out.push(schema.node('image', { src: c.url, alt: c.alt ?? '', title: c.title ?? null }, undefined, marks));
+        out.push(schema.node('image', { src: c.url, alt: c.alt ?? '', title: c.title ?? null, extra: c.attrs ?? null }, undefined, marks));
         break;
       default:
         // Unknown inline syntax: keep the whole block as raw source.
@@ -715,4 +739,41 @@ function offsets(lines: string[]): number[] {
 
 function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Text, with {{ name }} a substitution where the extension reads them so (its spaces
+// as written).
+function plainText(part: string, marks: readonly Mark[]): PMNode[] {
+  if (!reading.substitutions) return part ? [schema.text(part, marks)] : [];
+  const out: PMNode[] = [];
+  let at = 0;
+  for (const m of part.matchAll(/\{\{([^{}\n]+)\}\}/g)) {
+    if (m.index! > at) out.push(schema.text(part.slice(at, m.index), marks));
+    out.push(schema.node('role', { name: 'substitution', value: m[1] }, undefined, marks));
+    at = m.index! + m[0].length;
+  }
+  if (at < part.length) out.push(schema.text(part.slice(at), marks));
+  return out;
+}
+
+// Inline code, links and pictures with the attribute list right after them
+// ({#id .class}) taken from the text that follows: as `attrs`.
+function withAttrs(children: MdNode[]): MdNode[] {
+  const out: MdNode[] = [];
+  for (let i = 0; i < children.length; i++) {
+    const c = children[i];
+    const next = children[i + 1];
+    if (['inlineCode', 'link', 'image'].includes(c.type) && next?.type === 'text') {
+      const m = ATTRS.exec(next.value as string);
+      if (m) {
+        out.push({ ...c, attrs: m[0] });
+        const rest = (next.value as string).slice(m[0].length);
+        if (rest) children[i + 1] = { ...next, value: rest };
+        else i++;
+        continue;
+      }
+    }
+    out.push(c);
+  }
+  return out;
 }
